@@ -122,7 +122,7 @@ export const ConversationConfiguration = Conversation.pick({ agent: true, projec
 export type ConversationConfiguration = z.infer<typeof ConversationConfiguration>
 
 export function canReuseConversation(conversation: Conversation): boolean {
-  return !conversation.taskId && !conversation.discussionId && !conversation.squadRunId && !conversation.routineId && !conversation.parentConversationId && !isHelper(conversation)
+  return !conversation.taskId && !conversation.discussionId && !conversation.squadRunId && !conversation.routineId && !conversation.parentConversationId && !conversation.channel && !isHelper(conversation)
 }
 
 export const ConversationStage = z.object({
@@ -253,5 +253,5 @@ export function helperAllowsMode(mode: string): boolean {
 }
 
 export function canHaveHelper(conversation: Conversation): boolean {
-  return !isHelper(conversation) && !conversation.parentConversationId && !conversation.discussionId && !conversation.squadRunId && !conversation.routineId && conversation.archivedAt == null
+  return !isHelper(conversation) && !conversation.parentConversationId && !conversation.discussionId && !conversation.squadRunId && !conversation.routineId && !conversation.channel && conversation.archivedAt == null
 }

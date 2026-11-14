@@ -63,7 +63,7 @@ export type DiscussionEvents = {
 
 export type DiscussionDeps = {
   conversations: Pick<ConversationService,
-    'create' | 'get' | 'continue' | 'send' | 'messages' | 'chatPage' | 'interrupt' | 'respond' | 'delete' | 'stop' | 'validateStartOptions' | 'capacityAvailable' | 'setAdditionalProjects'>
+    'create' | 'get' | 'continue' | 'send' | 'messages' | 'chatPage' | 'replyOf' | 'interrupt' | 'respond' | 'delete' | 'stop' | 'validateStartOptions' | 'capacityAvailable' | 'setAdditionalProjects'>
   events: DiscussionEvents
 }
 
@@ -670,17 +670,7 @@ export class DiscussionService {
 
   // The turn's final reply as recorded; failing that, what the chat shows the agent saying in it.
   private replyOf(conversationId: string, postId: string): string {
-    const ref = `${REF_PREFIX}${postId}`
-    let messages: ReturnType<ConversationService['messages']> = []
-    try { messages = this.deps.conversations.messages(conversationId) } catch { return '' }
-    const recorded = messages.findLast((message) => message.role === 'assistant' && message.eventKey === `chat:${ref}:assistant`)
-    if (recorded) return recorded.text.trim()
-    const items = this.deps.conversations.chatPage(conversationId).items
-    const start = items.findIndex((item) => item.id === `u:${ref}`)
-    if (start < 0) return ''
-    const end = items.findIndex((item, index) => index > start && item.kind === 'turn')
-    return items.slice(start + 1, end < 0 ? undefined : end)
-      .flatMap((item) => item.kind === 'assistant' ? [item.text] : []).join('\n\n').trim()
+    try { return this.deps.conversations.replyOf(conversationId, `${REF_PREFIX}${postId}`) } catch { return '' }
   }
 
   private notice(id: string, round: number, text: string): void {
