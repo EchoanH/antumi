@@ -171,6 +171,11 @@ const REASON_TEXT: Record<string, string> = localized(() => ({
   'conversation-preparing': t('labels.theIssueIsStillBeingFetched'),
   'investigation-interrupted': t('labels.theIssueFetchWasCutOff'),
   'agent-capacity': t('labels.agentConcurrencyLimitReachedWaitForOtherConversations'),
+  'channel-managed': t('labels.channelManaged'),
+  'profile-has-channels': t('labels.profileHasChannels'),
+  'agent-no-lockdown': t('labels.agentNoLockdown'),
+  'channels-unavailable': t('labels.channelsUnavailable'),
+  'channel-not-found': t('labels.channelNotFound'),
   'conversation-same-agent': t('labels.chooseAnotherAgentForHandoff'),
   'invalid-workspace': t('labels.projectMustBeAnExistingAbsoluteDirectory'),
   'too-many-projects': t('labels.upTo10ProjectsPerConversation'),
@@ -277,6 +282,8 @@ const REASON_TEXT: Record<string, string> = localized(() => ({
 
 // Reasons whose message says what went wrong in the agent's own words, kept after the summary.
 const REASON_WITH_DETAIL: Record<string, string> = localized(() => ({
+  'channel-project-not-recent': t('labels.channelProjectNotRecent'),
+  'channel-credential-invalid': t('labels.channelCredentialInvalid'),
   'pull-request-cut-loose-open': t('PullRequest.cutLooseOpen'),
   'skills-none-found': t('labels.noUsableSkillsFoundSkillsNameSkillMd'),
   'skills-name-conflict': t('labels.twoRepositoriesContainSkillsWithTheSameName'),

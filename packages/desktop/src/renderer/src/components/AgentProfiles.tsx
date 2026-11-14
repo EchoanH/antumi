@@ -20,6 +20,9 @@ import { GroupedChecklist } from './GroupedChecklist'
 import type { ChecklistGroup } from '../grouped-checklist'
 import { Segmented } from './SettingsControls'
 import { AgentProfileTemplatesDialog } from './AgentProfileTemplates'
+import { AgentChannels, channelStateText } from './AgentChannels'
+import { useChannels } from '../channels'
+import { channelPlatform } from '@antumi/protocol'
 import { usePreferences } from '../preferences'
 import { newAgentConversation, pinAgent } from '../pinned-agents'
 import './agent-profiles.css'
@@ -57,6 +60,7 @@ function ProfilesView() {
   const installed = useInstalledAgents()
   const profiles = useCore((state) => state.agentProfiles)
   const pinned = usePreferences((state) => state.pinnedAgentIds)
+  const channels = useChannels()
   const [tab, setTab] = useState<'active' | 'archived'>('active')
   const tabsId = useId()
   const { view, templatesOpen, profile, seed, template } = useProfileEditor()
@@ -91,7 +95,9 @@ function ProfilesView() {
           <button type="button" className="agent-profile-card-main" onClick={() => edit(item)}>
             <span className="squad-card-top"><span className="squad-card-icon"><AgentAvatar id={item.id} /></span><span className="squad-card-name">{item.name}</span>{item.archivedAt !== null && <span className="squad-tag">{t('ConversationList.archived')}</span>}</span>
             <span className="squad-card-description" data-empty={!item.description || undefined}>{item.description || t('Squads.noDescription')}</span>
-            <span className="squad-card-members"><span className="squad-card-member">{t(item.capability === 'readOnly' ? 'Squads.readOnlyAnalysis' : 'Squads.developmentTesting')}</span></span>
+            <span className="squad-card-members"><span className="squad-card-member">{t(item.capability === 'readOnly' ? 'Squads.readOnlyAnalysis' : 'Squads.developmentTesting')}</span>
+              {channels.filter((channel) => channel.profileId === item.id).map((channel) => <span key={channel.id} className="squad-card-member agent-profile-channel" title={t('AgentChannels.onPlatform', { platform: channelPlatform(channel.platform).label, state: channelStateText(channel) })}>
+                <span className="agent-channel-dot" data-state={channel.enabled ? channel.state : 'off'} aria-hidden="true" />{channelPlatform(channel.platform).label}</span>)}</span>
             <span className="squad-card-foot"><span className="agent-profile-engine" title={[agentLabel(item.agent), item.model].filter(Boolean).join(' · ')}>{[agentLabel(item.agent), item.model].filter(Boolean).join(' · ')}</span><span className="squad-card-time">{t('SourceInboxView.updated', { value1: timeAgo(item.updatedAt, now) })}</span></span>
           </button>
           <footer className="agent-profile-card-actions">
@@ -195,6 +201,7 @@ function ProfileEditor({ profile, seed, template, onCancel, onDone }: { profile:
         </section>
       </div>
     </fieldset>
+    <AgentChannels profileId={profile?.id ?? null} agent={fields.agent} hasProvider={Boolean(fields.modelProvider)} />
     {error && <p className="modal-error" role="alert">{error}</p>}
     <footer className="squad-editor-footer"><button type="button" className="button ghost" disabled={busy} onClick={onCancel}>{t('ChatCommandSettings.cancel')}</button><button type="submit" className="button primary" disabled={busy || modelPending || readOnlyUnsupported}>{t('FileEditor.save')}</button></footer>
   </form>
