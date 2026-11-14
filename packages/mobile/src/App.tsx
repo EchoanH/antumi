@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BackHandler, Linking, StyleSheet, Text, View } from 'react-native'
+import { AppState, BackHandler, Linking, StyleSheet, Text, View } from 'react-native'
 import { StatusBar } from 'expo-status-bar'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { KeyboardProvider } from 'react-native-keyboard-controller'
@@ -10,6 +10,7 @@ import { t } from './i18n'
 import { decodePairingCode } from '@antumi/protocol'
 import { pop, push, reset, useNavigation } from './navigation'
 import { boot, unlock, useSession } from './session'
+import { restoreStatusBar } from './status-bar'
 import { checkDaily } from './updates'
 import { useTheme } from './theme'
 import { ChatScreen } from './screens/ChatScreen'
@@ -44,6 +45,7 @@ function LockScreen() {
   const [failed, setFailed] = useState(false)
   const ask = async () => {
     const result = await LocalAuthentication.authenticateAsync({ promptMessage: t('unlockReason') })
+    restoreStatusBar()
     if (result.success) unlock()
     else setFailed(true)
   }
@@ -73,9 +75,11 @@ export function App() {
     void checkDaily()
     const back = BackHandler.addEventListener('hardwareBackPress', pop)
     const links = Linking.addEventListener('url', ({ url }) => opened(url))
+    const returned = AppState.addEventListener('change', (state) => { if (state === 'active') restoreStatusBar() })
     return () => {
       back.remove()
       links.remove()
+      returned.remove()
     }
   }, [])
   return (
