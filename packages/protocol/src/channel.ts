@@ -1,0 +1,101 @@
+import { z } from 'zod'
+import { MAX_TASK_REPOS } from './task'
+
+// An agent on a chat platform (docs/CHANNELS.md): colleagues ask it questions there, and it answers
+// from the projects it is given, locked down. What core and the desktop share about it, zod only.
+
+export const CHANNEL_PLATFORMS = ['slack'] as const
+export const ChannelPlatform = z.enum(CHANNEL_PLATFORMS)
+export type ChannelPlatform = z.infer<typeof ChannelPlatform>
+
+export const ChannelState = z.enum(['off', 'connecting', 'connected', 'failed'])
+export type ChannelState = z.infer<typeof ChannelState>
+
+// A user, a chat or a workspace as its platform names it: opaque to core.
+const PlatformId = z.string().trim().min(1).max(200)
+
+export const CHANNEL_DEFAULTS = { dailyPerUser: 20, dailyTotal: 200, maxConcurrent: 2, turnTimeoutSec: 300 } as const
+// Pictures taken from one question; the rest are left out and the answer says so.
+export const MAX_CHANNEL_IMAGES = 4
+// However long the agent's instructions let an answer run, no more than this is posted.
+export const MAX_CHANNEL_ANSWER_CHARS = 12_000
+
+// What the user sets. Who may ask is closed until named: no user, no place.
+export const ChannelFields = z.object({
+  profileId: z.string().uuid(),
+  platform: ChannelPlatform,
+  enabled: z.boolean().default(true),
+  // The only folders its answers may read from: git repos among the recent projects.
+  projectPaths: z.array(z.string().trim().min(1)).max(MAX_TASK_REPOS).default([]),
+  allowedUsers: z.array(PlatformId).max(500).default([]),
+  // Group chats it answers in when mentioned.
+  allowedPlaces: z.array(PlatformId).max(200).default([]),
+  // Whether an allowed user may also ask it in a direct message.
+  allowDirect: z.boolean().default(false),
+  dailyPerUser: z.number().int().min(1).max(500).default(CHANNEL_DEFAULTS.dailyPerUser),
+  dailyTotal: z.number().int().min(1).max(10_000).default(CHANNEL_DEFAULTS.dailyTotal),
+  maxConcurrent: z.number().int().min(1).max(5).default(CHANNEL_DEFAULTS.maxConcurrent),
+  turnTimeoutSec: z.number().int().min(30).max(1800).default(CHANNEL_DEFAULTS.turnTimeoutSec)
+})
+export type ChannelFields = z.infer<typeof ChannelFields>
+
+// A credential's name on its platform's descriptor (channel-platforms.ts).
+export const ChannelCredentialKey = z.enum(['appToken', 'botToken'])
+export type ChannelCredentialKey = z.infer<typeof ChannelCredentialKey>
+
+// As clients see one: which credentials are stored, never their values.
+export const Channel = ChannelFields.extend({
+  id: z.string().uuid(),
+  stored: z.array(ChannelCredentialKey),
+  // The workspace it is connected to and the bot it is there, as the platform said on connecting.
+  tenant: z.string().nullable(),
+  tenantName: z.string().nullable(),
+  botUserId: z.string().nullable(),
+  state: ChannelState,
+  error: z.string().nullable(),
+  createdAt: z.number(),
+  updatedAt: z.number()
+})
+export type Channel = z.infer<typeof Channel>
+
+// Saving one: without an id, a new one. A credential left out or null keeps what is stored.
+export const ChannelInput = ChannelFields.extend({
+  id: z.string().uuid().optional(),
+  credentials: z.partialRecord(ChannelCredentialKey, z.string().trim().min(1).max(500).nullable()).optional()
+})
+export type ChannelInput = z.input<typeof ChannelInput>
+
+// refused: turned away before any agent ran (refusal says why: 'acl', 'quota'). timeout: stopped
+// for running too long.
+export const ChannelRequestState = z.enum(['queued', 'running', 'answered', 'failed', 'refused', 'timeout'])
+export type ChannelRequestState = z.infer<typeof ChannelRequestState>
+
+// One question asked of it, kept as its record: who, where, what came of it.
+export const ChannelRequest = z.object({
+  id: z.string().uuid(),
+  channelId: z.string().uuid(),
+  asker: z.string(),
+  place: z.string(),
+  direct: z.boolean(),
+  text: z.string(),
+  images: z.number().int().nonnegative(),
+  state: ChannelRequestState,
+  refusal: z.string().nullable(),
+  // Whether something that looked like a secret was taken out of its answer.
+  redacted: z.boolean(),
+  conversationId: z.string().uuid().nullable(),
+  createdAt: z.number(),
+  startedAt: z.number().nullable(),
+  endedAt: z.number().nullable(),
+  totalTokens: z.number().nullable(),
+  toolCalls: z.number().int().nonnegative()
+})
+export type ChannelRequest = z.infer<typeof ChannelRequest>
+
+// One read its agent made for a question: every one goes through core, so the list is whole.
+export const ChannelToolCall = z.object({ tool: z.string(), target: z.string(), bytes: z.number().int().nonnegative(), at: z.number() })
+export type ChannelToolCall = z.infer<typeof ChannelToolCall>
+
+// On a conversation opened for a platform's asker: it is locked down, and only core speaks in it.
+export const ConversationChannel = z.object({ channelId: z.string().uuid(), platform: ChannelPlatform, asker: z.string(), place: z.string() })
+export type ConversationChannel = z.infer<typeof ConversationChannel>

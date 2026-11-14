@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { AgentProfile } from './agent-profile'
 import { ChatContextUse, ChatDecision, ChatTurnActivity } from './chat'
 import { ConversationRoute, ModelProviderId, ProviderRoute } from './model-provider'
+import { ConversationChannel } from './channel'
 import { TaskSource } from './source'
 import { AgentKind } from './task'
 
@@ -105,7 +106,10 @@ export const Conversation = z.object({
   // The model provider it was started on, fixed for good; null on the agents' own accounts. route:
   // what its agent's next stage runs on. Older cores leave both out.
   modelProvider: ModelProviderId.nullable().optional(),
-  route: ConversationRoute.nullable().optional()
+  route: ConversationRoute.nullable().optional(),
+  // Opened for someone asking from a chat platform: locked down, kept out of every list, and
+  // spoken in by core alone (docs/CHANNELS.md). Older cores leave it out.
+  channel: ConversationChannel.nullable().optional()
 })
 export type Conversation= z.infer<typeof Conversation>
 
