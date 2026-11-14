@@ -8,6 +8,12 @@ export function antumiChatMcpServer(home: string, conversationId: string, { hist
   return mcpCommand('--home', home, '--conversation', conversationId, ...(history ? ['--history'] : []), ...(todos ? [] : ['--no-todos']))
 }
 
+// For a conversation opened for a chat platform's asker: the tools it may read projects with, and
+// none of the above.
+export function antumiChannelMcpServer(home: string, conversationId: string): McpServer {
+  return mcpCommand('--home', home, '--conversation', conversationId, '--tool-set', 'channel')
+}
+
 // One of the user's MCP servers as an agent is handed it. Antumi's launcher (mcp-main --run) starts a
 // command with its env, and carries a server's messages where it needs headers; a server that
 // needs nothing is reached at its address by the agent itself. readOnly: always through the

@@ -65,6 +65,16 @@ describe('reusable agent roles and delegated work', () => {
     await profiles.close(); projects.close(); conversations.close(); tasks.close()
     rmSync(root, { recursive: true, force: true })
   })
+  it('keeps an agent on a chat platform one that can be locked down, and out of the archive', () => {
+    profiles.setChannelGuard((id) => id === reviewer.id)
+    expect(() => profiles.save({ ...reviewer, agent: 'codex' }, reviewer.id)).toThrow(expect.objectContaining({ reason: 'agent-no-lockdown' }))
+    expect(() => profiles.archive(reviewer.id, true)).toThrow(expect.objectContaining({ reason: 'profile-has-channels' }))
+    expect(profiles.save({ ...reviewer, instructions: 'Answer in one line.' }, reviewer.id).instructions).toBe('Answer in one line.')
+    profiles.setChannelGuard(() => false)
+    expect(profiles.save({ ...reviewer, agent: 'codex' }, reviewer.id).agent).toBe('codex')
+    expect(profiles.archive(reviewer.id, true).archivedAt).not.toBeNull()
+  })
+
   it('freezes role configuration, isolates history, hides the child and returns the result once', async () => {
     await chats.send(parentId, 'Implement a feature')
     const call = await profiles.dispatch(parentId, reviewer.id, 'Review the changed files', 'review-1')

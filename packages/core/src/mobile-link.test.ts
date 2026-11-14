@@ -23,7 +23,7 @@ const BIG = Array.from({ length: 300 }, (_, index) => `/projects/${index}/${'x'.
 function handlers(mobile: () => MobileService, calls: string[]): RpcHandlers {
   const implemented: Partial<RpcHandlers> = {
     'system.hello': ({ client }, connection) => {
-      if (client) mobile().authorize(connection, client.deviceId)
+      if (client?.kind === 'mobile') mobile().authorize(connection, client.deviceId)
       return { protocolVersion: PROTOCOL_VERSION, serverVersion: 'test', features: ['mobile'] }
     },
     'conversations.list': () => [],

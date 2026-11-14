@@ -50,7 +50,7 @@ import { UsageAutomation } from './usage-automation'
 import { cursorHistoryReader } from './cursor-usage-history'
 import { warmAccount } from './quota-warmup'
 import type { ResetCreditUse, UsageSource } from './usage-source'
-import { antumiChatMcpServer, userMcpServer } from './antumi-mcp-server'
+import { antumiChannelMcpServer, antumiChatMcpServer, userMcpServer } from './antumi-mcp-server'
 import { SourceConfigStore } from './source-config'
 import { LoginFlows } from './source-login-flow'
 import { migrateLegacyJira } from './source-migration'
@@ -83,6 +83,10 @@ import { timestampConsole } from './log-timestamps'
 import { useSystemProxy } from './system-proxy'
 import { MobileStore } from './mobile-store'
 import { MobileService } from './mobile-service'
+import { gitTopLevel } from './workspace'
+import { ChannelStore } from './channel-store'
+import { ChannelService } from './channel-service'
+import { CHANNEL_TOOL_NAMES } from './channel-tools'
 import { AttachmentSweeper } from './attachment-sweep'
 
 timestampConsole()
@@ -115,6 +119,9 @@ const smallModels = new SmallModelStore(paths.database)
 smallModels.recoverQuick()
 const attachments = new AttachmentStore(paths.attachments)
 const mobileStore = new MobileStore(paths.database)
+const channelStore = new ChannelStore(paths.database)
+// Made once what it needs is (profiles, accounts); the conversation events below reach it from then on.
+let channels: ChannelService | undefined
 let sourceInvestigations: SourceInvestigationService | undefined
 let sourceUpdates: SourceUpdates | undefined
 let server: RpcServer | null = null
@@ -153,6 +160,14 @@ const conversations = new ConversationService(
     if (event.type === 'changed' || event.type === 'deleted' || (event.type === 'chatItems' && event.items.some((item) => ['state', 'user', 'turn'].includes(item.kind)))) queueMicrotask(() => sourceUpdates?.changed())
     if (event.type === 'changed' || event.type === 'deleted' || event.type === 'chatItems') queueMicrotask(() => sourceInvestigations?.changed())
     const watchers = (id: string) => [...(server?.connections ?? [])].filter((c) => c.watching.has(id))
+    // One opened for a chat platform's asker is no client's to list: nobody is told of it but the
+    // channel service, and whoever watches its chat.
+    if (event.type === 'changed' && event.conversation.channel) {
+      if (event.conversation.sessionId === null) channels?.conversationEnded(event.conversation.id)
+      refreshAwake()
+      return
+    }
+    if (event.type === 'deleted') channels?.conversationEnded(event.id)
     if (event.type === 'changed') {
       if (event.conversation.autoInvestigationId) sourceInvestigations?.created(event.conversation.id, event.conversation.createdAt)
       server?.broadcast('conversations.changed', { conversation: event.conversation })
@@ -185,7 +200,10 @@ const conversations = new ConversationService(
         unpriced: Boolean(conversations.stages(helper.id).find((stage) => stage.id === event.stageId)?.route)
       })
     } else if (event.type === 'chatItems') {
-      if (!sourceInvestigations?.managed(event.conversationId)) limits.observe(event.conversationId, event.items)
+      // A question from a chat platform is answered or it is not: nothing goes on with it later.
+      const forChannel = Boolean(conversationsStore.get(event.conversationId)?.channel)
+      if (forChannel) channels?.conversationItems(event.conversationId, event.items)
+      else if (!sourceInvestigations?.managed(event.conversationId)) limits.observe(event.conversationId, event.items)
       else if (event.items.some((item) => item.kind === 'usageLimit')) sourceInvestigations.waiting(event.conversationId, 'quota-exhausted')
       schedules.observe(event.conversationId, event.items)
       turns.observe(event.conversationId, event.items)
@@ -526,6 +544,18 @@ const accounts = new AgentAccountStore(paths.agentAccounts, paths.agentAccountHo
   },
   changed: (list) => server?.broadcast('accounts.changed', { accounts: list })
 })
+channels = new ChannelService(channelStore, {
+  conversations,
+  profile: (id) => profiles.list().find((profile) => profile.id === id) ?? null,
+  credentials,
+  recentProjects: () => projects.recent(),
+  isRepo: async (dir) => (await gitTopLevel(dir)) !== null,
+  keepImage: (bytes) => attachments.put(bytes),
+  changed: (list) => server?.broadcast('channels.changed', { channels: list }),
+  identity: async (agent) => accounts.list().accounts.find((account) => account.agent === agent && account.id === accounts.activeOf(agent))?.email ?? null
+})
+profiles.setChannelGuard((id) => channels?.hasChannels(id) ?? false)
+conversations.setChannelTools({ mcp: (id) => antumiChannelMcpServer(paths.home, id), tools: CHANNEL_TOOL_NAMES })
 await accounts.load()
 conversations.setAccounts(accounts)
 const projectConfigs = new ProjectConfigStore(paths.projectTrust)
@@ -559,7 +589,7 @@ const chatSettings = new ChatSettingsStore(paths.chatSettings, (settings) => {
   conversations.setUserBrowser(settings.userBrowser ?? true)
   conversations.setUserTodos(settings.userTodos ?? true)
   conversations.setKnowledgeBase(settings.knowledgeBase ?? null)
-  conversations.setCapacity(settings, () => { void schedules.tick(); squads.tick(); profiles.tick(); sourceInvestigations?.changed() })
+  conversations.setCapacity(settings, () => { void schedules.tick(); squads.tick(); profiles.tick(); channels?.tick(); sourceInvestigations?.changed() })
   wire.setEnabled(settings.wireLog ?? false)
   void autoArchive.sweep()
   void worktreeAutoClean.sweep()
@@ -603,7 +633,7 @@ conversations.setTitleNaming(initialChatSettings.titleNaming)
 conversations.setUserBrowser(initialChatSettings.userBrowser)
 conversations.setUserTodos(initialChatSettings.userTodos)
 conversations.setKnowledgeBase(initialChatSettings.knowledgeBase)
-conversations.setCapacity(initialChatSettings, () => { void schedules.tick(); squads.tick(); profiles.tick(); sourceInvestigations?.changed() })
+conversations.setCapacity(initialChatSettings, () => { void schedules.tick(); squads.tick(); profiles.tick(); channels?.tick(); sourceInvestigations?.changed() })
 wire.setEnabled(initialChatSettings.wireLog)
 
 daemon.onEvent((event) => {
@@ -715,11 +745,12 @@ server = await startRpcServer({
     uploads: new AttachmentUploads(attachments),
     sweeper: attachmentSweeper
   }, terminals, worktrees, browser, awake, terminalCommands, limits, runs, turns, chatSettings, environment, schedules, chatCommands, routines, discussions, wire, () => { server?.broadcast('git.changed', {}); profiles.tick() }, squads, todos, plugins, skills, mcpServers, smallModels, projectConfigs, modelProviders, sessionImports, accounts, cliMaintenance, analytics, automation, pets, new ProjectStar(sources), profiles, bookmarks, browserHistory, sourceUpdates,
-    { store: pullRequestStore, changed: (taskId, links) => server?.broadcast('pullRequests.changed', { taskId, links }), ready: (service) => { pullRequests.current = service } }, browserSites, mobile)
+    { store: pullRequestStore, changed: (taskId, links) => server?.broadcast('pullRequests.changed', { taskId, links }), ready: (service) => { pullRequests.current = service } }, browserSites, mobile, channels)
 })
 await writeCoreEndpoint({ port: server.port, token, pid: process.pid, protocolVersion: PROTOCOL_VERSION, version: packageJson.version })
 mobile.seed(conversations.list(true, true, true))
 await mobile.start(coreUrl({ port: server.port, token }))
+channels.start()
 daemon.start()
 await awake.start()
 refreshAwake()
@@ -776,6 +807,7 @@ async function shutdown(): Promise<void> {
   cliMaintenance.close()
   daemon.stop()
   mobile.stop()
+  channels?.stop()
   await server?.close()
   await sourceInvestigations?.stop()
   await removeCoreEndpoint(process.pid)
@@ -793,6 +825,7 @@ async function shutdown(): Promise<void> {
   browserHistory.close()
   browserSites.close()
   mobileStore.close()
+  channelStore.close()
   process.exit(0)
 }
 process.on('SIGINT', () => void shutdown())

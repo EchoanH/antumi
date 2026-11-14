@@ -89,6 +89,10 @@ export class AgentProfileService {
     private readonly scopeAllowed: (conversation: Conversation) => boolean = () => true,
     private readonly sources: DelegationSources = NO_SOURCES) {}
 
+  // Whether an agent is on a chat platform: it then stays one that can be locked down, and is not
+  // archived until taken off (docs/CHANNELS.md).
+  private onChannel: (id: string) => boolean = () => false
+  setChannelGuard(onChannel: (id: string) => boolean): void { this.onChannel = onChannel }
   setWorkspaces(workspaces: DelegationWorkspaces): void { this.workspaces = workspaces }
   setGitLock(lock: GitLock): void { this.gitLock = lock }
   list(): AgentProfile[] { return this.store.list() }
@@ -103,12 +107,14 @@ export class AgentProfileService {
       if (target === id) throw new Rejection('profile-self-call', '不能调用自己')
       this.get(target)
     }
+    if (id && this.onChannel(id) && !agentDescriptor(fields.agent).capabilities.lockdown) throw new Rejection('agent-no-lockdown', `${agentDescriptor(fields.agent).label} 不能接入聊天平台，先移除这个智能体的聊天平台接入`)
     // A mode kept on a read-only profile would come back with no say from the user if an agent made it develop.
     const profile = this.store.save(fields.capability === 'develop' ? fields : { ...fields, delegationMode: null }, id)
     this.events.profile(profile)
     return profile
   }
   archive(id: string, archived: boolean): AgentProfile {
+    if (archived && this.onChannel(id)) throw new Rejection('profile-has-channels', '先移除这个智能体的聊天平台接入')
     const profile = this.store.archive(id, archived)
     this.events.profile(profile)
     return profile

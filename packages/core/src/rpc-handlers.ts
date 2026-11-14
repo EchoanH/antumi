@@ -24,6 +24,7 @@ import type { PetLibrary } from './pet-library'
 import type { SourceUpdates } from './source-updates'
 import type { SourceService } from './source-service'
 import type { Connection, RpcHandlers } from './rpc-server'
+import { holdToChannelTools, ownsChannelTools } from './rpc-server'
 import type { TaskService } from './task-service'
 import type { UsageLimitResumes } from './usage-limit-resume'
 import { readableUsage, type UsageService } from './usage-service'
@@ -33,6 +34,7 @@ import type { BookmarkStore } from './bookmarks'
 import type { BrowserHistoryStore } from './browser-history'
 import type { BrowserSiteStore } from './browser-sites'
 import type { MobileService } from './mobile-service'
+import type { ChannelService } from './channel-service'
 import type { ChatCommandStore } from './chat-commands'
 import type { TerminalService } from './terminal-service'
 import type { ProjectConfigStore } from './project-config'
@@ -120,13 +122,23 @@ export function createRpcHandlers(
   sourceUpdates?: SourceUpdates,
   pullRequestStore?: { store: PullRequestStore; changed: (taskId: string, links: PullRequestLink[]) => void; ready?: (service: PullRequestService) => void },
   browserSites?: BrowserSiteStore,
-  mobile?: MobileService
+  mobile?: MobileService,
+  channels?: ChannelService
 ): RpcHandlers {
   const mobileService = (): MobileService => {
     if (!mobile) throw new Rejection('mobile-unavailable')
     return mobile
   }
-  const hello = () => ({ protocolVersion: PROTOCOL_VERSION, serverVersion: packageJson.version, home: { path: homedir(), windows: process.platform === 'win32' }, features: CORE_FEATURES.filter((feature) => (feature !== 'agent-profiles' || Boolean(profiles)) && (feature !== 'project-star' || Boolean(projectStar)) && (feature !== 'bookmarks' || Boolean(bookmarks)) && (feature !== 'browser-history' || Boolean(browserHistory)) && (feature !== 'browser-sites' || Boolean(browserSites)) && (feature !== 'pets' || Boolean(pets)) && (feature !== 'squads' || Boolean(squads)) && (!['plugins', 'plugin-recommendations'].includes(feature) || Boolean(plugins)) && (!['skills-library', 'skills-search', 'skills-activation'].includes(feature) || Boolean(skills)) && (feature !== 'mcp-servers' || Boolean(mcpServers)) && (feature !== 'small-model-stats' || Boolean(smallModels)) && (!['model-providers', 'model-provider-models'].includes(feature) || Boolean(modelProviders)) && (feature !== 'agent-accounts' || Boolean(accounts)) && (feature !== 'pull-requests' || Boolean(pullRequests)) && (feature !== 'mobile' || Boolean(mobile)) && (feature !== 'attachment-sweep' || Boolean(attachments.sweeper))) })
+  const hello = () => ({ protocolVersion: PROTOCOL_VERSION, serverVersion: packageJson.version, home: { path: homedir(), windows: process.platform === 'win32' }, features: CORE_FEATURES.filter((feature) => (feature !== 'agent-profiles' || Boolean(profiles)) && (feature !== 'project-star' || Boolean(projectStar)) && (feature !== 'bookmarks' || Boolean(bookmarks)) && (feature !== 'browser-history' || Boolean(browserHistory)) && (feature !== 'browser-sites' || Boolean(browserSites)) && (feature !== 'pets' || Boolean(pets)) && (feature !== 'squads' || Boolean(squads)) && (!['plugins', 'plugin-recommendations'].includes(feature) || Boolean(plugins)) && (!['skills-library', 'skills-search', 'skills-activation'].includes(feature) || Boolean(skills)) && (feature !== 'mcp-servers' || Boolean(mcpServers)) && (feature !== 'small-model-stats' || Boolean(smallModels)) && (!['model-providers', 'model-provider-models'].includes(feature) || Boolean(modelProviders)) && (feature !== 'agent-accounts' || Boolean(accounts)) && (feature !== 'pull-requests' || Boolean(pullRequests)) && (feature !== 'mobile' || Boolean(mobile)) && (feature !== 'channels' || Boolean(channels)) && (feature !== 'attachment-sweep' || Boolean(attachments.sweeper))) })
+  const channelService = (): ChannelService => {
+    if (!channels) throw new Rejection('channels-unavailable')
+    return channels
+  }
+  // A conversation opened for a chat platform's asker is core's to speak in: the user reads it,
+  // may stop or delete it, and changes nothing else of it from here.
+  const notChannel = (id: string): void => {
+    if (conversations.get(id).channel) throw new Rejection('channel-managed', 'this conversation answers a chat platform; change it from its agent')
+  }
   // A phone reaches only projects the user already worked in from the computer.
   const requireRecentForPhone = (connection: Connection, paths: readonly string[]): void => {
     if (!connection.mobile) return
@@ -359,8 +371,23 @@ export function createRpcHandlers(
     'pets.remove': ({ id }) => petLibrary().remove(id),
     'pets.read': ({ id }) => petLibrary().read(id),
     'system.hello': ({ client }, connection) => {
-      if (client) mobileService().authorize(connection, client.deviceId)
+      if (client?.kind === 'mobile') mobileService().authorize(connection, client.deviceId)
+      // From here on the connection may only run that conversation's tools.
+      if (client?.kind === 'channel-tools') {
+        if (!conversations.get(client.conversationId).channel) throw new Rejection('channel-not-found', 'this conversation answers no channel')
+        holdToChannelTools(connection, client.conversationId)
+      }
       return hello()
+    },
+    'channels.list': ({ profileId }) => channelService().list(profileId),
+    'channels.save': (input) => channelService().save(input),
+    'channels.remove': ({ id }) => channelService().remove(id),
+    'channels.requests': ({ channelId, before, limit }) => channelService().requests(channelId, before ?? null, limit),
+    'channels.toolCalls': ({ requestId }) => channelService().toolCalls(requestId),
+    'channelTools.call': ({ conversationId, tool, arguments: args }, connection) => {
+      // Only Antumi's MCP server for that conversation asks, never a client for another's.
+      if (!ownsChannelTools(connection, conversationId)) throw new Rejection('channel-tools-only', 'only a channel conversation\'s own tools may call this')
+      return channelService().callTool(conversationId, tool, args)
     },
     'mobile.status': () => mobileService().status(),
     'mobile.setEnabled': ({ enabled }) => mobileService().setEnabled(enabled),
@@ -516,8 +543,8 @@ export function createRpcHandlers(
     'conversations.chatCatalog': ({ agent, modelProvider }) => conversations.chatCatalog(agent, modelProvider),
     'conversations.translate': ({ id, text, to, model }) => translations.translate(conversations.get(id).agent, text, to, model, { kind: 'translation', conversationId: id, baseline: () => conversations.costBaseline(id) }, conversations.quickProvider(id)),
     'conversations.setAdditionalProjects': ({ id, projectPaths }) => conversations.setAdditionalProjects(id, projectPaths),
-    'conversations.rename': ({ id, title }) => conversations.rename(id, title),
-    'conversations.setPinned': ({ id, pinned }) => conversations.setPinned(id, pinned),
+    'conversations.rename': ({ id, title }) => { notChannel(id); return conversations.rename(id, title) },
+    'conversations.setPinned': ({ id, pinned }) => { notChannel(id); return conversations.setPinned(id, pinned) },
     'todos.list': ({ id }) => todosOf(id).list(id),
     'todos.open': () => {
       if (!todos) throw new Rejection('todos-unavailable')
@@ -527,22 +554,22 @@ export function createRpcHandlers(
     'todos.check': ({ id, groupId, itemId, done }) => todosOf(id).check(id, groupId, itemId, done),
     'todos.edit': ({ id, groupId, itemId, text }) => todosOf(id).edit(id, groupId, itemId, text),
     'todos.remove': ({ id, groupId, itemId }) => todosOf(id).remove(id, groupId, itemId),
-    'conversations.setArchived': ({ id, archived }) => conversations.setArchived(id, archived),
-    'conversations.continue': ({ id, allowBypass }) => userActed(id, () => { profiles?.guardUser(id, true); squads?.guardUser(id, true); return conversations.continue(id, allowBypass) }),
+    'conversations.setArchived': ({ id, archived }) => { notChannel(id); return conversations.setArchived(id, archived) },
+    'conversations.continue': ({ id, allowBypass }) => { notChannel(id); return userActed(id, () => { profiles?.guardUser(id, true); squads?.guardUser(id, true); return conversations.continue(id, allowBypass) }) },
     'conversations.handoff': ({ id, agent, note, stopRunning, allowBypass, permissionMode, model, effort, references }) => { sources.automatic?.takeover(id); return conversations.handoff(id, agent, note, stopRunning, allowBypass, { permissionMode, model, effort, references }) },
     'conversations.fork': ({ id, stageId, itemId }) => conversations.fork(id, stageId, itemId),
     // A mode the user picks is theirs to answer for: a run nobody watched stops answering for them.
-    'conversations.setOption': async ({ id, option, value }) => { profiles?.guardUser(id, true); squads?.guardUser(id, true); if (option === 'permissionMode') conversations.attend(id); await conversations.setOption(id, option, value); sources.automatic?.takeover(id); return OK },
-    'conversations.send': ({ id, text, images, queue, steer, ref, references }) => userActed(id, async () => { profiles?.guardUser(id, true); squads?.guardUser(id, true); await conversations.send(id, text, images, queue, steer, ref, references); return OK }),
-    'conversations.cancelQueued': ({ id, ref }) => { conversations.cancelQueued(id, ref); return OK },
-    'conversations.sendQueued': ({ id, ref, now }) => userActed(id, async () => { await conversations.sendQueued(id, ref, now); return OK }),
-    'conversations.setUsageLimitAutoContinue': ({ id, stageId, itemId, autoContinue }) => {
+    'conversations.setOption': async ({ id, option, value }) => { notChannel(id); profiles?.guardUser(id, true); squads?.guardUser(id, true); if (option === 'permissionMode') conversations.attend(id); await conversations.setOption(id, option, value); sources.automatic?.takeover(id); return OK },
+    'conversations.send': ({ id, text, images, queue, steer, ref, references }) => { notChannel(id); return userActed(id, async () => { profiles?.guardUser(id, true); squads?.guardUser(id, true); await conversations.send(id, text, images, queue, steer, ref, references); return OK }) },
+    'conversations.cancelQueued': ({ id, ref }) => { notChannel(id); conversations.cancelQueued(id, ref); return OK },
+    'conversations.sendQueued': ({ id, ref, now }) => { notChannel(id); return userActed(id, async () => { await conversations.sendQueued(id, ref, now); return OK }) },
+    'conversations.setUsageLimitAutoContinue': ({ id, stageId, itemId, autoContinue }) => { notChannel(id);
       if (autoContinue) sources.automatic?.takeover(id)
       limits.setAutoContinue(id, stageId, itemId, autoContinue)
       return OK
     },
-    'conversations.retryUsageLimit': async ({ id, stageId, itemId }) => { sources.automatic?.takeover(id); await limits.retry(id, stageId, itemId); return OK },
-    'conversations.retryTurn': async ({ id, stageId, itemId }) => { sources.automatic?.takeover(id); await conversations.retryTurn(id, stageId, itemId); return OK },
+    'conversations.retryUsageLimit': async ({ id, stageId, itemId }) => { notChannel(id); sources.automatic?.takeover(id); await limits.retry(id, stageId, itemId); return OK },
+    'conversations.retryTurn': async ({ id, stageId, itemId }) => { notChannel(id); sources.automatic?.takeover(id); await conversations.retryTurn(id, stageId, itemId); return OK },
     'conversations.interrupt': async ({ id }) => {
       const child = conversations.get(id)
       if (child.agentCallId && child.parentConversationId) { await profiles?.cancel(child.parentConversationId, child.agentCallId); return OK }
@@ -552,8 +579,8 @@ export function createRpcHandlers(
       else await conversations.interrupt(id)
       return OK
     },
-    'conversations.stopBackground': async ({ id, itemId }) => { await conversations.stopBackground(id, itemId); return OK },
-    'conversations.respond': async ({ id, requestId, ...answer }) => { squads?.guardUser(id); conversations.userAnswers(id, requestId); await conversations.respond(id, requestId, answer); sources.automatic?.takeover(id); return OK },
+    'conversations.stopBackground': async ({ id, itemId }) => { notChannel(id); await conversations.stopBackground(id, itemId); return OK },
+    'conversations.respond': async ({ id, requestId, ...answer }) => { notChannel(id); squads?.guardUser(id); conversations.userAnswers(id, requestId); await conversations.respond(id, requestId, answer); sources.automatic?.takeover(id); return OK },
     // Read after subscribing, so an item that changes in between reaches the client either way.
     'conversations.watchChat': ({ id, limit }, connection) => {
       connection.watching.add(id)

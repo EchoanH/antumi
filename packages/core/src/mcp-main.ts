@@ -3,6 +3,7 @@ import { RpcError } from '@antumi/protocol'
 import { serveMcp } from './mcp-server'
 import { antumiHome, writePrivateJson } from '@antumi/protocol/node'
 import { runUserMcp } from './user-mcp-launch'
+import { serveChannelMcp } from './mcp-channel-tools'
 
 // Antumi's MCP server, a process of its own that an agent starts over stdio: core configures it
 // for every chat (see mcpCommand), and it reaches core over RPC like any other client.
@@ -20,6 +21,8 @@ const { values } = parseArgs({
     // One of the user's MCP servers, started in its place (see runUserMcp), with only its
     // read-only tools under --read-only.
     run: { type: 'string' },
+    // channel: for a conversation opened for a chat platform's asker, only the tools it may have.
+    'tool-set': { type: 'string' },
     'read-only': { type: 'boolean' }
   }
 })
@@ -28,7 +31,11 @@ const { values } = parseArgs({
 const readyFile = values['ready-file']
 const ready = readyFile ? () => writePrivateJson(readyFile, { ready: true }) : undefined
 const onList = values['ready-on-list']
-const served = values.run
+const channelConversation = values['tool-set'] === 'channel' ? values.conversation : undefined
+// An unknown tool set serves nothing rather than everything.
+const served = values['tool-set'] !== undefined
+  ? channelConversation ? serveChannelMcp(values.home, channelConversation) : Promise.reject(new Error(`unknown tool set ${values['tool-set']}`))
+  : values.run
   ? runUserMcp(values.home ?? antumiHome(), values.run, values['read-only'])
   : serveMcp(values.home, values.conversation, values['plan-only'], onList ? undefined : ready, values.history, !values['no-todos'], onList ? ready : undefined)
 served.catch((error: unknown) => {

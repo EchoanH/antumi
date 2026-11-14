@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { CHANNEL_PLATFORMS, Channel, ChannelFields, ChannelInput } from './channel'
 import { CHANNEL_PLATFORM_DESCRIPTORS, channelPlatform } from './channel-platforms'
+import { mobileMayCall } from './mobile-access'
+import { rpcSchemas, type RpcMethod } from './rpc'
 
 const PROFILE = '11111111-1111-4111-8111-111111111111'
 
@@ -42,5 +44,13 @@ describe('chat platforms', () => {
     expect(manifest.oauth_config.scopes.bot).toEqual(['app_mentions:read', 'chat:write', 'reactions:write', 'im:history', 'files:read'])
     expect(manifest.settings.socket_mode_enabled).toBe(true)
     expect(manifest.settings.event_subscriptions.bot_events).toEqual(['app_mention', 'message.im'])
+  })
+})
+
+describe('channels over RPC', () => {
+  it('are no phone\'s to set up, read or run tools for', () => {
+    const methods = (Object.keys(rpcSchemas) as RpcMethod[]).filter((method) => method.startsWith('channels.') || method.startsWith('channelTools.'))
+    expect(methods).toEqual(['channels.list', 'channels.save', 'channels.remove', 'channels.requests', 'channels.toolCalls', 'channelTools.call'])
+    for (const method of methods) expect(mobileMayCall(method, 'operate'), method).toBe(false)
   })
 })

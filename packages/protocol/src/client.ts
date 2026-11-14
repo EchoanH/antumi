@@ -102,17 +102,18 @@ export type RpcConnection = RpcClient & {
   home?: { path: string; windows: boolean }
 }
 
-export function connectRpc(url: string): Promise<RpcConnection> {
+// client: what the connection is to be held to from its first call on (see system.hello).
+export function connectRpc(url: string, client?: RpcParams<'system.hello'>['client']): Promise<RpcConnection> {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url)
-    const client = createRpcClient((frame) => socket.send(frame))
+    const rpc = createRpcClient((frame) => socket.send(frame))
     let markClosed: () => void = () => {}
     const closed = new Promise<void>((r) => (markClosed = r))
     let opened = false
 
-    socket.onmessage = (event) => client.receive(String(event.data))
+    socket.onmessage = (event) => rpc.receive(String(event.data))
     socket.onclose = () => {
-      client.failAll(new Error('connection closed'))
+      rpc.failAll(new Error('connection closed'))
       markClosed()
       if (!opened) {
         reject(new Error(`cannot connect to Antumi core`))
@@ -121,13 +122,13 @@ export function connectRpc(url: string): Promise<RpcConnection> {
     socket.onopen = async () => {
       opened = true
       try {
-        const hello = await client.call('system.hello', { protocolVersion: PROTOCOL_VERSION })
+        const hello = await rpc.call('system.hello', { protocolVersion: PROTOCOL_VERSION, ...(client ? { client } : {}) })
         if (hello.protocolVersion !== PROTOCOL_VERSION) {
           throw new Error(
             `protocol mismatch: client ${PROTOCOL_VERSION}, core ${hello.protocolVersion}`
           )
         }
-        resolve({ ...client, close: () => socket.close(), closed, features: hello.features ?? [], ...(hello.home ? { home: hello.home } : {}) })
+        resolve({ ...rpc, close: () => socket.close(), closed, features: hello.features ?? [], ...(hello.home ? { home: hello.home } : {}) })
       } catch (error) {
         socket.close()
         reject(error instanceof Error ? error : new Error(String(error)))
