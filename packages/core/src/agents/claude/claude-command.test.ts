@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { claudeEditDenials, claudeReadRules } from './claude-command'
+import { claudeCommand, claudeEditDenials, claudeReadRules } from './claude-command'
 
 describe('Claude permission rules', () => {
   it('lets Claude read exactly those files, and nothing about the folder', () => {
@@ -18,5 +18,31 @@ describe('Claude permission rules', () => {
       'Edit(//d/work/**)'
     ])
     expect(claudeReadRules(['C:\\Users\\me\\a.png', '\\\\server\\share\\b.png'])).toEqual(['Read(//c/Users/me/a.png)'])
+  })
+})
+
+describe('a locked-down Claude', () => {
+  it('starts with Antumi\'s named tools and nothing of its own or the user\'s', () => {
+    const { args } = claudeCommand({
+      providerSessionId: 's1', resume: false, handoffPath: null, extraProjects: [], instructions: 'Answer briefly.',
+      mcp: { command: 'node', args: ['mcp.mjs', '--tool-set', 'channel'] },
+      lockdown: { tools: ['project_list', 'project_read'] }
+    })
+    expect(args).toEqual([
+      '-p', '--verbose', '--output-format', 'stream-json', '--input-format', 'stream-json',
+      '--include-partial-messages', '--permission-prompt-tool', 'stdio',
+      '--permission-mode', 'manual',
+      '--restricted', '--tools', '', '--strict-mcp-config', '--setting-sources', '', '--disable-slash-commands', '--no-chrome',
+      '--session-id', 's1',
+      '--system-prompt', 'Answer briefly.',
+      '--allowedTools', 'mcp__antumi__project_list,mcp__antumi__project_read',
+      '--mcp-config', '{"mcpServers":{"antumi":{"type":"stdio","command":"node","args":["mcp.mjs","--tool-set","channel"]}}}'
+    ])
+  })
+
+  it('goes on in its own session', () => {
+    const { args } = claudeCommand({ providerSessionId: 's1', resume: true, handoffPath: null, extraProjects: [], lockdown: { tools: [] } })
+    expect(args.slice(args.indexOf('--resume'), args.indexOf('--resume') + 2)).toEqual(['--resume', 's1'])
+    expect(args).not.toContain('--fork-session')
   })
 })

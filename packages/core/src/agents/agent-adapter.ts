@@ -46,6 +46,11 @@ export type AgentLaunch = {
   provider?: ProviderLaunch
   // The account to run on, other than the user's own: the variables pointing it at its folder.
   account?: { id: string; env: Record<string, string> }
+  // Locked down (its descriptor's capabilities.lockdown): it starts with these tools of Antumi's MCP
+  // server and nothing else, instructions as its whole system prompt, and takes nothing above that
+  // would widen it (folders, readable files, the user's MCP, skills, a vault, bypass). Only an
+  // agent whose descriptor says it can is ever handed one.
+  lockdown?: { tools: readonly string[] }
 }
 
 // How an agent signs in to more than one account (its descriptor's capabilities.accounts): each in
