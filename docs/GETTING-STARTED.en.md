@@ -110,6 +110,26 @@ If it cannot connect, read step 2 in Settings, and run `wg show wg-antumi` on th
 
 When a conversation waits for you, finishes a turn or its agent exits unexpectedly, ntfy shows a one-line notice, never the conversation's title or content. ntfy.sh is a public server, so pick a topic that is hard to guess, or use your own ntfy server.
 
+## Let colleagues ask on Slack
+
+Put an agent on Slack and colleagues can mention it in a channel. It answers from the projects you pick: where a feature lives, what an error means. It changes no code and reaches nothing else on this computer.
+
+1. On the **Agents** page create an agent (external agent: Claude Code), say in its Instructions what it answers and how long its answers run, and save.
+2. Open the agent again and, under **Chat platforms** at the bottom, click **Add Slack** and follow the five steps:
+   - Open Slack's app page, choose **From a manifest**, paste the manifest Antumi gives you, create the app and install it to the workspace.
+   - Enter two tokens: the App-Level Token (Basic Information → App-Level Tokens, scope `connections:write`) and the Bot User OAuth Token (OAuth & Permissions).
+   - Pick the projects it may read. It reads only files of Git repositories that `.gitignore` does not ignore; files like `.env` and keys are withheld.
+   - Enter the member IDs and channel IDs that may ask. Anyone else only gets “no access”.
+   - Set how many questions each person, and everyone together, may ask a day.
+3. Once the state reads “Connected”, `/invite` the app to the channel and mention it. It marks the message with 👀 and answers in a thread under it; mention it again to go on. Screenshots are read, other files are not.
+
+Worth knowing:
+
+- With no model provider picked for the agent, colleagues' questions spend your current Claude Code account.
+- Questions asked while the computer is off or asleep are not received, and Slack does not send them again.
+- When someone else asks in the same thread, it does not remember what the first person asked: each has a context of their own.
+- Who asked what, which files it read and what it answered are all under **Questions** in the same place.
+
 ## Features
 
 Look up these features when the relevant situation comes up.
