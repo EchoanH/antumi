@@ -32,6 +32,15 @@ const SLACK_MANIFEST = JSON.stringify({
   }
 }, null, 2)
 
+// Pasted into 权限管理 → 批量导入/导出权限. Images are read through im:message:readonly, the
+// narrowest scope the message resource API takes; the company's name and key need tenant:tenant:readonly.
+const FEISHU_SCOPES = JSON.stringify({
+  scopes: {
+    tenant: ['im:message.group_at_msg:readonly', 'im:message.p2p_msg:readonly', 'im:message:send_as_bot', 'im:message.reactions:write_only', 'im:message:readonly', 'tenant:tenant:readonly'],
+    user: []
+  }
+}, null, 2)
+
 export const CHANNEL_PLATFORM_DESCRIPTORS = {
   slack: {
     label: 'Slack',
@@ -43,6 +52,20 @@ export const CHANNEL_PLATFORM_DESCRIPTORS = {
     manifest: SLACK_MANIFEST,
     textLimit: 3500,
     minGapMs: 1100,
+    features: { reactions: true }
+  },
+  feishu: {
+    label: '飞书',
+    credentials: [
+      { key: 'appId', label: 'App ID', prefix: 'cli_' },
+      { key: 'appSecret', label: 'App Secret' }
+    ],
+    console: 'https://open.feishu.cn/app',
+    manifest: FEISHU_SCOPES,
+    // A rich-text message holds 30 KB, a Chinese character three of them.
+    textLimit: 4000,
+    // Five messages a second to one chat, shared by every bot in it.
+    minGapMs: 250,
     features: { reactions: true }
   }
 } satisfies Record<ChannelPlatform, ChannelPlatformDescriptor>

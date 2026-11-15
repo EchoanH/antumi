@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { AgentProfile, type Channel } from '@antumi/protocol'
 import { AttachmentStore } from './attachment-store'
-import { ChannelGateway } from './channel-gateway'
+import { CONNECTORS, ChannelGateway } from './channel-gateway'
 import { CoreToChannelGateway } from './channel-gateway-ipc'
 import { ChannelService } from './channel-service'
 import { slackConnector, slackText } from './channel-slack'
@@ -151,7 +151,7 @@ describe('a question from Slack to an agent and back', () => {
       keepImage: (bytes) => attachments.put(bytes), changed: () => {},
       // The gateway in this process, its messages parsed as the child parses them.
       launch: (onMessage) => {
-        const gateway = new ChannelGateway(onMessage, { slack: (each, emit) => slackConnector(each, emit, { api: slack.api(), fileHosts: [slack.host()], retryMs: [30] }) })
+        const gateway = new ChannelGateway(onMessage, { ...CONNECTORS, slack: (each, emit) => slackConnector(each, emit, { api: slack.api(), fileHosts: [slack.host()], retryMs: [30] }) })
         return { send: (message) => gateway.handle(CoreToChannelGateway.parse(structuredClone(message))), stop: () => gateway.stop() }
       }
     })

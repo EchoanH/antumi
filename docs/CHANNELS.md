@@ -1,8 +1,8 @@
 # 聊天平台接入
 
-> 一期（Slack）已实现，真实的 Slack 工作区还没有联调过。实现状态见文末。
+> Slack 和飞书都已实现，都还没有在真实的工作区里联调过。实现状态见文末。
 
-给智能体接上聊天平台：同事在 Slack（之后是飞书）里 @ 它，它读指定的项目来答疑、查问题，不改代码，也碰不到这台电脑上别的东西。
+给智能体接上聊天平台：同事在 Slack 或飞书里 @ 它，它读指定的项目来答疑、查问题，不改代码，也碰不到这台电脑上别的东西。
 
 不引入新的实体。智能体提供「是谁」（名称、工作指令、模型）；接入（代码里叫 channel）提供「在哪、谁能问、能看什么」。
 
@@ -93,6 +93,7 @@ Slack / 飞书  ⇄(出站长连接)⇄  channel-gateway（core 的子进程）
 - `channel-gateway.ts`：`ChannelGateway` 按 core 给的全量名单开、换、关各个接入的连接，以及连接器登记表 `CONNECTORS`。
 - `channel-connector.ts`：连接器接口。
 - `channel-slack.ts`：Slack 连接器。
+- `channel-feishu.ts`：飞书连接器；`channel-feishu-frame.ts` 是长连接帧的编解码。
 
 ```ts
 CoreToChannelGateway =
@@ -115,6 +116,10 @@ ChannelGatewayToCore =
 - **Slack 是直接说的**，没有引入 SDK：两次 Web API 调用（`auth.test`、`apps.connections.open`）拿到 WebSocket 地址，之后是 JSON envelope。少一个依赖，测试里用本地的 HTTP + WebSocket 服务就能当 Slack。
 - token 无效（`invalid_auth` 等）报 `failed` 并不再重试，等用户换 token；网络问题和断线按 1s 到 30s 退避重连。每 30 秒 ping 一次，不回的连接直接断开重连。
 - 图片只在 core 发 `fetch` 时下载：地址的主机必须是 `files.slack.com`，不跟随重定向（重定向不是登录页就是 token 不该去的地方），回来的必须是 `image/*`。
+- **飞书也是直接说的**，照官方 Node SDK（`@larksuiteoapi/node-sdk` 的 `WSClient`）的做法：用 App ID / Secret 换 `tenant_access_token`，读 `bot/v3/info`（机器人的 `open_id`）和 `tenant/v2/tenant/query`（企业名和 `tenant_key`），再 `POST /callback/ws/endpoint` 拿 WebSocket 地址。连接上走 protobuf 帧（`pbbp2.Frame`，九个字段，手写编解码）：control 帧是 ping / pong，pong 里带下次 ping 的间隔；data 帧是事件，大事件分几帧发（`sum` / `seq`），拼齐再解析。ACK 是把原帧加上 `biz_rt` 头、载荷换成 `{"code":200}` 发回去，同样等 core 回 `accepted` 才发；core 接住之前又来一份的，两份都 ACK。
+- 飞书只收 `im.message.receive_v1`：私聊（`chat_type = p2p`）是 `direct`；群里 `mentions` 有机器人的才是 `mention`，别的连接器自己 ACK。`place` 是 `chat_id`，`messageId` 和去重键都是 `message_id`；在话题里（有 `thread_id`）`thread` 是 `root_id`，引用回复不算话题。文字里的 `@_user_1` 换成对方的名字，@ 机器人本身去掉；富文本里的链接、代码块照写，图片收进 `images`，视频等算其他文件。
+- 飞书的回复是富文本消息里的一个 `md` 节点：有 `thread` 就 `reply` 到那条消息并 `reply_in_thread`，否则发到 `chat_id`。`uuid` 用 outbox 行的 id，重发不会出两条。限速（HTTP 429、`230020`、`99991400`）按 `x-ogw-ratelimit-reset` 等；token 过期（`99991663` 等）换一个再试一次。👀 在飞书叫 `OnIt`。
+- 飞书凭据错了（换 token 失败）、没开机器人能力、缺权限、长连接被拒（连接数超限等）都报 `failed` 不再重试；网络问题和 endpoint 忙按 1s 到 30s 退避。图片从 `im/v1/messages/{message_id}/resources/{image_key}?type=image` 取，只取事件里出现过的；事件不带图片类型，下载后由附件存储按内容判断。
 
 ## 入站处理（`core/src/channel-service.ts` 的 `ingest`）
 
@@ -123,10 +128,10 @@ ChannelGatewayToCore =
 1. **去重认领**：`INSERT OR IGNORE INTO channel_events`（Slack 用 `event_id`，飞书用 `message_id`）。已存在 → 回 `accepted` 后丢弃。先去重、后查身份，重投不会触发第二次提示。回 `accepted`。
 2. **过滤**：`isBot`、机器人自己的消息、编辑 / 撤回等子类型、空文本 → `dropped:*`。
 3. **接入与租户**：接入启用、`tenant` 等于连上时回填的值（挡住 Slack Connect 的外部组织）。
-4. **白名单**：`kind='mention'` 要求频道在 `allowedChannels`；`kind='direct'` 要求 `allowDirect`；两者都要求 `user` 在 `allowedUsers`。不过 → 发一条「没有权限」（同一人同一频道每天最多一次），`refused:acl`。
+4. **白名单**：`kind='mention'` 要求频道在 `allowedChannels`；`kind='direct'` 要求 `allowDirect`；两者都要求 `user` 在 `allowedUsers`。不过 → 发一条「没有权限」，带上提问人的 ID 和这个群 / 频道的 ID，好让对方转给主人去加（飞书里看不到这两个 ID）；同一人同一处每天最多一次，`refused:acl`。
 5. **图片和其他附件**：图片支持，见下面「图片」。图片以外的文件（`otherFiles > 0`）→ 回「只支持图片，其他文件请贴文字」，继续处理文字和图片。
 6. **额度**：一个事务里数当天 `channel_requests`（该人、该接入）再插入新行（预留）。超了 → `refused:quota`，回「今天的次数用完了」。
-7. **找串**：`thread_key` = Slack `channel:thread_ts ?? ts`；私聊 = `channel`，空闲超过 4 小时换新串。按 `(channel_id, thread_key, asker)` 找 `channel_threads`。**串里换了人就是另一个会话**，所以 Agent 的上下文里只有提问人自己的话。
+7. **找串**：`thread_key` = Slack `channel:thread_ts ?? ts`，飞书 `chat_id:root_id ?? message_id`；私聊 = `channel`，空闲超过 4 小时换新串。按 `(channel_id, thread_key, asker)` 找 `channel_threads`。**串里换了人就是另一个会话**，所以 Agent 的上下文里只有提问人自己的话。
 8. **入队**：请求置 `queued`，outbox 写一条 `react`（👀），调 `tick()`。
 
 **图片**（截图报错是查问题最常见的输入）：
@@ -233,21 +238,22 @@ claude -p --verbose --output-format stream-json --input-format stream-json --inc
 3. **转成 Slack mrkdwn**：先转义 `&`、`<`、`>`（`<@U…>`、`<!channel>` 因此失效），再转粗体、斜体、代码、列表；链接只保留 `http(s)`，写成 `<url|文字>`；表格转成代码块。`chat.postMessage` 带 `unfurl_links: false`。
 4. **长度**：回答多长由智能体的工作指令决定，core 不替它裁剪内容，只设一个防失控的硬上限：整条回答 12000 字符，超出截断并注明「回答过长，已截断」。平台单条消息放不下时（Slack 按 3500 字符算，读平台描述的 `textLimit`），在段落或代码块边界切成几条按顺序发。
 
-飞书（二期）同一套流程，最后一步换成富文本 / 卡片。
+飞书同一套流程，最后一步是 `toFeishu`：飞书富文本的 `md` 节点自己认标题、列表、引用、表格，所以 Markdown 基本原样保留；只把 `<` 后面紧跟字母的地方插一个零宽空格（`<at user_id="all">` 因此失效），链接和图片只保留 `http(s)`（图片改成链接），表格前后补空行。分段按 4000 字符（一条富文本 30 KB）。
 
 ## 平台接入
 
-| | Slack（一期） | 飞书（二期） |
+| | Slack | 飞书 |
 |---|---|---|
 | 连接 | Socket Mode | 事件订阅「长连接」（仅企业自建应用） |
-| 凭据 | App-Level Token（`connections:write`）+ Bot Token | App ID + App Secret |
+| 凭据 | App-Level Token（`connections:write`）+ Bot Token | App ID（`cli_` 开头）+ App Secret |
+| 建应用 | 粘贴清单（manifest） | 手动建应用、开机器人能力；权限用「批量导入」粘贴；长连接和事件要在接入连上后才能在后台保存 |
 | 事件 | `app_mention`、`message.im` | `im.message.receive_v1` |
-| 权限 | `app_mentions:read`、`chat:write`、`reactions:write`、`im:history`、`files:read`（下载图片） | `im:message.group_at_msg:readonly`、`im:message.p2p_msg:readonly`、`im:message:send_as_bot`、读取消息中图片的权限 |
+| 权限 | `app_mentions:read`、`chat:write`、`reactions:write`、`im:history`、`files:read`（下载图片） | `im:message.group_at_msg:readonly`、`im:message.p2p_msg:readonly`、`im:message:send_as_bot`、`im:message.reactions:write_only`、`im:message:readonly`（下载图片，资源接口认的最窄的一个）、`tenant:tenant:readonly`（企业名和 `tenant_key`） |
 | 身份键 | `team_id` + `user_id`（`enterprise_id` 存而不用） | `tenant_key` + `open_id` |
 | 去重键 | `event_id` | `message_id` |
-| 串内继续 | 每次都要 @（不申请 `channels:history`） | 每次都要 @ |
+| 串内继续 | 每次都要 @（不申请 `channels:history`） | 每次都要 @；群里的回答发成话题（`reply_in_thread`），在话题里接着问 |
 
-连上后 `auth.test` 回填 `tenant`、`botUserId`。不申请 `users:read`，记录里只存用户 ID；白名单在界面上按 ID 填（Slack 个人资料里可复制成员 ID）。
+连上后 Slack 由 `auth.test`、飞书由机器人和企业信息两个接口回填 `tenant`、`tenantName`、`botUserId`。不申请读通讯录的权限，记录里只存用户 ID；白名单在界面上按 ID 填。Slack 个人资料里可复制成员 ID；飞书的 `open_id`（每个应用各不相同）和 `chat_id` 在客户端里看不到，靠「没有权限」那条回复里带的 ID。
 
 ## 桌面端
 
@@ -316,7 +322,7 @@ claude -p --verbose --output-format stream-json --input-format stream-json --inc
 
 **一期：Slack 只读答疑**。已实现，见「实现状态」。
 
-**二期**：飞书；给 OpenCode 或 Pi 补上 `lockdown`（验证扩展点真的只动适配器）；主人接手（复制成私人会话）；串里只有一个人时免 @；进度更新（编辑同一条消息）。
+**二期**：飞书（已实现）；给 OpenCode 或 Pi 补上 `lockdown`（验证扩展点真的只动适配器）；主人接手（复制成私人会话）；串里只有一个人时免 @；进度更新（编辑同一条消息）。
 **三期**：钉钉、企业微信；主人定义的固定查询工具（查日志等，结构化参数）；单独系统用户运行。
 
 ## 测试
@@ -330,6 +336,7 @@ claude -p --verbose --output-format stream-json --input-format stream-json --inc
 - `core/src/channel-service.test.ts`：真的 `ConversationService` 加假 Agent。重复事件只处理一次、白名单、别的工作区、私聊、每人和总量的额度及跨天、串内续问和换人、私聊空闲后重开、并发上限、等 Agent 空位、打码、长回答、失败、图片（先过检查再下载、失败照常回答）、工具调用和记录、重发和放弃、网关重启、core 重启、移除。
 - `core/src/channel-tools-connection.test.ts`：限定连接只能调自己会话的工具、收不到通知、再 hello 也不行、普通客户端调不了；MCP 服务只列项目工具。
 - `core/src/channel-link.test.ts`：本地的假 Slack（HTTP + WebSocket）、真的连接器和网关、真的 `ChannelService`。从 @ 到回复、core 落库后才 ACK、重投、私聊、别的工作区、图片只从 Slack 的主机取、被限速后等够时间再发、断线重连、token 错了不再重试。
+- `core/src/channel-feishu.test.ts`：本地的假飞书（HTTP + 说 protobuf 帧的 WebSocket）和真的飞书连接器。连上后回填企业和机器人、ping、core 落库后才 ACK 且原样带回超过 2^53 的 SeqID、重投的两份都 ACK、私聊 / 话题 / 引用回复 / 机器人发的 / 不是 @ 它的群消息、分帧事件、富文本回复和 `uuid`、限速、token 过期换一次、只下载事件里的图片、断线重连、凭据错了不再重试；文字和富文本的解析；帧的编解码。
 - `daemon/src/session-host.test.ts`：干净启动不带 daemon 自己的环境变量。
 
 红队清单（真人在群里试，联调时做）：让它读 `~/.ssh`、`core.json`、`.env`、别的会话；把密钥 base64 后带出；串里第二个人诱导它复述第一个人得到的回答；在回答里造出 `<!channel>`；断网后恢复。
@@ -365,6 +372,7 @@ claude -p --verbose --output-format stream-json --input-format stream-json --inc
 | 网关子进程 | 从源码 fork 起来，用假 token 连真的 Slack API，得到 `invalid_auth` 并显示在界面上 |
 | 桌面端「聊天平台」区块 | 在一次性的测试实例里用界面添加、保存、看到失败状态 |
 | 从 Slack 提问到回答 | 只对本地的假 Slack 验证过。**真实的 Slack 工作区没有联调过**：需要建一个应用、拿到两个 token |
+| 从飞书提问到回答 | 只对本地的假飞书验证过，帧格式照官方 Node SDK 1.76.0 写的。**真实的飞书应用没有联调过** |
 | 打包后的应用 | `channel-gateway.mjs` 能打出来，没有在安装包里跑过 |
 
-没做的：飞书；主人接手会话；串里只有一个人时免 @；进度更新；固定查询工具；除 Claude Code 外的 Agent。
+没做的：Lark（飞书国际版，域名不同）；主人接手会话；串里只有一个人时免 @；进度更新；固定查询工具；除 Claude Code 外的 Agent。

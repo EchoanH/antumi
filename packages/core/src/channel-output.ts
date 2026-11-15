@@ -90,8 +90,42 @@ export function toSlack(markdown: string): string {
   return out.join('\n')
 }
 
+// Markdown outside code, as Feishu's md tag reads it: a link or picture only to an http(s) address,
+// and no tag, so <at user_id="all"> mentions nobody. Autolinks (<https://…>) stay.
+function feishuInline(text: string): string {
+  return text
+    .replace(/!\[([^\]\n]*)\]\(([^)\s]+)\)/g, (_all, label: string, url: string) => (/^https?:\/\//i.test(url) ? `[${label || url}](${url})` : label))
+    .replace(/(?<!!)\[([^\]\n]+)\]\(([^)\s]+)\)/g, (all, label: string, url: string) => (/^https?:\/\//i.test(url) ? all : `${label} (${url})`))
+    .replace(/<(?=\/?[a-z])(?!https?:\/\/)/gi, '<​')
+}
+
+// Feishu's md tag has headings, lists, quotes and tables of its own, so the Markdown mostly stays.
+export function toFeishu(markdown: string): string {
+  const out: string[] = []
+  let fenced = false
+  let inTable = false
+  for (const raw of markdown.split('\n')) {
+    if (/^\s*```/.test(raw)) {
+      fenced = !fenced
+      out.push(raw)
+      continue
+    }
+    if (fenced) {
+      out.push(raw)
+      continue
+    }
+    // A table it draws only with a blank line on either side.
+    const row = TABLE_ROW.test(raw)
+    if (row !== inTable && raw.trim() !== '' && out.length > 0 && out.at(-1)?.trim() !== '') out.push('')
+    inTable = row
+    out.push(raw.split(/(`[^`\n]*`)/).map((part, index) => (index % 2 ? part : feishuInline(part))).join(''))
+  }
+  if (fenced) out.push('```')
+  return out.join('\n')
+}
+
 // As the platform writes text: its escaping and its marks for bold, links and code.
-const FORMATTERS = { slack: toSlack } satisfies Record<ChannelPlatform, (markdown: string) => string>
+const FORMATTERS = { slack: toSlack, feishu: toFeishu } satisfies Record<ChannelPlatform, (markdown: string) => string>
 
 // In pieces of at most limit, cut between paragraphs, else lines, else anywhere; a code block cut
 // in two is closed in one piece and opened again in the next.

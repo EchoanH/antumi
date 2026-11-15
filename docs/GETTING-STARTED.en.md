@@ -110,7 +110,7 @@ If it cannot connect, read step 2 in Settings, and run `wg show wg-antumi` on th
 
 When a conversation waits for you, finishes a turn or its agent exits unexpectedly, ntfy shows a one-line notice, never the conversation's title or content. ntfy.sh is a public server, so pick a topic that is hard to guess, or use your own ntfy server.
 
-## Let colleagues ask on Slack
+## Let colleagues ask on Slack or Feishu
 
 Put an agent on Slack and colleagues can mention it in a channel. It answers from the projects you pick: where a feature lives, what an error means. It changes no code and reaches nothing else on this computer.
 
@@ -126,9 +126,18 @@ Put an agent on Slack and colleagues can mention it in a channel. It answers fro
 Worth knowing:
 
 - With no model provider picked for the agent, colleagues' questions spend your current Claude Code account.
-- Questions asked while the computer is off or asleep are not received, and Slack does not send them again.
+- Questions asked while the computer is off or asleep are not received, and neither Slack nor Feishu sends them again.
 - When someone else asks in the same thread, it does not remember what the first person asked: each has a context of their own.
 - Who asked what, which files it read and what it answered are all under **Questions** in the same place.
+
+### On Feishu
+
+The steps are the same; click **Add 飞书**. What differs is making the app and finding IDs:
+
+- In the Feishu developer console, create a custom app and add the Bot feature. Under Permissions & Scopes → Batch import/export scopes, paste the scopes Antumi gives you, then publish a version.
+- Enter the App ID and App Secret from Credentials & Basic Info and save. Once the state reads “Connected”, go back to Events & Callbacks in the console, choose to receive events through a persistent connection, add the Message received event, and publish another version. Feishu saves a persistent connection only once one is open, so save in Antumi first.
+- Feishu shows member IDs and group IDs nowhere. Add the bot to the group and have the colleague mention it once: anyone not yet allowed gets a reply with their ID (starting `ou_`) and the group's (starting `oc_`) to put on the allow list.
+- In a group it answers as a topic; mention it again inside the topic to go on.
 
 ## Features
 

@@ -4,7 +4,7 @@ import { MAX_TASK_REPOS } from './task'
 // An agent on a chat platform (docs/CHANNELS.md): colleagues ask it questions there, and it answers
 // from the projects it is given, locked down. What core and the desktop share about it, zod only.
 
-export const CHANNEL_PLATFORMS = ['slack'] as const
+export const CHANNEL_PLATFORMS = ['slack', 'feishu'] as const
 export const ChannelPlatform = z.enum(CHANNEL_PLATFORMS)
 export type ChannelPlatform = z.infer<typeof ChannelPlatform>
 
@@ -40,7 +40,7 @@ export const ChannelFields = z.object({
 export type ChannelFields = z.infer<typeof ChannelFields>
 
 // A credential's name on its platform's descriptor (channel-platforms.ts).
-export const ChannelCredentialKey = z.enum(['appToken', 'botToken'])
+export const ChannelCredentialKey = z.enum(['appToken', 'botToken', 'appId', 'appSecret'])
 export type ChannelCredentialKey = z.infer<typeof ChannelCredentialKey>
 
 // As clients see one: which credentials are stored, never their values.

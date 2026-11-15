@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { MAX_CHANNEL_ANSWER_CHARS } from '@antumi/protocol'
-import { channelMessages, inPieces, redact, toSlack, withoutMachinePaths } from './channel-output'
+import { channelMessages, inPieces, redact, toFeishu, toSlack, withoutMachinePaths } from './channel-output'
 
 describe('what is posted for an agent', () => {
   it('hides what looks like a secret, and the values it is told to', () => {
@@ -30,6 +30,20 @@ describe('what is posted for an agent', () => {
     expect(toSlack('[run](javascript:alert(1))')).toBe('run (javascript:alert(1))')
     expect(toSlack('| a | b |\n|---|---|\n| 1 | 2 |\nafter')).toBe('```\n| a | b |\n|---|---|\n| 1 | 2 |\n```\nafter')
     expect(toSlack('```ts\nconst a = **b**\n')).toBe('```\nconst a = **b**\n\n```')
+  })
+
+  it('leaves nothing Feishu would read as a mention, and links only to the web', () => {
+    expect(toFeishu('<at user_id="all"></at> hi </at><u>x</u>')).toBe('<​at user_id="all"><​/at> hi <​/at><​u>x<​/u>')
+    expect(toFeishu('`<at user_id="all">` and <https://example.com>')).toBe('`<at user_id="all">` and <https://example.com>')
+    expect(toFeishu('[run](javascript:alert(1)) [ok](https://example.com) ![pic](img_v3_abc) ![shot](https://example.com/a.png)')).toBe(
+      'run (javascript:alert(1)) [ok](https://example.com) pic [shot](https://example.com/a.png)')
+    expect(toFeishu('```\n<at user_id="all">\n```')).toBe('```\n<at user_id="all">\n```')
+  })
+
+  it('keeps Markdown for Feishu, a table set apart by blank lines', () => {
+    expect(toFeishu('# Title\n**bold** and ~~gone~~\n- one')).toBe('# Title\n**bold** and ~~gone~~\n- one')
+    expect(toFeishu('before\n| a | b |\n|---|---|\n| 1 | 2 |\nafter')).toBe('before\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nafter')
+    expect(toFeishu('```ts\nconst a = 1')).toBe('```ts\nconst a = 1\n```')
   })
 
   it('cuts a long answer between paragraphs and keeps a code block whole in each piece', () => {

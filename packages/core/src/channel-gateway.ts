@@ -1,10 +1,11 @@
 import type { ChannelPlatform } from '@antumi/protocol'
 import type { ChannelConnector, ConnectorEmit, ConnectorFactory } from './channel-connector'
 import type { CoreToChannelGateway, GatewayChannel } from './channel-gateway-ipc'
+import { feishuConnector } from './channel-feishu'
 import { slackConnector } from './channel-slack'
 
 // How each platform is reached. A platform is added by its connector here; a missing one fails typecheck.
-export const CONNECTORS = { slack: slackConnector } satisfies Record<ChannelPlatform, ConnectorFactory>
+export const CONNECTORS = { slack: slackConnector, feishu: feishuConnector } satisfies Record<ChannelPlatform, ConnectorFactory>
 
 // The platforms' connections, one per channel, as core names them. It holds no rule and nothing of
 // core's: what comes in goes to core as it is, and only what core says is posted.

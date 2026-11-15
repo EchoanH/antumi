@@ -45,6 +45,13 @@ describe('chat platforms', () => {
     expect(manifest.settings.socket_mode_enabled).toBe(true)
     expect(manifest.settings.event_subscriptions.bot_events).toEqual(['app_mention', 'message.im'])
   })
+
+  it('gives Feishu scopes to import that ask nothing of the user and read no contacts', () => {
+    const { scopes } = JSON.parse(CHANNEL_PLATFORM_DESCRIPTORS.feishu.manifest)
+    expect(scopes.user).toEqual([])
+    expect(scopes.tenant).toContain('im:message.group_at_msg:readonly')
+    expect(scopes.tenant.filter((scope: string) => scope.startsWith('contact:') || scope === 'im:message.group_msg')).toEqual([])
+  })
 })
 
 describe('channels over RPC', () => {
