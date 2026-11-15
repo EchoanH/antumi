@@ -71,6 +71,21 @@ function pipeHost() {
 }
 
 describe('pipe sessions', () => {
+  it('starts a clean pipe with none of its own environment but what a process needs', async () => {
+    const { host, until, stdout } = pipeHost()
+    process.env.ANTUMI_TEST_SECRET = 'leaked'
+    try {
+      const sessionId = host.handlers.spawnPipeClean({
+        command: process.execPath, args: ['-e', `process.stdout.write(JSON.stringify({ secret: process.env.ANTUMI_TEST_SECRET ?? null, given: process.env.GIVEN, path: Boolean(process.env.PATH ?? process.env.Path) }))`],
+        cwd: process.cwd(), env: { GIVEN: 'yes' }
+      }).sessionId
+      await until(() => stdout(sessionId).length > 0)
+      expect(JSON.parse(stdout(sessionId).map((event) => event.data).join(''))).toEqual({ secret: null, given: 'yes', path: true })
+    } finally {
+      delete process.env.ANTUMI_TEST_SECRET
+    }
+  })
+
   it('passes stdin through and counts stdout offsets in characters', async () => {
     const { host, until, spawn, stdout } = pipeHost()
     const sessionId = spawn(`process.stdin.setEncoding('utf8'); process.stdin.on('data', (d) => process.stdout.write(d.toUpperCase()))`)

@@ -1,6 +1,6 @@
 import { t, tr } from '../i18n'
 import { useId, useState, type ReactNode } from 'react'
-import { AgentKind, SquadFields, type Squad, type SquadMember } from '@antumi/protocol'
+import { forChannels, AgentKind, SquadFields, type Squad, type SquadMember } from '@antumi/protocol'
 import { useAgentCatalog } from '../agent-models'
 import { openConversationDraft, perform, selectSquad, useCore, useSquadsSupported } from '../core-store'
 import { useInstalledAgents } from '../installed-agents'
@@ -206,7 +206,7 @@ function MemberEditor({ member, leader, open, agents, disabled, onToggle, onChan
         <fieldset className="squad-member-fields" disabled={disabled}>
           <label className="squad-field">{t('AgentProfiles.role')}
             <ChatPicker label={t('AgentProfiles.role')} value={member.profileId ?? ''} placeholder={t('AgentProfiles.customMember')} size="field" placement="below"
-              options={[{ value: '', label: t('AgentProfiles.customMember') }, ...Object.values(profiles).filter((item) => item.archivedAt === null && (!leader || item.capability === 'readOnly')).map((item) => ({ value: item.id, label: item.name, description: item.description }))]}
+              options={[{ value: '', label: t('AgentProfiles.customMember') }, ...Object.values(profiles).filter((item) => item.archivedAt === null && !forChannels(item) && (!leader || item.capability === 'readOnly')).map((item) => ({ value: item.id, label: item.name, description: item.description }))]}
               onChange={(id) => {
                 const picked = profiles[id]
                 onChange(picked ? { ...member, profileId: id, name: picked.name, agent: picked.agent, model: picked.model, effort: picked.effort, capability: leader ? 'readOnly' : picked.capability } : { ...member, profileId: null, profile: undefined })

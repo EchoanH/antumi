@@ -36,8 +36,22 @@ export type Connection = {
   // A paired phone's connection, declared in system.hello by the gateway: from then on core holds
   // it to MOBILE_METHODS for this access, and sends it only MOBILE_NOTIFICATIONS.
   mobile?: { deviceId: string; access: MobileAccess }
+  // Antumi's MCP server for a locked-down conversation: it may call that conversation's tools and nothing else.
+  channelTools?: { conversationId: string }
   // Ends the connection from core's side, as when its phone is revoked.
   close?(): void
+}
+
+// Holds a connection, for good, to the tools of one conversation opened for a chat platform's
+// asker: what Antumi's MCP server for it says of itself at its first word.
+export function holdToChannelTools(connection: Connection, conversationId: string): void {
+  connection.channelTools = { conversationId }
+}
+
+// Whether a call for a conversation's channel tools comes from the connection held to it. A
+// client's own connection is not: the tools are the agent's, never a way for a client to read.
+export function ownsChannelTools(connection: Connection, conversationId: string): boolean {
+  return connection.channelTools?.conversationId === conversationId
 }
 
 export type RpcHandlers = {
@@ -97,6 +111,9 @@ export function startRpcServer(options: {
     if (connection.mobile && method !== 'system.hello' && !mobileMayCall(method, connection.mobile.access)) {
       return errorFrame(id, RPC_ERROR.rejected, `${method} is not available on this phone`, 'mobile-not-allowed')
     }
+    if (connection.channelTools && method !== 'channelTools.call') {
+      return errorFrame(id, RPC_ERROR.rejected, `${method} is not available to a channel's tools`, 'channel-tools-only')
+    }
     try {
       const result = await dispatch(method, params, connection)
       return JSON.stringify({ jsonrpc: '2.0', id, result })
@@ -136,6 +153,7 @@ export function startRpcServer(options: {
       usageKinds: new Set(LEGACY_USAGE_WINDOW_KINDS),
       notify: (name, params) => {
         if (connection.mobile && !MOBILE_NOTIFICATIONS.has(name)) return
+        if (connection.channelTools) return
         send(JSON.stringify({ jsonrpc: '2.0', method: name, params }))
       },
       onClose: (listener) => {

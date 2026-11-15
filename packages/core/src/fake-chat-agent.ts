@@ -16,6 +16,8 @@ export function fakeChatDaemon() {
   const sessions = new Map<string, PipeSession>()
   const writes: Array<{ sessionId: string; frame: unknown }> = []
   const spawns: DaemonParams<'spawnPipe'>[] = []
+  // Which of them (by index) asked for a clean environment.
+  const clean = new Set<number>()
   const ptySpawns: DaemonParams<'spawn'>[] = []
   const killed: Array<{ sessionId: string; force: boolean }> = []
   const released: string[] = []
@@ -24,6 +26,7 @@ export function fakeChatDaemon() {
     sessions,
     writes,
     spawns,
+    clean,
     ptySpawns,
     killed,
     released,
@@ -76,6 +79,13 @@ export function fakeChatDaemon() {
     },
     spawnPipe: (params) => {
       spawns.push(params)
+      const sessionId = `pipe-${spawns.length}`
+      sessions.set(sessionId, { output: '', exitCode: null, stderr: '', io: 'pipe' })
+      return { sessionId }
+    },
+    spawnPipeClean: (params) => {
+      spawns.push(params)
+      clean.add(spawns.length - 1)
       const sessionId = `pipe-${spawns.length}`
       sessions.set(sessionId, { output: '', exitCode: null, stderr: '', io: 'pipe' })
       return { sessionId }

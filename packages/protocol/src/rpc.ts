@@ -49,6 +49,7 @@ import { Bookmark, BookmarkFields, BookmarkImport, MAX_BOOKMARKS } from './bookm
 import { BrowserHistoryEntry, BrowserHistorySearch } from './browser-history'
 import { BrowserSite } from './browser-sites'
 import { MOBILE_EXTRA_HOSTS_MAX, MobileAccess, MobileBridgeAddress, MobileExtraHost, MobilePairing, MobilePort, MobilePushUrl, MobileRelayServer, MobileRelaySetup, MobileStatus } from './mobile'
+import { Channel, ChannelInput, ChannelRequest, ChannelToolCall } from './channel'
 
 // Bump only for breaking changes; additive optional fields keep the version.
 export const PROTOCOL_VERSION = 18
@@ -131,7 +132,7 @@ const UsageParams = z.object({ windowKinds: z.array(z.string()).optional() })
 // pasted-text: a long paste is uploaded as an attachment and kept as a text file the conversation's
 //   agent reads without asking (attachments.commitText).
 // pull-request-base-branches: lists the remote branches a task's PR can target.
-export const CORE_FEATURES = ['mobile', 'source-auto-investigation', 'chat-references', 'conversation-references', 'agent-profiles', 'pets', 'plugins', 'plugin-recommendations', 'chat-options', 'chat-images', 'task-start', 'worktrees', 'conversation-branches', 'conversation-commit-push', 'find-file', 'conversation-projects', 'browser', 'browser-collaboration', 'browser-file-transfers', 'keep-awake', 'terminal-commands', 'bookmarks', 'browser-history', 'usage-limit', 'agent-stats', 'conversation-stats', 'prompt-suggestions', 'environment', 'conversation-pin', 'schedules', 'chat-commands', 'file-mentions', 'plan-modes', 'agent-terminals', 'schedule-images', 'dashboard', 'task-conversation-summaries', 'routines', 'ports', 'conversation-fork', 'conversation-configuration', 'conversation-commit-steps', 'conversation-worktrees', 'conversation-start-branch', 'wire-log', 'file-preview', 'deferred-conversation-start', 'agent-cli-installation', 'agent-cli-maintenance', 'task-launch-options', 'git-management', 'git-commit-branches', 'task-handoff', 'handoff-model', 'handoff-mode', 'task-launch', 'discussions', 'discussion-members', 'discussion-projects', 'discussion-topics', 'discussion-requirements', 'task-cancel', 'task-redo-in-place', 'conversation-archive', 'discussion-archive', 'translate', 'commit-message', 'squads', 'squad-leader-planning', 'conversation-todos', 'knowledge-base', 'knowledge-base-kind', 'skills-library', 'skills-search', 'skills-activation', 'mcp-servers', 'source-investigate', 'source-investigate-images', 'source-issue-preview', 'todo-overview', 'conversation-helper', 'small-model-stats', 'terminal-color-prompt', 'git-commit-actions', 'file-editor', 'project-config', 'project-config-edit', 'model-providers', 'git-update', 'git-push-target', 'git-cherry-pick', 'git-amend', 'git-force-push', 'task-auto-run', 'session-import', 'agent-accounts', 'usage-analytics', 'task-references', 'release-idle-chats', 'project-star', 'git-favorites', 'project-files', 'git-projects', 'git-branch-browser', 'git-rebase', 'direct-agent-calls', 'discussion-formats', 'discussion-format-suggest', 'agent-call-resume', 'delegation-worktree', 'pasted-text', 'task-conversation-rows', 'inline-visualizations', 'archived-worktrees', 'model-provider-models', 'skills-local', 'model-provider-headers', 'provider-model-images', 'source-comments-v1', 'pull-requests', 'pull-request-base-branches', 'browser-sites', 'chat-command-pins', 'agent-profile-delegation-mode', 'attachment-sweep', 'mobile-handoff'] as const
+export const CORE_FEATURES = ['mobile', 'source-auto-investigation', 'chat-references', 'conversation-references', 'agent-profiles', 'pets', 'plugins', 'plugin-recommendations', 'chat-options', 'chat-images', 'task-start', 'worktrees', 'conversation-branches', 'conversation-commit-push', 'find-file', 'conversation-projects', 'browser', 'browser-collaboration', 'browser-file-transfers', 'keep-awake', 'terminal-commands', 'bookmarks', 'browser-history', 'usage-limit', 'agent-stats', 'conversation-stats', 'prompt-suggestions', 'environment', 'conversation-pin', 'schedules', 'chat-commands', 'file-mentions', 'plan-modes', 'agent-terminals', 'schedule-images', 'dashboard', 'task-conversation-summaries', 'routines', 'ports', 'conversation-fork', 'conversation-configuration', 'conversation-commit-steps', 'conversation-worktrees', 'conversation-start-branch', 'wire-log', 'file-preview', 'deferred-conversation-start', 'agent-cli-installation', 'agent-cli-maintenance', 'task-launch-options', 'git-management', 'git-commit-branches', 'task-handoff', 'handoff-model', 'handoff-mode', 'task-launch', 'discussions', 'discussion-members', 'discussion-projects', 'discussion-topics', 'discussion-requirements', 'task-cancel', 'task-redo-in-place', 'conversation-archive', 'discussion-archive', 'translate', 'commit-message', 'squads', 'squad-leader-planning', 'conversation-todos', 'knowledge-base', 'knowledge-base-kind', 'skills-library', 'skills-search', 'skills-activation', 'mcp-servers', 'source-investigate', 'source-investigate-images', 'source-issue-preview', 'todo-overview', 'conversation-helper', 'small-model-stats', 'terminal-color-prompt', 'git-commit-actions', 'file-editor', 'project-config', 'project-config-edit', 'model-providers', 'git-update', 'git-push-target', 'git-cherry-pick', 'git-amend', 'git-force-push', 'task-auto-run', 'session-import', 'agent-accounts', 'usage-analytics', 'task-references', 'release-idle-chats', 'project-star', 'git-favorites', 'project-files', 'git-projects', 'git-branch-browser', 'git-rebase', 'direct-agent-calls', 'discussion-formats', 'discussion-format-suggest', 'agent-call-resume', 'delegation-worktree', 'pasted-text', 'task-conversation-rows', 'inline-visualizations', 'archived-worktrees', 'model-provider-models', 'skills-local', 'model-provider-headers', 'provider-model-images', 'source-comments-v1', 'pull-requests', 'pull-request-base-branches', 'browser-sites', 'chat-command-pins', 'agent-profile-delegation-mode', 'attachment-sweep', 'mobile-handoff', 'channels'] as const
 // session-import: core lists the sessions agents ran outside Antumi and imports them as conversations (sessionImports.*).
 // agent-accounts: Claude and Codex sign in to several accounts, one active each, and a usage limit
 // moves the agent to the next with quota (accounts.*); usage readings name their account.
@@ -162,6 +163,7 @@ export const CORE_FEATURES = ['mobile', 'source-auto-investigation', 'chat-refer
 // delegation-worktree: agentCalls.dispatch takes workspace; a developing member may work in a worktree of its own (AgentCall.workspace, AgentCall.worktree, ManagedWorktree.agentCall).
 // agent-profile-delegation-mode: a developing profile may name the mode it works in when delegated to (AgentProfile.delegationMode).
 // mobile-handoff: a phone may hand a free conversation to another agent (conversations.handoff in MOBILE_METHODS).
+// channels: agents answer colleagues from chat platforms, locked down (channels.*, channelTools.call, Conversation.channel; docs/CHANNELS.md).
 // wire-log: core can record what passes between it and chat agents (ChatSettings.wireLog) and serves it (debug.*).
 // Whether a start may offer running with nothing asked and nothing sandboxed; the conversation
 // keeps what its latest start said.
@@ -241,7 +243,12 @@ export const rpcMethods = {
       protocolVersion: z.number().int(),
       // Core's phone gateway, for the paired phone this connection carries: core then holds it to
       // what MOBILE_METHODS lets that device do. Needs mobile.
-      client: z.object({ kind: z.literal('mobile'), deviceId: z.string().min(1).max(100) }).optional()
+      // channel-tools: Antumi's MCP server for a conversation opened for a chat platform's asker,
+      // which then may call channelTools.call for that conversation and nothing else. Needs channels.
+      client: z.discriminatedUnion('kind', [
+        z.object({ kind: z.literal('mobile'), deviceId: z.string().min(1).max(100) }),
+        z.object({ kind: z.literal('channel-tools'), conversationId: z.string().uuid() })
+      ]).optional()
     }),
     result: z.object({
       protocolVersion: z.number().int(),
@@ -689,6 +696,18 @@ export const rpcMethods = {
   // Sites allowed in every conversation (ALLOW_SITE_ALWAYS), and taking one back. Needs browser-sites.
   'browser.sites': { params: z.object({}), result: z.array(BrowserSite) },
   // The phone link (docs/MOBILE.md): the gateway, pairing and paired devices. Needs mobile.
+  // Agents on chat platforms. Needs channels. A channel is saved whole; its credentials go in
+  // and never come back (Channel.stored says which are kept).
+  'channels.list': { params: z.object({ profileId: z.string().uuid().optional() }), result: z.array(Channel) },
+  'channels.save': { params: ChannelInput, result: Channel },
+  // With every question asked of it and the conversations they were answered in.
+  'channels.remove': { params: z.object({ id: z.string().uuid() }), result: z.array(Channel) },
+  // Newest first; `before` (a createdAt) pages back, null when none is left.
+  'channels.requests': { params: z.object({ channelId: z.string().uuid(), before: z.number().optional(), limit: z.number().int().min(1).max(200).default(50) }), result: z.object({ items: z.array(ChannelRequest), before: z.number().nullable() }) },
+  'channels.toolCalls': { params: z.object({ requestId: z.string().uuid() }), result: z.array(ChannelToolCall) },
+  // A tool of a locked-down agent, run by core over the projects its channel has. The only method
+  // a channel-tools connection may call, and only for its own conversation.
+  'channelTools.call': { params: z.object({ conversationId: z.string().uuid(), tool: z.string().min(1).max(100), arguments: z.unknown().optional() }), result: z.object({ text: z.string(), isError: z.boolean() }) },
   'mobile.status': { params: z.object({}), result: MobileStatus },
   'mobile.setEnabled': { params: z.object({ enabled: z.boolean() }), result: MobileStatus },
   'mobile.setPort': { params: z.object({ port: MobilePort }), result: MobileStatus },
@@ -987,6 +1006,7 @@ export const rpcNotifications = {
   'tasks.changed': z.object({ task: Task }),
   'tasks.deleted': z.object({ id: z.string() }),
   'mobile.changed': z.object({ status: MobileStatus }),
+  'channels.changed': z.object({ channels: z.array(Channel) }),
   'sessions.data': z.object({ sessionId: z.string(), data: z.string(), offset: z.number().int() }),
   'sessions.exit': z.object({ sessionId: z.string(), exitCode: z.number() }),
   'usage.changed': z.object({ usage: AgentUsage }),

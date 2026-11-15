@@ -6,7 +6,8 @@ import { mkdir, realpath, rm, rmdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { branchSwitchMessage, withoutBranchSwitchNote, chatReferencesFor, canHaveHelper, helperAllowsMode, isHelper, agentDescriptor, modelPrice, providerEndpoint, type CostBaseline, checkEditAdditionalProjects, checkSwitchBranch, handoffMessage, isPlanApproval, parseHandoffMessage, MAX_TASK_REPOS, type AgentKind, type ChatCatalog, type ChatImage, type ChatItem, type ChatModel, type ChatOption, type ChatSettings, type CommitPushResult, type CommitResult, type PushResult, type Conversation, type ConversationMessage, type ConversationSearchHit, type ConversationStage, type FileDiff, type FolderChanges, type ProjectBranches, type ProjectHead, type ChatDecision, type KnowledgeBase, type TaskSource, type UnattendedMode, type ChatPermissionMode, startModes, unattendedPermission, isAntumiRequest , PROCESS_OWNER_ENV, processOwner, parseProcessOwner } from '@antumi/protocol'
 import type { DaemonEvent, SessionInfo } from '@antumi/protocol/node'
-import { ALLOW_SITE_ALWAYS, canReuseConversation, DEFAULT_ACCOUNT, type ConversationConfiguration, type TaskLaunchOptions } from '@antumi/protocol'
+import { ALLOW_SITE_ALWAYS, canReuseConversation, DEFAULT_ACCOUNT, type ConversationChannel, type ConversationConfiguration, type TaskLaunchOptions } from '@antumi/protocol'
+import { channelPrompt } from './channel-prompt'
 import type { RunMeasure } from './agent-run-store'
 import type { AttachmentStore } from './attachment-store'
 import { WHOLE_SESSION_FORK, type ChatAnswer, type StageMessage } from './chat-driver'
@@ -25,7 +26,7 @@ import { foldersInUse, launchDir, launchLeftovers, launchRoot, removeLaunch, typ
 import { searchSnippet } from './conversation-search'
 import { buildHandoff } from './conversation-handoff'
 import { SCHEDULED_GO_TEXT, UNATTENDED_NOTE } from './agent-prompt'
-import { UNATTENDED_QUESTION_WAIT_MS, unattendedAnswer } from './unattended-answer'
+import { UNATTENDED_QUESTION_WAIT_MS, channelAnswer, unattendedAnswer } from './unattended-answer'
 import { branchHolders, createProjectBranch, projectBranches, switchProjectBranch } from './project-branches'
 import { resolveStart } from './task-start'
 import { commitAll, commitAndPush, pushBranch } from './project-commit'
@@ -249,6 +250,7 @@ export class ConversationService {
         this.settleAsks(items)
         this.emit({ type: 'chatItems', conversationId, items })
         this.answerUnattended(conversationId, items)
+        this.refuseForChannel(conversationId, items)
       },
       delta: (conversationId, stageId, itemId, append) => this.emit({ type: 'chatDelta', conversationId, stageId, itemId, append }),
       messages: (stage, messages) => messages.forEach((message) => this.recordChatMessage(stage, message)),
@@ -314,6 +316,13 @@ export class ConversationService {
   }
   setSkillsProvider(provider: (agent: AgentKind, selected?: readonly SkillRef[] | null) => Promise<{ dir: string } | null>): void {
     this.skillsFor = provider
+  }
+
+  // What a conversation opened for a chat platform's asker starts with in place of everything
+  // above: Antumi's MCP server serving only these tools. Without it none can start.
+  private channelTools: { mcp(conversationId: string): McpServer; tools: readonly string[] } | null = null
+  setChannelTools(provider: { mcp(conversationId: string): McpServer; tools: readonly string[] }): void {
+    this.channelTools = provider
   }
 
   // The user's model providers, for a conversation started on one; without them none can be.
@@ -398,9 +407,10 @@ export class ConversationService {
   }
 
   // Task summaries are opt-in; older clients expect only free conversations. A group chat's members
-  // are never listed: a client that does not know group chats would show them as its own.
+  // are never listed: a client that does not know group chats would show them as its own. Nor is
+  // one opened for a chat platform's asker, which is not the user's to speak in.
   list(includeTasks = false, includeSquads = false, includeDelegates = false): Conversation[] {
-    return this.store.list().filter((conversation) => (includeTasks || !conversation.taskId) && !isHelper(conversation) && !conversation.discussionId && (includeSquads || !conversation.squadRunId) && (includeDelegates || !conversation.parentConversationId)).map((conversation) => this.withChat(conversation))
+    return this.store.list().filter((conversation) => (includeTasks || !conversation.taskId) && !isHelper(conversation) && !conversation.discussionId && !conversation.channel && (includeSquads || !conversation.squadRunId) && (includeDelegates || !conversation.parentConversationId)).map((conversation) => this.withChat(conversation))
   }
   helper(parentId: string): Conversation | null {
     this.get(parentId)
@@ -418,6 +428,18 @@ export class ConversationService {
     return this.withChat(found)
   }
   messages(id: string): ConversationMessage[] { this.get(id); return this.store.messages(id) }
+
+  // What the agent answered to the message sent with this ref: its final reply as recorded; failing
+  // that, what the chat shows it saying before the turn ended. Empty when it said nothing.
+  replyOf(id: string, ref: string): string {
+    const recorded = this.store.messages(id).findLast((message) => message.role === 'assistant' && message.eventKey === `chat:${ref}:assistant`)
+    if (recorded) return recorded.text.trim()
+    const items = this.chatPage(id).items
+    const start = items.findIndex((item) => item.id === `u:${ref}`)
+    if (start < 0) return ''
+    const end = items.findIndex((item, index) => index > start && item.kind === 'turn')
+    return items.slice(start + 1, end < 0 ? undefined : end).flatMap((item) => (item.kind === 'assistant' ? [item.text] : [])).join('\n\n').trim()
+  }
   stages(id: string): ConversationStage[] { this.get(id); return this.store.stages(id) }
 
   // What a task's run cost in its chat: the turns that ended between `from` and `to`, across however
@@ -570,7 +592,7 @@ export class ConversationService {
     agent: AgentKind,
     projectPaths: readonly string[],
     allowBypass?: boolean,
-    start: { permissionMode?: string; model?: string; effort?: string; worktree?: boolean; branch?: string; deferStart?: boolean; helperOf?: string; modelProvider?: string; profile?: AgentProfile; parentId?: string; callId?: string; readOnly?: boolean; referencePaths?: readonly string[]; unlisted?: boolean; investigation?: { source: TaskSource; title: string; automaticId?: string } } = {},
+    start: { permissionMode?: string; model?: string; effort?: string; worktree?: boolean; branch?: string; deferStart?: boolean; helperOf?: string; modelProvider?: string; profile?: AgentProfile; parentId?: string; callId?: string; readOnly?: boolean; referencePaths?: readonly string[]; unlisted?: boolean; investigation?: { source: TaskSource; title: string; automaticId?: string } ; channel?: ConversationChannel; title?: string } = {},
     routine: { id: string; title: string } | null = null,
     id: string = randomUUID(),
     discussion: { id: string; title: string } | null = null,
@@ -598,6 +620,8 @@ export class ConversationService {
       return start.deferStart ? this.get(id) : this.start(id, agent, '', false)
     }
     if (projectPaths.length > MAX_TASK_REPOS) throw new Rejection('too-many-projects')
+    // It works in a folder of its own with nothing in it: what it may read, it reads through tools.
+    if (start.channel && (projectPaths.length || start.worktree || start.branch || routine || discussion || squad)) throw new Rejection('invalid-params', 'a channel conversation has no projects')
     const { permissionMode, model, effort, worktree = false, branch } = start
     const worktreesRoot = worktree ? this.worktreesRoot : null
     if (worktree && (!worktreesRoot || projectPaths.length === 0)) throw new Rejection('missing-repo', 'a worktree needs a project to lay out')
@@ -638,7 +662,10 @@ export class ConversationService {
     const created = this.store.create(agent, workspace, projects, id, starts, null, routine, discussion, null, start.investigation ?? null)
     if (start.modelProvider) this.store.setModelProvider(id, start.modelProvider)
     if (start.profile) this.store.setProfile(id, start.profile, start.parentId ?? null, start.callId ?? null)
-    if (start.readOnly || start.profile?.capability === 'readOnly') this.store.setWorkspaceReadOnly(id, true)
+    if (start.readOnly || start.profile?.capability === 'readOnly' || start.channel) this.store.setWorkspaceReadOnly(id, true)
+    if (start.channel) this.store.setChannel(id, start.channel)
+    // Named once, by who opened it: no agent is asked to title it.
+    if (start.title) this.store.update(id, { title: start.title, titleLocked: true })
     if (start.referencePaths?.length) this.store.setReferencePaths(id, start.referencePaths)
     if (squad) this.store.setSquad(id, squad.runId, squad.readOnly)
     if (squad?.referencePaths?.length) this.store.setReferencePaths(id, squad.referencePaths)
@@ -661,7 +688,7 @@ export class ConversationService {
   // Everything but the primary changes (checkEditAdditionalProjects). The agent is given its
   // directories at launch, so an idle one restarts and goes on from where it was, as after /add-dir.
   async setAdditionalProjects(id: string, projectPaths: readonly string[]): Promise<Conversation> {
-    const conversation = this.free(id)
+    const conversation = this.own(id)
     if (conversation.squadRunId || conversation.parentConversationId) throw new Rejection('squad-managed')
     const blocker = this.launching.has(id) ? 'conversation-running' : checkEditAdditionalProjects(conversation)
     if (blocker) throw new Rejection(blocker)
@@ -680,6 +707,14 @@ export class ConversationService {
     }
     this.projects.remember(picked)
     return live ? this.start(id, conversation.agent, '', false) : this.changed(this.get(id))
+  }
+
+  // One opened for a chat platform's asker stays as it was made: its agent, its lock and what it
+  // may read are not the user's to change from the conversation.
+  private own(id: string): Conversation {
+    const conversation = this.free(id)
+    if (conversation.channel) throw new Rejection('channel-managed', 'this conversation answers a chat platform; change it from its agent')
+    return conversation
   }
 
   // A task's chat is driven from its task, which checks what the task may do first.
@@ -913,7 +948,7 @@ export class ConversationService {
 
   async handoff(id: string, agent: AgentKind, note: string, stopRunning: boolean, allowBypass?: boolean, choice: HandoffChoice = {}): Promise<Conversation> {
     this.writable(id)
-    const current = this.free(id)
+    const current = this.own(id)
     // Configured identities keep their agent; another would speak in their place.
     if (current.profile) throw new Rejection('profile-managed', '智能体会话沿用指定的 Agent，不能移交')
     if (isHelper(current)) throw new Rejection('invalid-params', '小助手不能移交')
@@ -1043,7 +1078,7 @@ export class ConversationService {
   }
 
   async fork(sourceId: string, stageId: string, itemId: string): Promise<Conversation> {
-    const source = this.free(sourceId)
+    const source = this.own(sourceId)
     if (isHelper(source)) throw new Rejection('invalid-params', '小助手不能 fork')
     if (source.squadRunId || source.parentConversationId) throw new Rejection('squad-managed')
     const stages = this.store.stages(sourceId)
@@ -1266,21 +1301,40 @@ export class ConversationService {
   ): Promise<Conversation> {
     const { id } = current
     const { agent } = stage
-    const knowledgeBase = await this.stageKnowledgeBase(current, stage)
-    const skills = await this.skillsFor?.(agent, current.profile?.skills).catch((error: unknown) => {
+    // For a chat platform's asker it starts locked down or not at all: no vault, no skills, none of
+    // the user's MCP servers, and only an agent that says it can.
+    const locked = current.channel ? this.channelTools : null
+    if (current.channel && (!locked || !agentDescriptor(agent).capabilities.lockdown)) {
+      this.store.deleteStage(stage.id)
+      throw new Rejection('agent-no-lockdown', `${agentDescriptor(agent).label} cannot answer from a chat platform`)
+    }
+    const knowledgeBase = locked ? undefined : await this.stageKnowledgeBase(current, stage)
+    const skills = locked ? null : await this.skillsFor?.(agent, current.profile?.skills).catch((error: unknown) => {
       this.wire?.record(id, stage.id, [{ dir: 'note', text: JSON.stringify({ event: 'skills-unavailable', error: error instanceof Error ? error.message : String(error) }) }])
       return null
     }) ?? null
     let userMcp: AgentMcpServer[] = []
     try {
-      userMcp = this.userMcpFor?.(agent, Boolean(current.discussionId || current.workspaceReadOnly || stage.planOnly), current.profile?.mcpServers) ?? []
+      userMcp = locked ? [] : this.userMcpFor?.(agent, Boolean(current.discussionId || current.workspaceReadOnly || stage.planOnly), current.profile?.mcpServers) ?? []
     } catch (error) {
       this.wire?.record(id, stage.id, [{ dir: 'note', text: JSON.stringify({ event: 'user-mcp-unavailable', error: error instanceof Error ? error.message : String(error) }) }])
     }
     const { options } = this.chatStage(current, stage, forkAt, knowledgeBase, userMcp)
     const { launch } = adapterOf(agent)
     const agentStage = this.agentStage(id, stage)
-    const agentLaunch: AgentLaunch = {
+    const agentLaunch: AgentLaunch = locked ? {
+      instructions: channelPrompt(current.profile),
+      providerSessionId: stage.providerSessionId,
+      resume,
+      handoffPath: null,
+      extraProjects: [],
+      preferred: { model: options.preferred?.model, effort: options.preferred?.effort },
+      mcp: locked.mcp(id),
+      todos: false,
+      lockdown: { tools: locked.tools },
+      ...(provider ? { provider } : {}),
+      ...(account?.env ? { account: { id: account.id, env: account.env } } : {})
+    } : {
       instructions: this.roleInstructions(current),
       providerSessionId: stage.providerSessionId,
       resume,
@@ -1317,7 +1371,8 @@ export class ConversationService {
         if (prepared.env) env = { ...env, ...prepared.env }
       }
       this.wire?.record(id, stage.id, [{ dir: 'spawn', text: JSON.stringify({ command: command.command, args: command.args, cwd: current.workspacePath }) }])
-      const spawned = await agentCliAccess.use(agent, () => this.daemon.request('spawnPipe', { agent, command: command.command, args: command.args, cwd: current.workspacePath, env: { ...env, [PROCESS_OWNER_ENV]: processOwner({ kind: 'conversation', id }) } }))
+      // Locked down, it gets none of the daemon's own environment either (the user's keys and tokens).
+      const spawned = await agentCliAccess.use(agent, () => this.daemon.request(locked ? 'spawnPipeClean' : 'spawnPipe', { agent, command: command.command, args: command.args, cwd: current.workspacePath, env: { ...env, [PROCESS_OWNER_ENV]: processOwner({ kind: 'conversation', id }) } }))
       sessionId = spawned.sessionId
       this.launches.set(sessionId, { ...launched, at: Date.now() })
       this.preparing.delete(stage.id)
@@ -1388,7 +1443,7 @@ export class ConversationService {
 
   private chatStage(conversation: Conversation, stage: ConversationStage, forkAt: string | null = null, knowledgeBase?: KnowledgeBase, userMcp: readonly AgentMcpServer[] = []): ChatStage {
     const chosen = this.store.chatOptions(conversation.id)
-    const mcp = this.mcp?.(conversation.id)
+    const mcp = conversation.channel ? this.channelTools?.mcp(conversation.id) : this.mcp?.(conversation.id)
     let permissionMode = isHelper(conversation) && chosen.permissionMode && !helperAllowsMode(chosen.permissionMode) ? 'ask' : chosen.permissionMode
     const { fallbackMode, permissionModes, launch, providerModels } = adapterOf(stage.agent)
     if (fallbackMode && (!permissionMode || !permissionModes.includes(permissionMode))) permissionMode = fallbackMode
@@ -1406,7 +1461,7 @@ export class ConversationService {
       agent: stage.agent,
       ended: stage.endedAt != null,
       options: {
-        instructions: this.roleInstructions(conversation),
+        instructions: conversation.channel ? channelPrompt(conversation.profile) : this.roleInstructions(conversation),
         cwd: conversation.workspacePath,
         ...(mcp ? { mcp: launch ? launch.mcp(mcp, this.agentStage(conversation.id, stage)) : mcp } : {}),
         extraDirs: conversation.projectPaths.slice(1),
@@ -1420,7 +1475,7 @@ export class ConversationService {
         promptSuggestions: this.promptSuggestions,
         preferred: { permissionMode, ...remembered.preferred },
         keepImage: (data) => this.keepImage(data),
-        todos: this.userTodos && !conversation.discussionId && !conversation.parentConversationId,
+        todos: this.userTodos && !conversation.discussionId && !conversation.parentConversationId && !conversation.channel,
         ...(knowledgeBase ? { knowledgeBase } : {}),
         ...(userMcp.length ? { userMcp } : {}),
         ...(onProvider ? { providerModels: onProvider } : {})
@@ -1876,6 +1931,21 @@ export class ConversationService {
       // An approved plan is carried out in the run's mode, not the one approving leaves it in.
       const after = item.kind === 'approval' && isPlanApproval(item) ? () => this.chats.setOption(conversationId, 'permissionMode', run.permission) : undefined
       this.answerFor(conversationId, item.stageId, item.requestId, answer, after)
+    }
+  }
+
+  // Whatever an agent answering a chat platform's asker asks for is refused at once: nobody there
+  // may grant it, and the user is not asked on a stranger's behalf. A question is refused the same
+  // way, so the agent says what it could not settle instead of waiting.
+  private refuseForChannel(conversationId: string, items: readonly ChatItem[]): void {
+    if (!items.some((item) => channelAnswer(item)) || !this.store.get(conversationId)?.channel) return
+    for (const item of items) {
+      const answer = channelAnswer(item)
+      if (!answer || (item.kind !== 'approval' && item.kind !== 'question')) continue
+      const key = `${conversationId}:${item.requestId}`
+      if (this.autoAnswered.has(key)) continue
+      this.autoAnswered.add(key)
+      this.answerFor(conversationId, item.stageId, item.requestId, answer)
     }
   }
 

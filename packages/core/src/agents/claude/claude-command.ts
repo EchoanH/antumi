@@ -36,8 +36,33 @@ export const GIT_READ_TOOLS = ['Bash(git log:*)', 'Bash(git diff:*)', 'Bash(git 
 // its own folders its edits are denied, elsewhere they still ask, and so do commands that may write.
 export const READ_ANYWHERE_TOOLS = ['Read', 'Glob', 'Grep']
 
+// Locked down: no tool of Claude's own (--tools ""), no settings, MCP, skills or plugins of the
+// user's, only Antumi's server and the tools named on it. --restricted keeps the file tools out
+// should a later CLI add one, and refuses bypass. Nothing of the launch that names a folder or a
+// file is passed on.
+function lockedCommand(launch: AgentLaunch, lockdown: NonNullable<AgentLaunch['lockdown']>): AgentCommand {
+  const { providerSessionId, resume, preferred = {}, mcp, provider } = launch
+  const providerDefault = provider?.models.find((model) => model.id === provider.defaultModel)
+  const model = preferred.model ?? (providerDefault ? claudeModelId(providerDefault) : undefined)
+  const env = provider ? claudeProviderEnv(provider) : launch.account?.env
+  const servers = mcp ? { [RESERVED_MCP_SERVER_NAME]: { type: 'stdio', command: mcp.command, args: mcp.args, ...(mcp.env ? { env: mcp.env } : {}) } } : {}
+  return { command: 'claude', ...(env ? { env } : {}), args: [
+    '-p', '--verbose', '--output-format', 'stream-json', '--input-format', 'stream-json',
+    '--include-partial-messages', '--permission-prompt-tool', 'stdio',
+    '--permission-mode', 'manual',
+    '--restricted', '--tools', '', '--strict-mcp-config', '--setting-sources', '', '--disable-slash-commands', '--no-chrome',
+    ...(model ? ['--model', model] : []),
+    ...(preferred.effort ? ['--effort', preferred.effort] : []),
+    ...(resume && providerSessionId ? ['--resume', providerSessionId] : providerSessionId ? ['--session-id', providerSessionId] : []),
+    ...(launch.instructions ? ['--system-prompt', launch.instructions] : []),
+    '--allowedTools', lockdown.tools.map((tool) => `mcp__${RESERVED_MCP_SERVER_NAME}__${tool}`).join(','),
+    '--mcp-config', JSON.stringify({ mcpServers: servers })
+  ] }
+}
+
 // Claude Code in print mode, speaking stream-json both ways.
 export function claudeCommand(launch: AgentLaunch): AgentCommand {
+  if (launch.lockdown) return lockedCommand(launch, launch.lockdown)
   const { providerSessionId, resume, handoffPath, extraProjects, preferred = {}, planOnly, readOnly, readable = [], references = [], mcp, userMcp = [], forkAt, userBrowser, knowledgeBase, skills, todos = true, provider } = launch
   // Folders it may read but never edit: a plan-only stage's, or a read-only worker's.
   const fenced = planOnly ?? readOnly

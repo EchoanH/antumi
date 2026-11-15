@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import os from 'node:os'
-import { planLaunch, type DaemonParsedParams } from '@antumi/protocol/node'
+import { cleanEnv, planLaunch, type DaemonParsedParams } from '@antumi/protocol/node'
 import type { HostedProcess, ProcessEvents } from './session-host'
 
 const ignore = () => {}
@@ -10,9 +10,10 @@ function signalExitCode(signal: NodeJS.Signals | null): number {
   return signal ? 128 + (os.constants.signals[signal] ?? 0) : -1
 }
 
-export function startPipe({ command, args, cwd, env }: DaemonParsedParams<'spawnPipe'>, events: ProcessEvents): HostedProcess {
+// clean: the daemon's own environment is cut down to what any process needs (cleanEnv).
+export function startPipe({ command, args, cwd, env }: DaemonParsedParams<'spawnPipe'>, events: ProcessEvents, clean = false): HostedProcess {
   // Agent argv never goes through a shell: a Windows .cmd shim is read for what it runs.
-  const launch = planLaunch(command, args, cwd, { ...process.env, ...env })
+  const launch = planLaunch(command, args, cwd, { ...(clean ? cleanEnv(process.env) : process.env), ...env })
   // Its own process group on POSIX, so a kill also reaches what the agent started (a background shell).
   const group = process.platform !== 'win32'
   const child = spawn(launch.file, launch.args, { cwd, env: launch.env, stdio: 'pipe', detached: group, windowsHide: true })

@@ -414,7 +414,32 @@ export const MIGRATIONS = [
   // Phones paired with this computer (docs/MOBILE.md), and the phone link's settings as one row.
   `CREATE TABLE mobile_devices (id TEXT PRIMARY KEY, name TEXT NOT NULL, platform TEXT NOT NULL, public_key TEXT NOT NULL UNIQUE,
      access TEXT NOT NULL, paired_at INTEGER NOT NULL, last_seen_at INTEGER);
-   CREATE TABLE mobile_settings (id INTEGER PRIMARY KEY CHECK (id = 1), data TEXT NOT NULL);`
+   CREATE TABLE mobile_settings (id INTEGER PRIMARY KEY CHECK (id = 1), data TEXT NOT NULL);`,
+  // Agents on chat platforms (docs/CHANNELS.md). channel_threads: one conversation per asker in a
+  // thread. channel_events: every event taken once, with what came of it and none of its content.
+  // channel_requests: each question, which is also the day's count and the record. channel_outbox:
+  // what is still to be posted. conversations.channel marks the locked-down conversation of one.
+  `CREATE TABLE channels (id TEXT PRIMARY KEY, profile_id TEXT NOT NULL, platform TEXT NOT NULL, data TEXT NOT NULL,
+     created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+   CREATE TABLE channel_threads (id TEXT PRIMARY KEY, channel_id TEXT NOT NULL, thread_key TEXT NOT NULL, asker TEXT NOT NULL,
+     conversation_id TEXT NOT NULL, reply_place TEXT NOT NULL, reply_thread TEXT, last_at INTEGER NOT NULL,
+     UNIQUE (channel_id, thread_key, asker));
+   CREATE TABLE channel_events (channel_id TEXT NOT NULL, event_key TEXT NOT NULL, received_at INTEGER NOT NULL,
+     outcome TEXT NOT NULL, PRIMARY KEY (channel_id, event_key));
+   CREATE TABLE channel_requests (id TEXT PRIMARY KEY, channel_id TEXT NOT NULL, thread_id TEXT,
+     asker TEXT NOT NULL, tenant TEXT NOT NULL, place TEXT NOT NULL, direct INTEGER NOT NULL DEFAULT 0, message_id TEXT NOT NULL,
+     text TEXT NOT NULL, images TEXT NOT NULL DEFAULT '[]', notes TEXT NOT NULL DEFAULT '[]',
+     state TEXT NOT NULL, refusal TEXT, redacted INTEGER NOT NULL DEFAULT 0, conversation_id TEXT, day TEXT NOT NULL,
+     created_at INTEGER NOT NULL, started_at INTEGER, ended_at INTEGER, total_tokens INTEGER);
+   CREATE INDEX channel_requests_quota ON channel_requests (channel_id, day, asker);
+   CREATE INDEX channel_requests_state ON channel_requests (state, created_at);
+   CREATE TABLE channel_tool_calls (id INTEGER PRIMARY KEY, request_id TEXT NOT NULL, tool TEXT NOT NULL, target TEXT NOT NULL,
+     bytes INTEGER NOT NULL, at INTEGER NOT NULL);
+   CREATE INDEX channel_tool_calls_request ON channel_tool_calls (request_id);
+   CREATE TABLE channel_outbox (id TEXT PRIMARY KEY, channel_id TEXT NOT NULL, request_id TEXT, op TEXT NOT NULL, payload TEXT NOT NULL,
+     state TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, next_at INTEGER NOT NULL, platform_id TEXT, created_at INTEGER NOT NULL);
+   CREATE INDEX channel_outbox_due ON channel_outbox (state, next_at);
+   ALTER TABLE conversations ADD COLUMN channel TEXT;`
 ]
 
 

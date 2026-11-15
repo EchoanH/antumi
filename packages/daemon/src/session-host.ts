@@ -166,6 +166,10 @@ export function createSessionHost(emit: (event: DaemonEvent) => void, awake: Awa
       guard(launch.agent)
       return track('pipe', (events) => startPipe(launch, events), launch.agent, undefined, launch.env[PROCESS_OWNER_ENV])
     },
+    spawnPipeClean(launch) {
+      guard(launch.agent)
+      return track('pipe', (events) => startPipe(launch, events, true), launch.agent, undefined, launch.env[PROCESS_OWNER_ENV])
+    },
     write({ sessionId, data }) {
       const session = getSession(sessionId)
       if (session.exitCode === null) {

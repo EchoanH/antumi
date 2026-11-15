@@ -110,6 +110,35 @@ If it cannot connect, read step 2 in Settings, and run `wg show wg-antumi` on th
 
 When a conversation waits for you, finishes a turn or its agent exits unexpectedly, ntfy shows a one-line notice, never the conversation's title or content. ntfy.sh is a public server, so pick a topic that is hard to guess, or use your own ntfy server.
 
+## Let colleagues ask on Slack or Feishu
+
+Put an agent on Slack and colleagues can mention it in a channel. It answers from the projects you pick: where a feature lives, what an error means. It changes no code and reaches nothing else on this computer.
+
+1. On the **Agents** page create an agent, pick **On a chat platform** at the top, say in its Instructions what it answers and how long its answers run, and save. Such an agent answers only on chat platforms: it has no skills or MCP servers to set and does not appear in your own conversations or delegations.
+2. **Chat platforms** now shows below. Click **Add Slack** and follow the five steps:
+   - Open Slack's app page, choose **From a manifest**, paste the manifest Antumi gives you, create the app and install it to the workspace.
+   - Enter two tokens: the App-Level Token (Basic Information → App-Level Tokens, scope `connections:write`) and the Bot User OAuth Token (OAuth & Permissions).
+   - Pick the projects it may read. It reads only files of Git repositories that `.gitignore` does not ignore; files like `.env` and keys are withheld.
+   - Enter the member IDs and channel IDs that may ask. Anyone else only gets “no access”.
+   - Set how many questions each person, and everyone together, may ask a day.
+3. Once the state reads “Connected”, `/invite` the app to the channel and mention it. It marks the message with 👀 and answers in a thread under it; mention it again to go on. Screenshots are read, other files are not.
+
+Worth knowing:
+
+- With no model provider picked for the agent, colleagues' questions spend your current Claude Code account.
+- Questions asked while the computer is off or asleep are not received, and neither Slack nor Feishu sends them again.
+- When someone else asks in the same thread, it does not remember what the first person asked: each has a context of their own.
+- Who asked what, which files it read and what it answered are all under **Questions** in the same place.
+
+### On Feishu
+
+The steps are the same; click **Add 飞书**. What differs is making the app and finding IDs:
+
+- In the Feishu developer console, create a custom app and add the Bot feature. Under Permissions & Scopes → Batch import/export scopes, paste the scopes Antumi gives you, then publish a version.
+- Enter the App ID and App Secret from Credentials & Basic Info and save. Once the state reads “Connected”, go back to Events & Callbacks in the console, choose to receive events through a persistent connection, add the Message received event, and publish another version. Feishu saves a persistent connection only once one is open, so save in Antumi first.
+- Feishu shows member IDs and group IDs nowhere. Add the bot to the group and have the colleague mention it once: anyone not yet allowed gets a reply with their ID (starting `ou_`) and the group's (starting `oc_`) to put on the allow list.
+- In a group it answers as a topic; mention it again inside the topic to go on.
+
 ## Features
 
 Look up these features when the relevant situation comes up.

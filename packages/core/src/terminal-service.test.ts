@@ -33,6 +33,7 @@ function fakeDaemon(): SessionHost & { spawns: DaemonParams<'spawn'>[]; killed: 
     attach: ({ sessionId }) => ({ sessionId, buffer: buffers.get(sessionId) ?? '', bufferStart: 0, endOffset: 0, exited: exited.has(sessionId), exitCode: exited.get(sessionId) ?? null }),
     list: () => ({ sessions: [] }),
     spawnPipe: () => { throw new Error('unused') },
+    spawnPipeClean: () => { throw new Error('unused') },
     release: ({ sessionId }) => {
       released.push(sessionId)
       return { ok: true }

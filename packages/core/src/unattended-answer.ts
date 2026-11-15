@@ -26,3 +26,15 @@ export function unattendedAnswer(item: ChatItem, mode: UnattendedMode): ChatAnsw
   const choice = item.choices?.find((each) => each.decision === 'deny' && each.grants.length === 0) ?? item.choices?.find((each) => each.decision === 'deny')
   return { decision: 'deny', message: UNATTENDED_DENIAL, ...(choice ? { choice: choice.id } : {}) }
 }
+
+export const CHANNEL_DENIAL = '这一步不允许：你在聊天平台上回答别人的提问，只能用给出的工具读取项目。用已有的工具继续；做不到就直接说明查不到什么。'
+
+// What Antumi answers for an agent locked down for a chat platform's asker: no, to everything, at
+// once. Nobody there may grant it, and the user is not asked on a stranger's behalf; a question
+// gets the same answer, so the agent says what it could not settle rather than wait.
+export function channelAnswer(item: ChatItem): ChatAnswer | null {
+  if ((item.kind !== 'approval' && item.kind !== 'question') || item.resolution !== null) return null
+  if (item.kind === 'question') return { decision: 'deny', message: CHANNEL_DENIAL }
+  const choice = item.choices?.find((each) => each.decision === 'deny' && each.grants.length === 0) ?? item.choices?.find((each) => each.decision === 'deny')
+  return { decision: 'deny', message: CHANNEL_DENIAL, ...(choice ? { choice: choice.id } : {}) }
+}

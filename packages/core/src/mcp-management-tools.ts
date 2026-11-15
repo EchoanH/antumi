@@ -76,8 +76,9 @@ function editTool<M extends RpcMethod>(name: string, feature: string, descriptio
 
 const EditId = z.object({ id: z.string().uuid() })
 // The mode a profile works in when delegated to is the user's to set: an agent setting it could hand
-// its own work to a member asking nothing. An edit keeps what the user set.
-const ProfileInput = AgentProfileFields.omit({ delegationMode: true })
+// its own work to a member asking nothing. Who it answers is the user's too: an agent could put
+// one on a chat platform, or take one off. An edit keeps what the user set.
+const ProfileInput = AgentProfileFields.omit({ delegationMode: true, audience: true })
 
 const tools = [
   tool(MANAGEMENT_TOOLS.profileList, 'agent-profiles',

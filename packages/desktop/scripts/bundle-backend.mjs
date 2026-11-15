@@ -1,4 +1,4 @@
-// Bundles daemon, core, Antumi's MCP server and the phone gateway into out/backend for a packaged app: one ESM file
+// Bundles daemon, core, Antumi's MCP server and the phone and channel gateways into out/backend for a packaged app: one ESM file
 // each, run by Electron's binary as plain Node (ELECTRON_RUN_AS_NODE), so users need no Node
 // install. node-pty stays external: its prebuilt binding is copied beside the bundles.
 import { execFileSync } from 'node:child_process'
@@ -27,7 +27,9 @@ for (const [name, entry] of [
   ['usage-scan-worker', 'packages/core/src/usage-scan-worker.ts'],
   ['mcp', 'packages/core/src/mcp-main.ts'],
   // The phone gateway, which core forks beside itself (mobile-service.ts).
-  ['gateway', 'packages/core/src/gateway-main.ts']
+  ['gateway', 'packages/core/src/gateway-main.ts'],
+  // The channel gateway, likewise (channel-service.ts): the chat platforms' connections.
+  ['channel-gateway', 'packages/core/src/channel-gateway-main.ts']
 ]) {
   await build({
     entryPoints: [path.join(repo, entry)],

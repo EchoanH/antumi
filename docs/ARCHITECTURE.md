@@ -68,6 +68,10 @@
 
 ## 2. 任务模型
 
+### 聊天平台
+
+智能体可以接到聊天平台上（目前是 Slack 和飞书），同事 @ 它提问。core 在有接入时启动第二个子进程「聊天平台网关」（`core/src/channel-gateway-main.ts`，打包后是 `channel-gateway.mjs`），由它向平台发起长连接；它只经 IPC 和 core 说话，手里没有 core 的 token。去重、谁能问、每天几次、哪个会话、发什么回去，都在 core 的 `ChannelService` 里。回答问题的 Agent 是锁死启动的（descriptor 的 `capabilities.lockdown`）：没有自己的工具，不加载用户的设置、MCP 和技能，只有 core 提供的几个项目读取工具，环境变量也是清过的（daemon 的 `spawnPipeClean`）。这类会话不进任何列表，客户端只能查看、停止和删除。设计、协议细节和验证情况见 [CHANNELS.md](CHANNELS.md)。
+
 ### 状态流转
 
 ```

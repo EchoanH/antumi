@@ -41,6 +41,24 @@ const Launch = z.object({
   env: z.record(z.string(), z.string())
 })
 
+// What a clean start keeps of the daemon's environment: where programs and the user's home are,
+// the locale, temp folders, what Windows needs to start anything, and how to reach the network
+// (a proxy, extra CAs). Nothing a tool's key or token would be in.
+export const CLEAN_ENV_KEYS: readonly string[] = [
+  'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TMPDIR', 'TEMP', 'TMP', 'TZ',
+  'SYSTEMROOT', 'SYSTEMDRIVE', 'WINDIR', 'COMSPEC', 'PATHEXT', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'APPDATA', 'LOCALAPPDATA', 'PROGRAMDATA', 'PROGRAMFILES', 'USERNAME',
+  'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'ALL_PROXY', 'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'SSL_CERT_DIR'
+]
+
+// The daemon's environment cut down to those, whatever their case (Windows' Path, a lower-case proxy).
+export function cleanEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+  const kept: Record<string, string> = {}
+  for (const [key, value] of Object.entries(env)) {
+    if (value !== undefined && CLEAN_ENV_KEYS.includes(key.toUpperCase())) kept[key] = value
+  }
+  return kept
+}
+
 export const daemonMethods = {
   portsList: { params: z.object({}), result: z.array(HostedPort) },
   portsStop: { params: PortRef, result: Ok },
@@ -55,6 +73,10 @@ export const daemonMethods = {
   // A method of its own rather than a flag on spawn: an older daemon would drop the flag and
   // start a PTY, where this one fails with unknown-method.
   spawnPipe: { params: Launch, result: SessionRef },
+  // As spawnPipe, but with none of the daemon's own environment beyond what a process needs to run
+  // at all (CLEAN_ENV_KEYS): for an agent answering someone who is not the user. A method of its
+  // own for the same reason: an older daemon must fail rather than pass everything on.
+  spawnPipeClean: { params: Launch, result: SessionRef },
   write: { params: SessionRef.extend({ data: z.string() }), result: Ok },
   resize: {
     params: SessionRef.extend({ cols: z.number().int().min(1), rows: z.number().int().min(1) }),
