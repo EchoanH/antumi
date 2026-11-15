@@ -72,7 +72,8 @@ describe('reusable agent roles and delegated work', () => {
     expect(() => profiles.get(helper.id)).toThrow(expect.objectContaining({ reason: 'profile-for-channels' }))
     expect(profiles.available(parentId).map((profile) => profile.id)).not.toContain(helper.id)
     expect(() => profiles.save({ ...reviewer, callableProfiles: [helper.id] }, reviewer.id)).toThrow(expect.objectContaining({ reason: 'profile-for-channels' }))
-    expect(() => profiles.save({ name: 'Codex helper', agent: 'codex', audience: 'channels' })).toThrow(expect.objectContaining({ reason: 'agent-no-lockdown' }))
+    expect(profiles.save({ name: 'Codex helper', agent: 'codex', audience: 'channels' })).toMatchObject({ agent: 'codex', capability: 'readOnly', audience: 'channels' })
+    expect(() => profiles.save({ name: 'Cursor helper', agent: 'cursor', audience: 'channels' })).toThrow(expect.objectContaining({ reason: 'agent-no-lockdown' }))
   })
 
   it('keeps an agent with a channel answering from chat platforms, and out of the archive', () => {

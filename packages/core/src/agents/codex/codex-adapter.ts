@@ -6,6 +6,7 @@ import type { AgentAdapter } from '../agent-adapter'
 import { CODEX_MODES, CodexAppServer } from './codex-app-server'
 import { codexAccounts, codexDefaultHome } from './codex-account'
 import { codexCommand } from './codex-command'
+import { prepareCodexLockdown } from './codex-lockdown'
 import { codexProviderModels } from './codex-provider'
 import { codexTranscripts } from './codex-transcripts'
 import { hasCodexCredentials, readCodexUsage, useCodexResetCredit } from './codex-usage'
@@ -17,6 +18,11 @@ export const codex: AgentAdapter = {
   maintenance: { packageName: '@openai/codex', brew: { name: 'codex', cask: true }, native: { roots: { darwin: ['.local/share/codex'], linux: ['.local/share/codex'], win32: ['AppData/Local/OpenAI/Codex'] }, args: ['update'], latestUrl: 'https://api.github.com/repos/openai/codex/releases/latest', tagPrefix: 'rust-v' } },
   createDriver: (stageId, options) => new CodexAppServer(stageId, options),
   command: codexCommand,
+  launch: {
+    mcp: (server) => server,
+    prepare: (stage, _mcp, launch) => prepareCodexLockdown(stage, launch),
+    ready: async () => {}
+  },
   providerModels: codexProviderModels,
   permissionModes: Object.keys(CODEX_MODES),
   // A thread is Codex's own, wherever the conversation's folder moved.

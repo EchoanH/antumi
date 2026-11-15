@@ -63,6 +63,8 @@ export type ChatAnswer = { decision: ChatDecision; choice?: string; mode?: ChatP
 export const WHOLE_SESSION_FORK = 'whole-session'
 
 export type ChatStageOptions = {
+  // An external asker's conversation: only the channel tools, with no local environment access.
+  lockdown?: boolean
   instructions?: string
   cwd: string
   mcp?: McpServer

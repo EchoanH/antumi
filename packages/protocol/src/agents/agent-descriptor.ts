@@ -51,7 +51,7 @@ export type AgentDescriptor = {
     modelProviders: readonly ProviderWire[]
     // Signs in to more than one account, each in a config folder of its own (agent-account.ts).
     accounts: boolean
-    // Starts with nothing but the MCP tools it is named: no tool of its own, and none of the user's
+    // Starts with only the named MCP tools able to act: no native machine access, none of the user's
     // settings, MCP servers, skills or plugins. What a stranger's question may run on (a chat
     // platform's, docs/CHANNELS.md). images: whether it still takes pictures then, as it does where
     // they reach the model in the message rather than through a file it reads. Unset, it cannot.

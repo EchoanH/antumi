@@ -1461,6 +1461,7 @@ export class ConversationService {
       agent: stage.agent,
       ended: stage.endedAt != null,
       options: {
+        ...(conversation.channel ? { lockdown: true } : {}),
         instructions: conversation.channel ? channelPrompt(conversation.profile) : this.roleInstructions(conversation),
         cwd: conversation.workspacePath,
         ...(mcp ? { mcp: launch ? launch.mcp(mcp, this.agentStage(conversation.id, stage)) : mcp } : {}),

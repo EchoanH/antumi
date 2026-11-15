@@ -8,7 +8,7 @@
 
 一个智能体要么自己用，要么接到聊天平台，二选一（`AgentProfile.audience`：`user` 或 `channels`）。接到聊天平台的智能体是锁死运行的，技能、MCP、可调用的智能体对它都不起作用，所以配置页在选了「接到聊天平台」后不显示这三项，core 保存时也把它们清空、能力固定为只读；它不能用来开会话、接受委派或放进团队（`AgentProfileService.get` 抛 `profile-for-channels`）。反过来，「我自己用」的智能体不能添加接入（`profile-not-for-channels`）。这样不会出现配了却没用上的设置。有接入的智能体改回自己用之前，要先移除接入；不带 `audience` 的旧客户端保存它时同样被拒，不会把它从平台上摘下来。
 
-哪些外部智能体能接由它的 descriptor 说了算（`capabilities.lockdown`，见「外部会话」），目前只有 Claude Code。
+哪些外部智能体能接由它的 descriptor 说了算（`capabilities.lockdown`，见「外部会话」），目前有 Claude Code 和 Codex（CLI 0.160.1 起）。
 
 ## 信任模型
 
@@ -179,7 +179,7 @@ ChannelGatewayToCore =
 
 **锁死是 Agent 的一项能力，不是对 Claude 的特判**（照 AGENTS.md：别处只问 descriptor 和 adapter，不写 `agent === 'claude'`）：
 
-- **descriptor**（`protocol/src/agents/agent-descriptor.ts` 的 `capabilities`）加 `lockdown?: { images: boolean }`：「能只带指定的 MCP 工具启动：没有内置工具，不加载用户自己的配置、MCP、技能和插件」；`images` 说它在这种状态下还能不能收图（图片作为内容块直接给模型的才行）。一期只在 `agents/claude.ts` 设 `{ images: true }`，其余不设。桌面端和 `ChannelService` 都只读这个字段。下文说「支持 `lockdown`」指这个字段存在。
+- **descriptor**（`protocol/src/agents/agent-descriptor.ts` 的 `capabilities`）加 `lockdown?: { images: boolean }`：「能只带指定的 MCP 工具启动：没有可操作本机的内置工具，不加载用户自己的配置、MCP、技能和插件」；`images` 说它在这种状态下还能不能收图（图片作为内容块直接给模型的才行）。Claude Code 和 Codex 都设 `{ images: true }`。桌面端和 `ChannelService` 都只读这个字段。下文说「支持 `lockdown`」指这个字段存在。
 - **`AgentLaunch`**（`core/src/agents/agent-adapter.ts`）加与 Agent 无关的 `lockdown?: { tools: readonly string[] }`：`tools` 是允许的 MCP 工具名（不带 Agent 自己的前缀，适配器各自拼成 `mcp__antumi__x` 之类）。
 - **adapter** 自己把 `lockdown` 翻译成参数、配置和环境变量。`startChat` 在启动前检查 `descriptorOf(agent).capabilities.lockdown`，不支持就抛 `'agent-no-lockdown'`，所以没实现的适配器永远收不到这个参数。
 - **验收测试是接入门槛**：`core/src/agents/lockdown.test.ts` 遍历所有声明了 `lockdown` 的 Agent，给它一个塞满目录、文件、用户 MCP、技能、知识库、bypass 的启动请求，断言这些值一个都不出现在它的命令行和环境变量里。声明了就自动被测到，不用登记。
@@ -190,7 +190,7 @@ ChannelGatewayToCore =
 | Claude Code | 下面的启动参数 | 一期 |
 | OpenCode | `OPENCODE_CONFIG_CONTENT` 里加一个 `antumi-lockdown` agent：`rule('*','deny')` 再放行指定的 MCP 工具；设 `OPENCODE_DISABLE_CLAUDE_CODE*`，配置目录指向 `home` | 钩子已有，可做 |
 | Pi | 扩展的 `refusal()` 加 `lockdown` 模式：只放行 `tools` 里的 MCP 工具，内置的 read / bash 一律拒绝；配置目录指向 `home` | 钩子已有，可做 |
-| Codex | 只读沙箱不限读取范围，shell 关不掉 | 等 CLI 提供关闭内置工具的办法 |
+| Codex | 关闭 shell、文件查看、子智能体等工具，使用隔离目录和 MCP 白名单；线程、每轮均禁用本机环境 | 已实现，CLI 0.160.1 起 |
 | Cursor | Ask 模式不是沙箱，内置工具关不掉 | 同上 |
 
 **Claude 的启动参数**（`claude-command.ts` 的 `lockdown` 分支）：
@@ -209,6 +209,16 @@ claude -p --verbose --output-format stream-json --input-format stream-json --inc
 **账号和额度：不强制用模型服务商。** 和这个智能体的普通会话一样：智能体配了模型服务商就走服务商（`claudeProviderEnv`），没配就用 Claude 当前的账号（`accounts.launch(agent)` 给的 `CLAUDE_CONFIG_DIR`），用户不用为此多登录一次。隔离不靠换目录，靠上面的参数：`--setting-sources ""`、`--strict-mcp-config`、`--disable-slash-commands`、`--tools ""`、`--restricted` 让账号目录里用户的设置、MCP、技能、插件、`CLAUDE.md` 都不加载。验收测试读 Claude 启动时 `init` 消息里列出的 tools / mcp_servers / slash_commands / plugins，断言只有我们给的那几项。如果以后某个 CLI 版本让账号目录里的东西漏进来，退路是 core 备一个干净目录 `<home>/channels/homes/<agent>`，只带登录凭据。界面上在「聊天平台」区块提示：没配模型服务商时，同事的提问会用掉这个账号的额度，可用每天次数来限制。
 
 **环境变量**：daemon 多了一个方法 `spawnPipeClean`，只带 `CLEAN_ENV_KEYS`（`PATH`、`HOME`、语言、临时目录、Windows 启动进程要的几个、代理和 CA）和 core 显式给的变量。是单独的方法而不是 `spawnPipe` 的参数：旧 daemon 会忽略不认识的参数、把整个环境传下去，单独的方法它只会报不认识，core 就不启动这类会话。
+
+**Codex 的锁死运行**（`codex-lockdown.ts`、`codex-app-server.ts`）：
+
+- 启动前核对 CLI 至少为 0.160.1；不认识的版本或配置直接拒绝启动（`--strict-config`）。普通 Codex 会话不受此版本检查影响。
+- `features.shell_tool=false`、`unified_exec=false`，同时关闭本地图片查看、浏览器、电脑操作、图片生成、子智能体、记忆、目标、code mode、插件、Apps 和 hooks；禁用 web search、宿主技能发现和 `AGENTS.md` 读取。命令行只配置 Antumi 的 channel MCP，`enabled_tools` 是登记表里的工具。
+- 每个 stage 的 `CODEX_HOME`、`HOME`（Windows 还有 `USERPROFILE`）都是私有启动目录。账号来源只共享 `auth.json`，硬链接让凭据刷新仍写回选中账号；跨卷时用文件链接，无法建立链接就拒绝启动。模型服务商仍走普通的服务商启动配置，不需要账号凭据。用户的配置、MCP、插件、技能和其他会话均不带入。
+- `sessions` 只链接到当前会话自己的持久目录，因此重启可继续原线程；启动目录随 stage 清理，历史随会话清理。Codex 自带的固定系统技能说明可能仍被注入，但没有读取技能或执行其指令的本机工具。
+- 线程新建和恢复都使用 channel 的完整 `baseInstructions`，清空额外 developer instructions，并强制 `approvalPolicy: never`、只读沙箱；新线程和每次 `turn/start` 都带 `environments: []`。图片由宿主传入 `localImage` 后直接转成模型图片内容，不开放本地图片读取工具。
+- 不请求 `skills/list`，不提供或执行斜杠命令。Codex 仍列出 `request_user_input`（普通模式下不可用，core 也会拒绝提问）和 MCP 资源读取入口（仅能访问此 channel MCP，它不提供资源）；它们不能读本机文件或增加服务器。
+- `codex-lockdown-live.test.ts` 用真实 CLI、本地模拟 Responses 服务和真实 channel MCP handler / 项目工具，验证工具清单、强行调用 shell / 本地图片工具被拒、项目读取、越界拒绝、图片输入及跨进程恢复。设 `ANTUMI_LIVE_CODEX_LOCKDOWN=1` 才运行，不使用真实账号或付费模型。
 
 **系统提示词**（`core/src/channel-prompt.ts`）分两段：
 
@@ -376,6 +386,7 @@ claude -p --verbose --output-format stream-json --input-format stream-json --inc
 | | 状态 |
 |---|---|
 | 锁死的 Claude Code | 用真的 CLI 验证过（`lockdown-live.test.ts`，2026-11-15） |
+| 锁死的 Codex | 用真的 CLI 0.160.1 和本地模拟模型验证过（`codex-lockdown-live.test.ts`，2026-11-15），尚未用 Codex 在真实平台提问联调 |
 | 网关子进程 | 从源码 fork 起来，用假 token 连真的 Slack API，得到 `invalid_auth` 并显示在界面上 |
 | 桌面端「聊天平台」区块 | 在一次性的测试实例里用界面添加、保存、看到失败状态 |
 | 从 Slack 提问到回答 | 只对本地的假 Slack 验证过。**真实的 Slack 工作区没有联调过**：需要建一个应用、拿到两个 token |
@@ -383,4 +394,4 @@ claude -p --verbose --output-format stream-json --input-format stream-json --inc
 | 从飞书提问到回答 | 用真实的飞书应用联调通过（2026-11-15）：应用建在飞书个人账号自己的组织里，从桌面端填凭据、连上长连接，到在飞书里提问收到回答。帧格式照官方 Node SDK 1.76.0 写的 |
 | 打包后的应用 | `channel-gateway.mjs` 能打出来，没有在安装包里跑过 |
 
-没做的：Lark（飞书国际版，域名不同）；主人接手会话；串里只有一个人时免 @；进度更新；固定查询工具；除 Claude Code 外的 Agent。
+没做的：Lark（飞书国际版，域名不同）；主人接手会话；串里只有一个人时免 @；进度更新；固定查询工具；除 Claude Code、Codex 外的 Agent。

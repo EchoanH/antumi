@@ -539,7 +539,7 @@ export class CodexAppServer implements ChatDriver {
     this.antumi = new AntumiRequests(this.items)
     this.state = new StageState(this.items)
     // A stage that only plans runs every turn in plan mode, whatever was remembered.
-    this.chosen = { ...options.preferred, ...(options.planOnly ? { permissionMode: PLAN_MODE } : options.readOnly ? { permissionMode: 'readOnly' } : {}) }
+    this.chosen = { ...options.preferred, ...(options.lockdown ? { permissionMode: 'readOnly' } : options.planOnly ? { permissionMode: PLAN_MODE } : options.readOnly ? { permissionMode: 'readOnly' } : {}) }
     // On a provider, its models stand in for what model/list offers, which knows only OpenAI's.
     if (options.providerModels) {
       this.catalog = options.providerModels.map((model) => ({ id: model.id, displayName: model.label, description: model.description, isDefault: model.isDefault, supportedReasoningEfforts: model.efforts.map((effort) => ({ reasoningEffort: effort })), defaultReasoningEffort: null }))
@@ -613,7 +613,7 @@ export class CodexAppServer implements ChatDriver {
     if (!this.threadRequested) frames.push(this.openThread())
     if (!this.modelsRequested) frames.push({ id: 'antumi-models', method: 'model/list', params: {} })
     if (!this.configRequested) frames.push({ id: 'antumi-config', method: 'config/read', params: { cwd: this.options.cwd } })
-    if (!this.skillsRequested) frames.push({ id: 'antumi-skills', method: 'skills/list', params: { cwds: [this.options.cwd] } })
+    if (!this.options.lockdown && !this.skillsRequested) frames.push({ id: 'antumi-skills', method: 'skills/list', params: { cwds: [this.options.cwd] } })
     if (this.threadId && !this.listingTerminals && this.unlistedBackground().length > 0) {
       frames.push({ id: `antumi-terminals-${this.terminalLists + 1}`, method: 'thread/backgroundTerminals/list', params: { threadId: this.threadId } })
     }
@@ -670,7 +670,7 @@ export class CodexAppServer implements ChatDriver {
   send(text: string, images: readonly ChatImageFile[] = []): ChatOutgoing {
     if (!this.ready() || !this.threadId) throw new Rejection('chat-starting', 'the agent is still starting')
     if (this.turn) throw new Rejection('chat-busy', 'the agent is still working on the last message')
-    const command = codexCommand(text, this.skills)
+    const command = this.options.lockdown ? null : codexCommand(text, this.skills)
     if (command && command.kind !== 'skill') {
       if (images.length > 0) throw new Rejection('chat-command-images', `/${command.kind} takes no images`)
       const frame = commandRequest(command, `antumi-turn-${this.turns + 1}`, this.threadId)
@@ -936,26 +936,27 @@ export class CodexAppServer implements ChatDriver {
       queued: this.queue.first,
       queue: this.queue.view,
       steerable: false,
-      commands: codexCommands(this.skills),
+      commands: this.options.lockdown ? [] : codexCommands(this.skills),
       models,
       model: this.model,
       // A thread on its model's default effort reports none.
       effort: this.effort ?? current?.defaultReasoningEffort ?? null,
-      permissionMode: this.planning ? PLAN_MODE : codexMode(this.approvalPolicy, this.sandbox),
-      permissionModes: this.options.planOnly ? [PLAN_MODE] : this.options.readOnly ? ['readOnly'] : ['ask', 'acceptEdits', PLAN_MODE, 'readOnly', ...(this.options.allowBypass ? ['bypass'] : [])]
+      permissionMode: this.options.lockdown ? 'readOnly' : this.planning ? PLAN_MODE : codexMode(this.approvalPolicy, this.sandbox),
+      permissionModes: this.options.lockdown ? ['readOnly'] : this.options.planOnly ? [PLAN_MODE] : this.options.readOnly ? ['readOnly'] : ['ask', 'acceptEdits', PLAN_MODE, 'readOnly', ...(this.options.allowBypass ? ['bypass'] : [])]
     })
   }
 
   // The mode a turn runs in: what the user chose, if this stage may run it, else the TUI's default.
   // It is always stated outright: left out, a thread takes whatever config.toml says.
   private mode(chosen = this.chosen.permissionMode): CodexMode {
+    if (this.options.lockdown) return { approvalPolicy: 'never', sandbox: 'read-only' }
     const allowed = chosen !== 'bypass' || this.options.allowBypass
     return (chosen && allowed ? CODEX_MODES[chosen] : undefined) ?? DEFAULT_MODE
   }
 
   private turnOptions(permissionMode = this.chosen.permissionMode): Record<string, unknown> {
     const { approvalPolicy, sandbox, network = false } = this.mode(permissionMode)
-    const plan = permissionMode === PLAN_MODE
+    const plan = !this.options.lockdown && permissionMode === PLAN_MODE
     // Plan mode is set on each turn in it, and left once on the next turn out of it. Its settings
     // name the model outright, which the mode then takes over the turn's own.
     const model = this.chosen.model ?? this.model ?? this.catalog.find((entry) => entry.isDefault)?.id
@@ -964,6 +965,7 @@ export class CodexAppServer implements ChatDriver {
       : {}
     return {
       approvalPolicy,
+      ...(this.options.lockdown ? { environments: [] } : {}),
       // The conversation's other projects are writable too, as --add-dir makes them in the TUI,
       // and the user's vault where the stage may write it. A read-only sandbox takes no roots, so
       // there the vault, like everything, is only read.
@@ -994,11 +996,11 @@ export class CodexAppServer implements ChatDriver {
   private openThread(): unknown {
     const { cwd, resume, fork } = this.options
     const { approvalPolicy, sandbox } = this.mode()
-    const common = { cwd, approvalPolicy, sandbox, ...(this.chosen.model ? { model: this.chosen.model } : {}) }
+    const common = { cwd, approvalPolicy, sandbox, ...(this.chosen.model ? { model: this.chosen.model } : {}), ...(this.options.lockdown ? { baseInstructions: this.options.instructions, developerInstructions: '' } : {}) }
     if (resume && fork) return { id: 'antumi-thread', method: 'thread/fork', params: { threadId: resume, lastTurnId: fork, ...common, excludeTurns: true } }
     return resume
       ? { id: 'antumi-thread', method: 'thread/resume', params: { threadId: resume, ...common, excludeTurns: true } }
-      : { id: 'antumi-thread', method: 'thread/start', params: common }
+      : { id: 'antumi-thread', method: 'thread/start', params: { ...common, ...(this.options.lockdown ? { environments: [] } : {}) } }
   }
 
   private answerBody(pending: Pending, answer: ChatAnswer): unknown {

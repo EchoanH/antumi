@@ -25,7 +25,7 @@ describe('a channel conversation', () => {
     id: '11111111-1111-4111-8111-111111111111', name: '答疑', instructions: '回答不超过 100 字。', agent: 'claude', capability: 'develop',
     skills: [{ source: 'x', name: 'y' }].slice(0, 0), mcpServers: ['mine'], archivedAt: null, createdAt: 1, updatedAt: 1
   })
-  const open = (agent: 'claude' | 'codex' = 'claude') => service.create(agent, [], undefined, { channel, profile, title: 'U1: 怎么登录' })
+  const open = (agent: 'claude' | 'cursor' = 'claude') => service.create(agent, [], undefined, { channel, profile, title: 'U1: 怎么登录' })
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
 
   beforeEach(() => {
@@ -93,7 +93,7 @@ describe('a channel conversation', () => {
   })
 
   it('refuses an agent that cannot be locked down', async () => {
-    await expect(open('codex')).rejects.toMatchObject({ reason: 'agent-no-lockdown' })
+    await expect(open('cursor')).rejects.toMatchObject({ reason: 'agent-no-lockdown' })
     expect(daemon.spawns).toHaveLength(0)
   })
 

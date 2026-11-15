@@ -152,7 +152,7 @@ describe('ChannelService', () => {
     const base = { profileId: profile.id, platform: 'slack' as const }
     await expect(channels.save({ ...base, projectPaths: ['/etc'] })).rejects.toMatchObject({ reason: 'channel-project-not-recent' })
     await expect(channels.save({ ...base, credentials: { appToken: 'xoxb-swapped' } })).rejects.toMatchObject({ reason: 'channel-credential-invalid' })
-    profiles = [{ ...profile, agent: 'codex' }]
+    profiles = [{ ...profile, agent: 'cursor' }]
     await expect(channels.save(base)).rejects.toMatchObject({ reason: 'agent-no-lockdown' })
     profiles = [{ ...profile, audience: 'user' }]
     await expect(channels.save(base)).rejects.toMatchObject({ reason: 'profile-not-for-channels' })

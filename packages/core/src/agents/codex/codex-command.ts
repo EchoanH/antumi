@@ -3,6 +3,7 @@ import type { AgentCommand, AgentMcpServer } from '../../agent-command'
 import { startNote } from '../../agent-prompt'
 import type { AgentLaunch } from '../agent-adapter'
 import { codexProviderLaunch } from './codex-provider'
+import { lockedCodexCommand } from './codex-lockdown'
 
 // The ChatGPT app's own browser, which its unified-computer-use plugin gives every Codex as the
 // cua_repl MCP server: beside Antumi's browser tools Codex reached for it first, and its policy,
@@ -26,7 +27,9 @@ function codexServer(server: AgentMcpServer): string {
 // writable root of each turn, see CodexAppServer). A JSON string is a TOML basic string. A skills
 // bundle (AgentLaunch.skills) is not given: Codex reads skills from fixed folders only; the places
 // to try are skills.config in its config and the cwds of skills/list (CodexAppServer).
-export function codexCommand({ mcp, userMcp = [], knowledgeBase, instructions, todos = true, provider, preferred, account }: AgentLaunch): AgentCommand {
+export function codexCommand(launch: AgentLaunch): AgentCommand {
+  if (launch.lockdown) return lockedCodexCommand(launch, launch.lockdown)
+  const { mcp, userMcp = [], knowledgeBase, instructions, todos = true, provider, preferred, account } = launch
   const note = startNote({ knowledgeBase, instructions, todos: Boolean(mcp) && todos })
   const onProvider = provider ? codexProviderLaunch(provider, preferred?.model) : null
   // A provider is reached with a key, not an account: it takes the place of one.
