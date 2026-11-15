@@ -11,7 +11,7 @@ import { t } from '../i18n'
 import { agentLabel } from '../labels'
 import { useOccludesBrowser } from '../browser-occlusion'
 import { CopyButton } from './CopyButton'
-import { CloseIcon, PlusIcon } from './icons'
+import { ChatIcon, CloseIcon, PlusIcon } from './icons'
 import { Toggle } from './SettingsControls'
 import './agent-channels.css'
 
@@ -47,16 +47,18 @@ export function AgentChannels({ profileId, agent, hasProvider }: { profileId: st
     if (saved) setChannels(all.map((each) => (each.id === saved.id ? saved : each)))
   }
   const missing = CHANNEL_PLATFORMS.filter((platform) => !channels.some((each) => each.platform === platform))
-  return <section className="agent-channels" aria-label={t('AgentChannels.title')}>
-    <header className="agent-channels-head">
+  return <section className="agent-card agent-channels" aria-label={t('AgentChannels.title')}>
+    <header className="agent-card-head">
+      <span className="agent-card-icon"><ChatIcon /></span>
       <div>
         <h3>{t('AgentChannels.title')}</h3>
-        <p className="squad-block-hint muted">{t('AgentChannels.hint')}</p>
+        <p>{t('AgentChannels.hint')}</p>
       </div>
       {able && profileId && missing.map((platform) =>
         <button key={platform} type="button" className="button" onClick={() => setOpen({ id: null, platform, view: 'edit' })}><PlusIcon />{t('AgentChannels.add', { platform: channelPlatform(platform).label })}</button>)}
     </header>
-    {able && !profileId && <p className="squad-block-hint muted">{t('AgentChannels.saveFirst')}</p>}
+    {able && !profileId && <p className="agent-channel-empty">{t('AgentChannels.saveFirst')}</p>}
+    {able && profileId && channels.length === 0 && <p className="agent-channel-empty">{t('AgentChannels.none')}</p>}
     {able && profileId && channels.length > 0 && <ul className="agent-channel-list">
       {channels.map((channel) => <li key={channel.id} className="agent-channel">
         <ChannelRow channel={channel} requestsOpen={open?.id === channel.id && open.view === 'requests'}
@@ -76,20 +78,21 @@ function ChannelRow({ channel, requestsOpen, onToggle, onRequests, onEdit, onRem
   const labelId = useId()
   const ready = channelPlatform(channel.platform).credentials.every(({ key }) => channel.stored.includes(key))
   const shown = channel.enabled ? channel.state : 'off'
-  const scope = [
+  const chips = [
     t('AgentChannels.scopeProjects', { count: channel.projectPaths.length }),
     t('AgentChannels.scopeAskers', { count: channel.allowedUsers.length }),
     t('AgentChannels.scopeDaily', { count: channel.dailyPerUser })
-  ].join(' · ')
+  ]
   return <div className="agent-channel-row">
+    <span className="agent-channel-logo" data-platform={channel.platform} aria-hidden="true">{channelPlatform(channel.platform).label.slice(0, 1)}</span>
     <div className="agent-channel-name">
-      <strong id={labelId}>{channelPlatform(channel.platform).label}</strong>
-      <span className="agent-channel-state" data-state={shown}><span className="agent-channel-dot" data-state={shown} aria-hidden="true" />{ready ? channelStateText(channel) : t('AgentChannels.missingCredentials')}</span>
-      <span className="agent-channel-scope muted">{scope}</span>
+      <span className="agent-channel-title"><strong id={labelId}>{channelPlatform(channel.platform).label}</strong>
+        <span className="agent-channel-state" data-state={shown}><span className="agent-channel-dot" data-state={shown} aria-hidden="true" />{ready ? channelStateText(channel) : t('AgentChannels.missingCredentials')}</span></span>
+      <span className="agent-channel-chips">{chips.map((chip) => <span key={chip}>{chip}</span>)}</span>
     </div>
     <div className="agent-channel-actions">
-      <button type="button" className="button small ghost" aria-expanded={requestsOpen} onClick={onRequests}>{t('AgentChannels.requests')}</button>
-      <button type="button" className="button small ghost" onClick={onEdit}>{t('AgentChannels.edit')}</button>
+      <button type="button" className="button small" aria-expanded={requestsOpen} onClick={onRequests}>{t('AgentChannels.requests')}</button>
+      <button type="button" className="button small" onClick={onEdit}>{t('AgentChannels.edit')}</button>
       <button type="button" className="button small ghost" onClick={onRemove}>{t('AgentChannels.remove')}</button>
       <Toggle labelId={labelId} checked={channel.enabled} onChange={onToggle} />
     </div>

@@ -13290,4 +13290,7 @@ export const MESSAGES = {
   "AgentProfiles.channelsRunHint": {"zh": "在聊天平台上它始终只读，没有命令行，也不加载外部智能体自己的设置、技能和 MCP。", "en": "On a chat platform it is always read-only, with no command line and none of the external agent's own settings, skills or MCP servers."},
   "labels.profileForChannels": {"zh": "这个智能体只在聊天平台上回答，不能用在会话、委派或团队里。", "en": "This agent answers only on chat platforms and cannot be used in conversations, delegations or teams."},
   "labels.profileNotForChannels": {"zh": "先把这个智能体设成「接到聊天平台」并保存。", "en": "Set this agent to “On a chat platform” and save it first."},
+  "AgentProfiles.sectionIdentityHint": {"zh": "名字和工作指令决定它怎么说话、做什么。", "en": "Its name and instructions decide how it talks and what it does."},
+  "AgentProfiles.sectionRuntimeHint": {"zh": "用哪个外部智能体和模型来跑。", "en": "Which external agent and model run it."},
+  "AgentChannels.none": {"zh": "还没有接入平台。点右上角添加。", "en": "No platform yet. Add one at the top right."},
 } as const
