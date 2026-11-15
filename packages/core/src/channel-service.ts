@@ -45,7 +45,8 @@ const PURGE_EVERY_MS = 24 * 60 * 60_000
 const TITLE_CHARS = 60
 
 const SAY = {
-  noAccess: '你没有向我提问的权限，请联系我的主人。',
+  // With the IDs the allow list takes, which a platform such as Feishu shows its people nowhere else.
+  noAccess: (user: string, place: string | null) => `你没有向我提问的权限。要开通，把你的 ID \`${user}\`${place ? ` 和这里的 ID \`${place}\`` : ''} 发给我的主人。`,
   quotaUser: '你今天的提问次数用完了，明天再来。',
   quotaTotal: '今天的提问次数已经用完了，明天再来。',
   empty: '没有收到问题内容，请 @ 我并写上要问的事。',
@@ -379,7 +380,7 @@ export class ChannelService {
       const key = `${channelId}:${event.user}:${event.place}:${dayOf(this.now())}`
       if (!this.told.has(key)) {
         this.told.add(key)
-        this.post(channel, null, reply, SAY.noAccess)
+        this.post(channel, null, reply, SAY.noAccess(event.user, direct ? null : event.place))
       }
       return outcome('refused:acl')
     }

@@ -197,7 +197,7 @@ describe('ChannelService', () => {
     await deliverAll()
     expect(daemon.spawns).toHaveLength(0)
     expect(channels.requests(channel.id, null, 10).items).toEqual([])
-    expect(posts()).toEqual(['你没有向我提问的权限，请联系我的主人。', '你没有向我提问的权限，请联系我的主人。'])
+    expect(posts()).toEqual(['你没有向我提问的权限。要开通，把你的 ID `U9` 和这里的 ID `C1` 发给我的主人。', '你没有向我提问的权限。要开通，把你的 ID `U1` 和这里的 ID `C9` 发给我的主人。'])
     expect(store.outcomes(channel.id)).toEqual(['refused:acl', 'refused:acl', 'refused:acl', 'dropped:tenant', 'dropped:ignorable', 'dropped:ignorable'])
   })
 
