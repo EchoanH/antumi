@@ -9,7 +9,7 @@ import { agentLabel } from '../labels'
 import { t } from '../i18n'
 import { timeAgo } from '../conversation-state'
 import { AgentAvatar } from './AgentAvatar'
-import { AgentIcon, ArchiveIcon, CheckIcon, ChatIcon, GroupChatIcon, InfoIcon, PencilIcon, PersonIcon, PinIcon, PlugIcon, PlusIcon, RevertIcon, SlidersIcon } from './icons'
+import { AgentIcon, ArchiveIcon, ChannelPlatformIcon, CheckIcon, ChatIcon, GroupChatIcon, InfoIcon, PencilIcon, PersonIcon, PinIcon, PlugIcon, PlusIcon, RevertIcon, SlidersIcon } from './icons'
 import { AgentsPageHeader } from './AgentsPageHeader'
 import { AgentModelPicker } from './AgentModelPicker'
 import { ChatPicker } from './ChatPicker'
@@ -99,7 +99,7 @@ function ProfilesView() {
             <span className="squad-card-members">{!forChannels(item) && <span className="squad-card-member">{t(item.capability === 'readOnly' ? 'Squads.readOnlyAnalysis' : 'Squads.developmentTesting')}</span>}
               {forChannels(item) && !channels.some((channel) => channel.profileId === item.id) && <span className="squad-card-member">{t('AgentProfiles.audienceChannels')}</span>}
               {channels.filter((channel) => channel.profileId === item.id).map((channel) => <span key={channel.id} className="squad-card-member agent-profile-channel" title={t('AgentChannels.onPlatform', { platform: channelPlatform(channel.platform).label, state: channelStateText(channel) })}>
-                <span className="agent-channel-dot" data-state={channel.enabled ? channel.state : 'off'} aria-hidden="true" />{channelPlatform(channel.platform).label}</span>)}</span>
+                <span className="agent-channel-dot" data-state={channel.enabled ? channel.state : 'off'} aria-hidden="true" /><ChannelPlatformIcon platform={channel.platform} />{channelPlatform(channel.platform).label}</span>)}</span>
             <span className="squad-card-foot"><span className="agent-profile-engine" title={[agentLabel(item.agent), item.model].filter(Boolean).join(' · ')}>{[agentLabel(item.agent), item.model].filter(Boolean).join(' · ')}</span><span className="squad-card-time">{t('SourceInboxView.updated', { value1: timeAgo(item.updatedAt, now) })}</span></span>
           </button>
           <footer className="agent-profile-card-actions">

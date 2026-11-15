@@ -11,7 +11,7 @@ import { t } from '../i18n'
 import { agentLabel } from '../labels'
 import { useOccludesBrowser } from '../browser-occlusion'
 import { CopyButton } from './CopyButton'
-import { ChatIcon, CloseIcon, InfoIcon, PlusIcon } from './icons'
+import { ChannelPlatformIcon, ChatIcon, CloseIcon, InfoIcon, PlusIcon } from './icons'
 import { Toggle } from './SettingsControls'
 import './agent-channels.css'
 
@@ -86,7 +86,7 @@ function ChannelRow({ channel, requestsOpen, onToggle, onRequests, onEdit, onRem
     t('AgentChannels.scopeDaily', { count: channel.dailyPerUser })
   ]
   return <div className="agent-channel-row">
-    <span className="agent-channel-logo" data-platform={channel.platform} aria-hidden="true">{channelPlatform(channel.platform).label.slice(0, 1)}</span>
+    <span className="agent-channel-logo" aria-hidden="true"><ChannelPlatformIcon platform={channel.platform} /></span>
     <div className="agent-channel-name">
       <span className="agent-channel-title"><strong id={labelId}>{channelPlatform(channel.platform).label}</strong>
         <span className="agent-channel-state" data-state={shown}><span className="agent-channel-dot" data-state={shown} aria-hidden="true" />{ready ? channelStateText(channel) : t('AgentChannels.missingCredentials')}</span></span>

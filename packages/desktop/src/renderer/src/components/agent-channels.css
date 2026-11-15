@@ -49,9 +49,10 @@
 .agent-channels .agent-card-head .button { flex-shrink: 0; }
 .agent-channels .agent-card-head .button svg { width: 14px; height: 14px; }
 .agent-channel-row { gap: 12px 14px; }
-.agent-channel-logo { display: grid; place-items: center; flex-shrink: 0; width: 40px; height: 40px; border-radius: 11px; background: var(--fill-2); color: var(--text); font-size: 17px; font-weight: 700; }
-.agent-channel-logo[data-platform='slack'] { background: linear-gradient(135deg, #36c5f0 0%, #2eb67d 34%, #ecb22e 67%, #e01e5a 100%); color: #fff; }
-.agent-channel-logo[data-platform='feishu'] { background: linear-gradient(135deg, #00d6b9 0%, #3370ff 100%); color: #fff; }
+/* The platform's own logo in its own colours, on the neutral tile the agent page's cards use. */
+.agent-channel-logo { display: grid; place-items: center; flex-shrink: 0; width: 40px; height: 40px; border-radius: 11px; background: var(--fill-2); }
+.agent-channel-logo .channel-mark { width: 22px; height: 22px; }
+.agent-profile-channel .channel-mark { width: 12px; height: 12px; flex-shrink: 0; }
 .agent-channel-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .agent-channel-title strong { font-size: 14px; font-weight: 600; }
 .agent-channel-state { padding: 2px 8px; border-radius: 999px; background: var(--fill-2); }
