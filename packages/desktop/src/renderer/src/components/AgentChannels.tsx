@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import {
   AGENT_KINDS, CHANNEL_DEFAULTS, CHANNEL_PLATFORMS, ChannelInput, agentDescriptor, channelPlatform,
   type AgentKind, type Channel, type ChannelCredentialKey, type ChannelPlatform, type ChannelRequest, type ChannelToolCall
@@ -9,7 +9,9 @@ import { timeAgo } from '../conversation-state'
 import { perform, useCore } from '../core-store'
 import { t } from '../i18n'
 import { agentLabel } from '../labels'
+import { useOccludesBrowser } from '../browser-occlusion'
 import { CopyButton } from './CopyButton'
+import { CloseIcon, PlusIcon } from './icons'
 import { Toggle } from './SettingsControls'
 import './agent-channels.css'
 
@@ -44,46 +46,53 @@ export function AgentChannels({ profileId, agent, hasProvider }: { profileId: st
     const saved = await perform((rpc) => rpc.call('channels.save', { id, profileId: owner, platform, enabled, projectPaths, allowedUsers, allowedPlaces, allowDirect, dailyPerUser, dailyTotal, maxConcurrent, turnTimeoutSec }))
     if (saved) setChannels(all.map((each) => (each.id === saved.id ? saved : each)))
   }
+  const missing = CHANNEL_PLATFORMS.filter((platform) => !channels.some((each) => each.platform === platform))
   return <section className="agent-channels" aria-label={t('AgentChannels.title')}>
-    <h3>{t('AgentChannels.title')}</h3>
-    <p className="squad-block-hint muted">{t('AgentChannels.hint')}</p>
+    <header className="agent-channels-head">
+      <div>
+        <h3>{t('AgentChannels.title')}</h3>
+        <p className="squad-block-hint muted">{t('AgentChannels.hint')}</p>
+      </div>
+      {able && profileId && missing.map((platform) =>
+        <button key={platform} type="button" className="button" onClick={() => setOpen({ id: null, platform, view: 'edit' })}><PlusIcon />{t('AgentChannels.add', { platform: channelPlatform(platform).label })}</button>)}
+    </header>
     {!able && <p className="squad-block-hint muted" role="note">{t('AgentChannels.unsupported', { agent: agentLabel(agent), agents: AGENT_KINDS.filter((kind) => agentDescriptor(kind).capabilities.lockdown).map(agentLabel).join('、') })}</p>}
     {able && !profileId && <p className="squad-block-hint muted">{t('AgentChannels.saveFirst')}</p>}
-    {able && profileId && <>
-      {!hasProvider && <p className="squad-block-hint muted">{t('AgentChannels.quotaHint', { agent: agentLabel(agent) })}</p>}
-      <ul className="agent-channel-list">
-        {channels.map((channel) => <li key={channel.id} className="agent-channel">
-          <ChannelRow channel={channel} view={open?.id === channel.id ? open.view : null}
-            onToggle={(enabled) => void toggle(channel, enabled)}
-            onView={(view) => setOpen(open?.id === channel.id && open.view === view ? null : { id: channel.id, platform: channel.platform, view })}
-            onRemove={() => void remove(channel)} />
-          {open?.id === channel.id && open.view === 'edit' && <ChannelForm profileId={profileId} platform={channel.platform} channel={channel} onClose={() => setOpen(null)} />}
-          {open?.id === channel.id && open.view === 'requests' && <ChannelRequests channel={channel} />}
-        </li>)}
-        {open?.id === null && <li className="agent-channel"><ChannelForm profileId={profileId} platform={open.platform} channel={null} onClose={() => setOpen(null)} /></li>}
-      </ul>
-      {open?.id !== null && <div className="agent-channel-actions">
-        {CHANNEL_PLATFORMS.filter((platform) => !channels.some((each) => each.platform === platform)).map((platform) =>
-          <button key={platform} type="button" className="button" onClick={() => setOpen({ id: null, platform, view: 'edit' })}>{t('AgentChannels.add', { platform: channelPlatform(platform).label })}</button>)}
-      </div>}
-    </>}
+    {able && profileId && channels.length > 0 && <ul className="agent-channel-list">
+      {channels.map((channel) => <li key={channel.id} className="agent-channel">
+        <ChannelRow channel={channel} requestsOpen={open?.id === channel.id && open.view === 'requests'}
+          onToggle={(enabled) => void toggle(channel, enabled)}
+          onRequests={() => setOpen(open?.id === channel.id && open.view === 'requests' ? null : { id: channel.id, platform: channel.platform, view: 'requests' })}
+          onEdit={() => setOpen({ id: channel.id, platform: channel.platform, view: 'edit' })}
+          onRemove={() => void remove(channel)} />
+        {open?.id === channel.id && open.view === 'requests' && <ChannelRequests channel={channel} />}
+      </li>)}
+    </ul>}
+    {able && profileId && open?.view === 'edit' && <ChannelDialog key={open.id ?? open.platform} profileId={profileId} platform={open.platform} agent={agent} hasProvider={hasProvider}
+      channel={channels.find((each) => each.id === open.id) ?? null} onClose={() => setOpen(null)} />}
   </section>
 }
 
-function ChannelRow({ channel, view, onToggle, onView, onRemove }: { channel: Channel; view: 'edit' | 'requests' | null; onToggle: (enabled: boolean) => void; onView: (view: 'edit' | 'requests') => void; onRemove: () => void }) {
+function ChannelRow({ channel, requestsOpen, onToggle, onRequests, onEdit, onRemove }: { channel: Channel; requestsOpen: boolean; onToggle: (enabled: boolean) => void; onRequests: () => void; onEdit: () => void; onRemove: () => void }) {
   const labelId = useId()
   const ready = channelPlatform(channel.platform).credentials.every(({ key }) => channel.stored.includes(key))
   const shown = channel.enabled ? channel.state : 'off'
+  const scope = [
+    t('AgentChannels.scopeProjects', { count: channel.projectPaths.length }),
+    t('AgentChannels.scopeAskers', { count: channel.allowedUsers.length }),
+    t('AgentChannels.scopeDaily', { count: channel.dailyPerUser })
+  ].join(' · ')
   return <div className="agent-channel-row">
     <div className="agent-channel-name">
       <strong id={labelId}>{channelPlatform(channel.platform).label}</strong>
       <span className="agent-channel-state" data-state={shown}><span className="agent-channel-dot" data-state={shown} aria-hidden="true" />{ready ? channelStateText(channel) : t('AgentChannels.missingCredentials')}</span>
+      <span className="agent-channel-scope muted">{scope}</span>
     </div>
     <div className="agent-channel-actions">
+      <button type="button" className="button small ghost" aria-expanded={requestsOpen} onClick={onRequests}>{t('AgentChannels.requests')}</button>
+      <button type="button" className="button small ghost" onClick={onEdit}>{t('AgentChannels.edit')}</button>
+      <button type="button" className="button small ghost" onClick={onRemove}>{t('AgentChannels.remove')}</button>
       <Toggle labelId={labelId} checked={channel.enabled} onChange={onToggle} />
-      <button type="button" className="button small" aria-expanded={view === 'requests'} onClick={() => onView('requests')}>{t('AgentChannels.requests')}</button>
-      <button type="button" className="button small" aria-expanded={view === 'edit'} onClick={() => onView('edit')}>{t('AgentChannels.edit')}</button>
-      <button type="button" className="button small" onClick={onRemove}>{t('AgentChannels.remove')}</button>
     </div>
   </div>
 }
@@ -94,7 +103,16 @@ type Draft = {
   dailyPerUser: string; dailyTotal: string; maxConcurrent: string; turnTimeoutSec: string
 }
 
-function ChannelForm({ profileId, platform, channel, onClose }: { profileId: string; platform: ChannelPlatform; channel: Channel | null; onClose: () => void }) {
+// Its own view, with its own save: a channel is kept apart from the agent's form.
+function ChannelDialog({ profileId, platform, channel, agent, hasProvider, onClose }: { profileId: string; platform: ChannelPlatform; channel: Channel | null; agent: AgentKind; hasProvider: boolean; onClose: () => void }) {
+  useOccludesBrowser()
+  const dialog = useRef<HTMLDialogElement>(null)
+  const titleId = useId()
+  useEffect(() => {
+    const element = dialog.current
+    element?.showModal()
+    return () => element?.close()
+  }, [])
   const formId = useId()
   const descriptor = channelPlatform(platform)
   const all = useChannels()
@@ -135,9 +153,15 @@ function ChannelForm({ profileId, platform, channel, onClose }: { profileId: str
   }
   const number = (key: 'dailyPerUser' | 'dailyTotal' | 'maxConcurrent' | 'turnTimeoutSec', label: string, min: number, max: number) =>
     <div className="squad-field"><label htmlFor={`${formId}-${key}`}>{label}</label><input id={`${formId}-${key}`} className="input" type="number" min={min} max={max} value={draft[key]} onKeyDown={onEnter} onChange={(event) => setDraft({ ...draft, [key]: event.target.value })} /></div>
-  return <div className="agent-channel-panel">
+  const title = t(channel ? 'AgentChannels.editTitle' : 'AgentChannels.add', { platform: descriptor.label })
+  return <dialog ref={dialog} className="modal agent-channel-dialog" aria-labelledby={titleId}
+    onCancel={(event) => { event.preventDefault(); onClose() }}
+    onClick={(event) => { if (event.target === event.currentTarget) onClose() }}>
+    <div className="modal-body">
+    <header className="modal-header"><h2 id={titleId}>{title}</h2><button type="button" className="icon-button modal-close" aria-label={t('AgentChannels.cancel')} onClick={onClose}><CloseIcon /></button></header>
+    <div className="agent-channel-steps">
     <div className="agent-channel-step">
-      <h4>{t('AgentChannels.step1')}</h4>
+      <h4><span className="agent-channel-step-number" aria-hidden="true">1</span>{t('AgentChannels.step1')}</h4>
       <p className="squad-block-hint muted">{t(`AgentChannels.${platform}.create`)}</p>
       <div className="agent-channel-step-actions">
         <a className="button" href={descriptor.console} target="_blank" rel="noreferrer">{t('AgentChannels.openConsole')}</a>
@@ -145,7 +169,7 @@ function ChannelForm({ profileId, platform, channel, onClose }: { profileId: str
       </div>
     </div>
     <div className="agent-channel-step">
-      <h4>{t('AgentChannels.step2')}</h4>
+      <h4><span className="agent-channel-step-number" aria-hidden="true">2</span>{t('AgentChannels.step2')}</h4>
       <p className="squad-block-hint muted">{t(`AgentChannels.${platform}.tokens`)}</p>
       <div className="agent-channel-grid">
         {descriptor.credentials.map(({ key, label, prefix }) => <div key={key} className="squad-field">
@@ -156,7 +180,7 @@ function ChannelForm({ profileId, platform, channel, onClose }: { profileId: str
       </div>
     </div>
     <div className="agent-channel-step">
-      <h4>{t('AgentChannels.step3')}</h4>
+      <h4><span className="agent-channel-step-number" aria-hidden="true">3</span>{t('AgentChannels.step3')}</h4>
       <p className="squad-block-hint muted">{t('AgentChannels.projectsHint')}</p>
       {offered.length === 0 ? <p className="squad-block-hint muted">{t('AgentChannels.noProjects')}</p> : <div className="agent-channel-projects">
         {offered.map((project) => <label key={project} className="agent-profile-check" title={project}>
@@ -166,7 +190,7 @@ function ChannelForm({ profileId, platform, channel, onClose }: { profileId: str
       </div>}
     </div>
     <div className="agent-channel-step">
-      <h4>{t('AgentChannels.step4')}</h4>
+      <h4><span className="agent-channel-step-number" aria-hidden="true">4</span>{t('AgentChannels.step4')}</h4>
       <div className="agent-channel-grid">
         <div className="squad-field"><label htmlFor={`${formId}-users`}>{t('AgentChannels.users')}</label><textarea id={`${formId}-users`} className="input" rows={3} spellCheck={false} value={draft.users} onChange={(event) => setDraft({ ...draft, users: event.target.value })} /></div>
         <div className="squad-field"><label htmlFor={`${formId}-places`}>{t('AgentChannels.places')}</label><textarea id={`${formId}-places`} className="input" rows={3} spellCheck={false} value={draft.places} onChange={(event) => setDraft({ ...draft, places: event.target.value })} /></div>
@@ -175,22 +199,27 @@ function ChannelForm({ profileId, platform, channel, onClose }: { profileId: str
       <label className="agent-profile-check"><input type="checkbox" checked={draft.allowDirect} onChange={(event) => setDraft({ ...draft, allowDirect: event.target.checked })} />{t('AgentChannels.allowDirect')}</label>
     </div>
     <div className="agent-channel-step">
-      <h4>{t('AgentChannels.step5')}</h4>
-      <div className="agent-channel-grid">
+      <h4><span className="agent-channel-step-number" aria-hidden="true">5</span>{t('AgentChannels.step5')}</h4>
+      <div className="agent-channel-grid agent-channel-limits">
         {number('dailyPerUser', t('AgentChannels.dailyPerUser'), 1, 500)}
         {number('dailyTotal', t('AgentChannels.dailyTotal'), 1, 10_000)}
         {number('maxConcurrent', t('AgentChannels.maxConcurrent'), 1, 5)}
         {number('turnTimeoutSec', t('AgentChannels.turnTimeout'), 30, 1800)}
       </div>
-      <p className="squad-block-hint muted">{t('AgentChannels.instructionsHint')}</p>
-      <p className="squad-block-hint muted">{t('AgentChannels.offlineHint')}</p>
+      {!hasProvider && <p className="squad-block-hint muted">{t('AgentChannels.quotaHint', { agent: agentLabel(agent) })}</p>}
+    </div>
+    <ul className="agent-channel-notes muted">
+      <li>{t('AgentChannels.instructionsHint')}</li>
+      <li>{t('AgentChannels.offlineHint')}</li>
+    </ul>
     </div>
     {error && <p className="modal-error" role="alert">{error}</p>}
-    <div className="agent-channel-footer">
+    <footer className="modal-footer agent-channel-footer">
       <button type="button" className="button ghost" disabled={busy} onClick={onClose}>{t('AgentChannels.cancel')}</button>
       <button type="button" className="button primary" disabled={busy} onClick={() => void save()}>{t('AgentChannels.save')}</button>
+    </footer>
     </div>
-  </div>
+  </dialog>
 }
 
 const PAGE = 30

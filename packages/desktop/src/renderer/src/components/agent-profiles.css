@@ -40,3 +40,7 @@
 .agent-template-dialog-description { margin: 0; font-size: 12px; }
 .agent-template-dialog .agent-profile-templates { min-height: 0; overflow-y: auto; padding: 4px; }
 .agent-template-dialog .squad-cards { grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); }
+.agent-profile-form { gap: 32px; padding-bottom: 32px; }
+.agent-profile-fields { display: flex; flex-direction: column; gap: 20px; }
+.agent-profile-section { margin: 12px 0 0; font-size: 13px; font-weight: 600; color: var(--text); }
+.agent-profile-section:first-of-type { margin-top: 0; }

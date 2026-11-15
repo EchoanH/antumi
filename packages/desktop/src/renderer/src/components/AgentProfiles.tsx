@@ -145,6 +145,7 @@ function ProfileEditor({ profile, seed, template, onCancel, onDone }: { profile:
   const servers = useCore((state) => state.mcpServers)
   const provider = useCore((state) => state.modelProviders.find((item) => item.id === fields.modelProvider) ?? null)
   const modeSupported = useProfileDelegationModeSupported()
+  const channels = useChannels()
   const readOnlyUnsupported = fields.capability !== 'develop' && agentDescriptor(fields.agent).capabilities.readOnly === false
   const catalog = useAgentCatalog(readOnlyUnsupported ? null : fields.agent, true, provider)
   const quickPreference = usePreferences((state) => state.quickModels[fields.agent])
@@ -168,13 +169,17 @@ function ProfileEditor({ profile, seed, template, onCancel, onDone }: { profile:
     onDone()
   }
   const agents = installed.includes(fields.agent) ? installed : [fields.agent, ...installed]
-  return <form className="squad-page-body agent-profile-form" onSubmit={(event) => { event.preventDefault(); void save() }}>
+  const onPlatform = channels.some((channel) => channel.profileId === profile?.id)
+  return <div className="squad-page-body agent-profile-form">
+  <form className="agent-profile-fields" onSubmit={(event) => { event.preventDefault(); void save() }}>
     <fieldset className="squad-fields" disabled={busy}>
       {!profile && <p className="squad-block-hint muted">{t('AgentProfiles.createWithAgentHint')}<button type="button" className="link-button" onClick={() => openConversationDraft()}>{t('AgentsPageHeader.openNewConversation')}</button></p>}
       {template && <div className="agent-template-origin"><strong>{t('AgentTemplates.fromTemplate', { name: template.name })}</strong><p className="muted">{t('AgentTemplates.editHint')}</p></div>}
+      <h3 className="agent-profile-section">{t('AgentProfiles.sectionIdentity')}</h3>
       <div className="squad-field"><label htmlFor={`${formId}-name`}>{t('AgentProfiles.name')}</label><input id={`${formId}-name`} className="input" required autoFocus maxLength={60} value={fields.name} onChange={(event) => setFields({ ...fields, name: event.target.value })} /></div>
       <div className="squad-field"><label htmlFor={`${formId}-description`}>{t('AgentProfiles.expertise')}</label><textarea id={`${formId}-description`} className="input" rows={2} maxLength={2000} value={fields.description ?? ''} onChange={(event) => setFields({ ...fields, description: event.target.value })} /></div>
       <div className="squad-field"><label htmlFor={`${formId}-instructions`}>{t('AgentProfiles.instructions')}</label><textarea id={`${formId}-instructions`} className="input" rows={6} maxLength={20000} value={fields.instructions ?? ''} onChange={(event) => setFields({ ...fields, instructions: event.target.value })} /></div>
+      <h3 className="agent-profile-section">{t('AgentProfiles.sectionRuntime')}</h3>
       <div className="agent-profile-options"><div className="squad-field">{t('AgentProfiles.engine')}<ChatPicker label={t('AgentProfiles.engine')} value={fields.agent} placeholder="" size="field" placement="below" options={agents.map((agent) => ({ value: agent, label: agentLabel(agent), icon: <AgentIcon agent={agent} /> }))} onChange={(value) => { const agent = agents.find((item) => item === value); if (agent) { setFields({ ...fields, agent, model: null, effort: null, modelProvider: null, delegationMode: fields.delegationMode && delegationModes(agent).includes(fields.delegationMode) ? fields.delegationMode : null }); setModelPending(Boolean(template)) } }} /></div>
         <div className="squad-field">{t('AgentModelPicker.model')}<AgentModelPicker catalog={catalog} choice={{ model: fields.model ?? undefined, effort: fields.effort ?? undefined }} size="field" onChange={(choice) => { setModelPending(false); setFields({ ...fields, model: choice.model ?? null, effort: choice.effort ?? null }) }} /></div>
         <div className="squad-field">{t('Squads.capability_1905')}<ChatPicker label={t('Squads.capability_1905')} value={fields.capability ?? 'readOnly'} placeholder="" size="field" placement="below" options={[{ value: 'readOnly', label: t('Squads.readOnlyAnalysis') }, { value: 'develop', label: t('Squads.developmentTesting') }]} onChange={(value) => setFields({ ...fields, ...(value === 'develop' ? { capability: 'develop' } : { capability: 'readOnly', delegationMode: null }) })} /></div>
@@ -186,7 +191,9 @@ function ProfileEditor({ profile, seed, template, onCancel, onDone }: { profile:
       <ProviderPicker agent={fields.agent} value={fields.modelProvider ?? null} size="field" placement="below" onChange={(modelProvider) => { setFields({ ...fields, modelProvider, model: null, effort: null }); setModelPending(Boolean(template)) }} />
       <p className="squad-block-hint muted" role={readOnlyUnsupported ? 'alert' : undefined}>{t(readOnlyUnsupported ? 'AgentTemplates.readOnlyUnsupported' : fields.capability !== 'develop' ? 'AgentTemplates.readOnlyHint'
         : !modeSupported || !fields.delegationMode ? 'AgentTemplates.developHint' : fields.delegationMode === 'bypass' ? 'AgentTemplates.developBypassHint' : 'AgentTemplates.developModeHint')}</p>
+      <h3 className="agent-profile-section">{t('AgentProfiles.sectionTools')}</h3>
       <p className="squad-block-hint muted">{t('AgentTemplates.toolsHint')}</p>
+      {onPlatform && <p className="squad-block-hint muted" role="note">{t('AgentProfiles.channelToolsNote')}</p>}
       <div className="agent-profile-resources">
         <section className="squad-block"><h3 className="agent-profile-resource-heading">{t('AgentProfiles.callable')}<span className="agent-profile-info" tabIndex={0} aria-label={t('AgentProfiles.callableHint')} data-tooltip={t('AgentProfiles.callableHint')} data-tooltip-side="top"><InfoIcon /></span></h3>
           {Object.values(profiles).filter((item) => item.archivedAt === null && item.id !== profile?.id).map((item) => <label key={item.id} className="agent-profile-check"><input type="checkbox" checked={fields.callableProfiles?.includes(item.id) ?? false} onChange={(event) => setFields({ ...fields, callableProfiles: event.target.checked ? [...(fields.callableProfiles ?? []), item.id] : fields.callableProfiles?.filter((id) => id !== item.id) })} />{item.name}</label>)}
@@ -201,8 +208,9 @@ function ProfileEditor({ profile, seed, template, onCancel, onDone }: { profile:
         </section>
       </div>
     </fieldset>
-    <AgentChannels profileId={profile?.id ?? null} agent={fields.agent} hasProvider={Boolean(fields.modelProvider)} />
     {error && <p className="modal-error" role="alert">{error}</p>}
     <footer className="squad-editor-footer"><button type="button" className="button ghost" disabled={busy} onClick={onCancel}>{t('ChatCommandSettings.cancel')}</button><button type="submit" className="button primary" disabled={busy || modelPending || readOnlyUnsupported}>{t('FileEditor.save')}</button></footer>
   </form>
+  <AgentChannels profileId={profile?.id ?? null} agent={profile?.agent ?? fields.agent} hasProvider={Boolean(profile ? profile.modelProvider : fields.modelProvider)} />
+  </div>
 }
