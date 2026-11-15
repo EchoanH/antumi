@@ -158,6 +158,13 @@ describe('ChannelService', () => {
     await expect(channels.save(base)).rejects.toMatchObject({ reason: 'profile-not-for-channels' })
   })
 
+  it('keeps a project it already reads once that is no longer recent, but adds no other', async () => {
+    projects.forget(repo)
+    const base = { id: channel.id, profileId: profile.id, platform: 'slack' as const, allowedUsers: ['U1'], allowedPlaces: ['C1'] }
+    expect(await channels.save({ ...base, enabled: false, projectPaths: [repo] })).toMatchObject({ enabled: false, projectPaths: [repo] })
+    await expect(channels.save({ ...base, projectPaths: [repo, '/etc'] })).rejects.toMatchObject({ reason: 'channel-project-not-recent' })
+  })
+
   it('answers a mention in its thread, from a locked-down conversation of the asker\'s own', async () => {
     const asked = await ask()
     expect(sent('accepted')).toEqual([{ type: 'accepted', channelId: channel.id, eventKey: asked.eventKey }])

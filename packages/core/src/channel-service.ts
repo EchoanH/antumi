@@ -176,7 +176,8 @@ export class ChannelService {
     if (!profile || profile.archivedAt != null) throw new Rejection('agent-profile-not-found', 'the agent is gone')
     if (profile.audience !== 'channels') throw new Rejection('profile-not-for-channels', 'the agent is not set to answer from chat platforms')
     if (!agentDescriptor(profile.agent).capabilities.lockdown) throw new Rejection('agent-no-lockdown', `${agentDescriptor(profile.agent).label} cannot answer from a chat platform`)
-    const recent = new Set(this.options.recentProjects())
+    // One it already reads stays though it has fallen out of the recent list, or every later save would fail.
+    const recent = new Set([...this.options.recentProjects(), ...(existing?.projectPaths ?? [])])
     const projectPaths = [...new Set(fields.projectPaths ?? [])]
     for (const project of projectPaths) {
       if (!recent.has(project)) throw new Rejection('channel-project-not-recent', project)
