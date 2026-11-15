@@ -267,7 +267,17 @@ function FeishuMark() {
   )
 }
 
-const CHANNEL_MARKS = { slack: SlackMark, feishu: FeishuMark } satisfies Record<ChannelPlatform, () => ReactElement>
+// DingTalk's wing, the path of its open platform's own favicon (img.alicdn.com, O1CN01WMvMRG1ks3Ixc9x1v),
+// centred; the logo is Alibaba's trademark.
+function DingtalkMark() {
+  return (
+    <svg className="channel-mark" viewBox="-5.5 0 31 31" aria-hidden="true">
+      <path fill="#007FFF" d="M18.975 14.517C13.963 10.704 8.313 5.654 2.118.24 1.63-.187 1.197-.02.98.548-.416 4.18.936 7.405 3.123 9.265c2.195 1.867 5.459 3.586 7.458 4.498.078.035.01.148-.069.114C6.84 12.283 4.285 11.132.82 8.5c-.373-.284-.75-.174-.796.38-.283 3.472 1.972 6.198 4.489 7.12 1.557.571 3.261.887 4.842 1.075.082.01.064.13-.02.13-2.036.007-4.497-.474-6.626-1.28-.45-.17-.605.183-.535.463.363 1.467 2.205 3.71 5.136 4.18.548.089 1.133.1 1.653.085.124-.003.154.064.114.158 0 0-1.992 3.362-2.079 3.505-.068.112-.026.202.115.202h2.628c.121 0 .196.077.134.179-.062.101-3.509 5.733-3.672 6.002-.142.234.026.413.292.22l11.597-8.365c.144-.104.11-.245-.093-.245h-2.357c-.153 0-.188-.101-.083-.205.105-.103 2.675-2.627 3.587-3.57.952-.986 1.438-2.792-.171-4.016" />
+    </svg>
+  )
+}
+
+const CHANNEL_MARKS = { slack: SlackMark, feishu: FeishuMark, dingtalk: DingtalkMark } satisfies Record<ChannelPlatform, () => ReactElement>
 
 // A chat platform an agent answers on, by its own logo.
 export function ChannelPlatformIcon({ platform }: { platform: ChannelPlatform }) {

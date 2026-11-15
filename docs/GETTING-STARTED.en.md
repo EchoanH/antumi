@@ -110,7 +110,7 @@ If it cannot connect, read step 2 in Settings, and run `wg show wg-antumi` on th
 
 When a conversation waits for you, finishes a turn or its agent exits unexpectedly, ntfy shows a one-line notice, never the conversation's title or content. ntfy.sh is a public server, so pick a topic that is hard to guess, or use your own ntfy server.
 
-## Let colleagues ask on Slack or Feishu
+## Let colleagues ask on Slack, Feishu or DingTalk
 
 Put an agent on Slack and colleagues can mention it in a channel. It answers from the projects you pick: where a feature lives, what an error means. It changes no code and reaches nothing else on this computer.
 
@@ -126,7 +126,7 @@ Put an agent on Slack and colleagues can mention it in a channel. It answers fro
 Worth knowing:
 
 - With no model provider picked for the agent, colleagues' questions spend your current Claude Code account.
-- Questions asked while the computer is off or asleep are not received, and neither Slack nor Feishu sends them again.
+- Questions asked while the computer is off or asleep are not received, and the platform does not send them again.
 - When someone else asks in the same thread, it does not remember what the first person asked: each has a context of their own.
 - Who asked what, which files it read and what it answered are all under **Questions** in the same place.
 
@@ -138,6 +138,15 @@ The steps are the same; click **Add 飞书**. What differs is making the app and
 - Enter the App ID and App Secret from Credentials & Basic Info and save. Once the state reads “Connected”, go back to Events & Callbacks in the console, choose to receive events through a persistent connection, add the Message received event, and publish another version. Feishu saves a persistent connection only once one is open, so save in Antumi first.
 - Feishu shows member IDs and group IDs nowhere. Add the bot to the group and have the colleague mention it once: anyone not yet allowed gets a reply with their ID (starting `ou_`) and the group's (starting `oc_`) to put on the allow list.
 - In a group it answers as a topic; mention it again inside the topic to go on.
+
+### On DingTalk
+
+The steps are the same; click **Add 钉钉**. What differs:
+
+- In the DingTalk developer console, create an internal app, add the Robot feature with Stream mode as its message receiving mode, and publish the robot. Under Permissions, apply for the permission to send messages as an internal robot (it is needed to read screenshots and to answer slowly), then publish a version.
+- Enter the Client ID and Client Secret from the app's credentials and save; wait for “Connected”.
+- Member IDs are the userIds of the address book, shown in a member's details in the admin console. Group IDs (starting `cid`) are shown nowhere: have the colleague mention the robot once and take them from the “no access” reply.
+- A DingTalk robot can neither answer in a thread nor add 👀: its answer is a new message in the group that mentions the asker, and each mention is a new question that does not remember the last. In a direct message it remembers what came before.
 
 ## Features
 

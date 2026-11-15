@@ -67,6 +67,21 @@ export const CHANNEL_PLATFORM_DESCRIPTORS = {
     // Five messages a second to one chat, shared by every bot in it.
     minGapMs: 250,
     features: { reactions: true }
+  },
+  dingtalk: {
+    label: '钉钉',
+    // Its Client ID and Client Secret, stored under the same names as Feishu's App ID and Secret.
+    credentials: [
+      { key: 'appId', label: 'Client ID', prefix: 'ding' },
+      { key: 'appSecret', label: 'Client Secret' }
+    ],
+    console: 'https://open-dev.dingtalk.com/fe/app',
+    // A robot's message takes 15000 bytes, a Chinese character three of them.
+    textLimit: 3500,
+    // Twenty messages a minute from a robot to one chat.
+    minGapMs: 3100,
+    // A robot has no way to react to a message.
+    features: { reactions: false }
   }
 } satisfies Record<ChannelPlatform, ChannelPlatformDescriptor>
 

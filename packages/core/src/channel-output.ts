@@ -124,8 +124,41 @@ export function toFeishu(markdown: string): string {
   return out.join('\n')
 }
 
+// Markdown outside code, as DingTalk's subset reads it: no strikethrough, a link only to an
+// http(s) address, and a picture as a link, so an answer loads nothing from anywhere by itself.
+function dingtalkInline(text: string): string {
+  return text
+    .replace(/!\[([^\]\n]*)\]\(([^)\s]+)\)/g, (_all, label: string, url: string) => (/^https?:\/\//i.test(url) ? `[${label || url}](${url})` : label))
+    .replace(/(?<!!)\[([^\]\n]+)\]\(([^)\s]+)\)/g, (all, label: string, url: string) => (/^https?:\/\//i.test(url) ? all : `${label} (${url})`))
+    .replace(/~~([^~\n]+)~~/g, '$1')
+}
+
+// DingTalk's Markdown has headings, quotes, emphasis, links and lists, but no code block or table:
+// code is kept as a quote, line for line, and a table as its rows without the rule under the header.
+export function toDingtalk(markdown: string): string {
+  const out: string[] = []
+  let fenced = false
+  for (const raw of markdown.split('\n')) {
+    if (/^\s*```/.test(raw)) {
+      fenced = !fenced
+      continue
+    }
+    if (fenced) {
+      out.push(raw.trim() ? `> ${raw}` : '>')
+      continue
+    }
+    if (TABLE_ROW.test(raw)) {
+      if (/^\s*\|[\s|:-]+\|\s*$/.test(raw)) continue
+      out.push(dingtalkInline(raw.trim().replace(/^\|\s*|\s*\|$/g, '').split(/\s*\|\s*/).join(' · ')))
+      continue
+    }
+    out.push(raw.split(/(`[^`\n]*`)/).map((part, index) => (index % 2 ? part : dingtalkInline(part))).join(''))
+  }
+  return out.join('\n')
+}
+
 // As the platform writes text: its escaping and its marks for bold, links and code.
-const FORMATTERS = { slack: toSlack, feishu: toFeishu } satisfies Record<ChannelPlatform, (markdown: string) => string>
+const FORMATTERS = { slack: toSlack, feishu: toFeishu, dingtalk: toDingtalk } satisfies Record<ChannelPlatform, (markdown: string) => string>
 
 // In pieces of at most limit, cut between paragraphs, else lines, else anywhere; a code block cut
 // in two is closed in one piece and opened again in the next.

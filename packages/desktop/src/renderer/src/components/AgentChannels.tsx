@@ -25,7 +25,8 @@ const FILTER_FROM = 8
 
 export function channelStateText(channel: Pick<Channel, 'state' | 'error' | 'tenantName' | 'enabled'>): string {
   if (!channel.enabled) return t('AgentChannels.stateDisabled')
-  if (channel.state === 'connected') return t('AgentChannels.stateConnected', { name: channel.tenantName ?? '' })
+  // DingTalk does not say its organisation's name.
+  if (channel.state === 'connected') return channel.tenantName ? t('AgentChannels.stateConnected', { name: channel.tenantName }) : t('AgentChannels.stateConnectedUnnamed')
   if (channel.state === 'failed') return t('AgentChannels.stateFailed', { error: channel.error ?? '' })
   return t(channel.state === 'connecting' ? 'AgentChannels.stateConnecting' : 'AgentChannels.stateOff')
 }

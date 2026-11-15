@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { MAX_CHANNEL_ANSWER_CHARS } from '@antumi/protocol'
-import { channelMessages, inPieces, redact, toFeishu, toSlack, withoutMachinePaths } from './channel-output'
+import { channelMessages, inPieces, redact, toDingtalk, toFeishu, toSlack, withoutMachinePaths } from './channel-output'
 
 describe('what is posted for an agent', () => {
   it('hides what looks like a secret, and the values it is told to', () => {
@@ -44,6 +44,17 @@ describe('what is posted for an agent', () => {
     expect(toFeishu('# Title\n**bold** and ~~gone~~\n- one')).toBe('# Title\n**bold** and ~~gone~~\n- one')
     expect(toFeishu('before\n| a | b |\n|---|---|\n| 1 | 2 |\nafter')).toBe('before\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nafter')
     expect(toFeishu('```ts\nconst a = 1')).toBe('```ts\nconst a = 1\n```')
+  })
+
+  it('writes what DingTalk cannot draw as what it can: code as a quote, a table as rows', () => {
+    expect(toDingtalk('# Title\n**bold** and ~~gone~~\n- one')).toBe('# Title\n**bold** and gone\n- one')
+    expect(toDingtalk('```ts\nconst a = 1\n\n  b()\n```\nafter')).toBe('> const a = 1\n>\n>   b()\nafter')
+    expect(toDingtalk('| a | b |\n|---|:-:|\n| 1 | 2 |')).toBe('a · b\n1 · 2')
+  })
+
+  it('links only to the web for DingTalk, and loads no picture of its own', () => {
+    expect(toDingtalk('[run](dtmd://dingtalkclient/sendMessage?content=x) [ok](https://example.com) ![pic](https://example.com/a.png) `[x](javascript:1)`')).toBe(
+      'run (dtmd://dingtalkclient/sendMessage?content=x) [ok](https://example.com) [pic](https://example.com/a.png) `[x](javascript:1)`')
   })
 
   it('cuts a long answer between paragraphs and keeps a code block whole in each piece', () => {
