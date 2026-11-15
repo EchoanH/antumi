@@ -192,9 +192,9 @@ function ProfileEditor({ profile, seed, template, onCancel, onDone }: { profile:
         </span>
       </header>
       {channelsSupported && <div className="agent-audience" role="radiogroup" aria-label={t('AgentProfiles.audience')}>
-        {([['user', PersonIcon, 'AgentProfiles.audienceUser', 'AgentProfiles.audienceUserHint'], ['channels', GroupChatIcon, 'AgentProfiles.audienceChannels', 'AgentProfiles.audienceChannelsHint']] as const).map(([value, Icon, title, hint]) =>
+        {([['user', PersonIcon, 'AgentProfiles.audienceUser', 'AgentProfiles.audienceUserHint', null], ['channels', GroupChatIcon, 'AgentProfiles.audienceChannels', 'AgentProfiles.audienceChannelsHint', 'AgentProfiles.audienceChannelsDetail']] as const).map(([value, Icon, title, hint, detail]) =>
           <button key={value} type="button" role="radio" aria-checked={audience === value} className="agent-audience-card" disabled={onPlatform && value === 'user'}
-            title={onPlatform && value === 'user' ? t('AgentProfiles.audienceLocked') : undefined}
+            title={onPlatform && value === 'user' ? t('AgentProfiles.audienceLocked') : undefined} data-tooltip={detail ? t(detail) : undefined}
             onClick={() => setFields({ ...fields, audience: value, ...(value === 'channels' && !agentDescriptor(fields.agent).capabilities.lockdown ? { agent: lockable[0] ?? fields.agent, model: null, effort: null } : {}) })}>
             <span className="agent-audience-icon"><Icon /></span>
             <span className="agent-audience-text"><strong>{t(title)}</strong><span>{t(hint)}</span></span>

@@ -25,8 +25,13 @@
 .agent-channel-step > p { margin-block: 0; }
 .agent-channel-step-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .agent-channel-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 12px; }
-.agent-channel-projects { display: flex; flex-direction: column; max-height: 200px; overflow: auto; }
-.agent-channel-projects .agent-profile-check { align-items: flex-start; overflow-wrap: anywhere; }
+.agent-channel-projects { display: flex; flex-direction: column; max-height: 240px; overflow: auto; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius); }
+.agent-channel-projects .agent-profile-check { min-width: 0; }
+.agent-channel-projects input[type="checkbox"] { flex-shrink: 0; }
+.agent-channel-project { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Stretched by the column, so the indent above does not push it past the edge. */
+.agent-channel-step > .input { width: auto; }
+.agent-channel-step-count { margin-left: 8px; color: var(--text-muted); font-weight: 400; }
 .agent-channel-footer { justify-content: flex-end; }
 .agent-channel-requests { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
 .agent-channel-requests > li + li { border-top: 1px solid var(--border); }

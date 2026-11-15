@@ -11,7 +11,7 @@ import { t } from '../i18n'
 import { agentLabel } from '../labels'
 import { useOccludesBrowser } from '../browser-occlusion'
 import { CopyButton } from './CopyButton'
-import { ChatIcon, CloseIcon, PlusIcon } from './icons'
+import { ChatIcon, CloseIcon, InfoIcon, PlusIcon } from './icons'
 import { Toggle } from './SettingsControls'
 import './agent-channels.css'
 
@@ -20,6 +20,8 @@ import './agent-channels.css'
 
 const lines = (text: string) => [...new Set(text.split(/[\s,，]+/).map((each) => each.trim()).filter(Boolean))]
 const folder = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
+// Past this many projects, a list to scroll needs a filter.
+const FILTER_FROM = 8
 
 export function channelStateText(channel: Pick<Channel, 'state' | 'error' | 'tenantName' | 'enabled'>): string {
   if (!channel.enabled) return t('AgentChannels.stateDisabled')
@@ -51,7 +53,7 @@ export function AgentChannels({ profileId, agent, hasProvider }: { profileId: st
     <header className="agent-card-head">
       <span className="agent-card-icon"><ChatIcon /></span>
       <div>
-        <h3>{t('AgentChannels.title')}</h3>
+        <h3 className="agent-profile-resource-heading">{t('AgentChannels.title')}<span className="agent-profile-info" tabIndex={0} aria-label={t('AgentChannels.hintDetail')} data-tooltip={t('AgentChannels.hintDetail')} data-tooltip-side="top"><InfoIcon /></span></h3>
         <p>{t('AgentChannels.hint')}</p>
       </div>
       {able && profileId && missing.map((platform) =>
@@ -130,8 +132,12 @@ function ChannelDialog({ profileId, platform, channel, agent, hasProvider, onClo
   useEffect(() => {
     void perform((rpc) => rpc.call('projects.recent', {})).then((recent) => setProjects(recent ?? []))
   }, [])
-  // One it was given and is no longer recent still shows, so it can be seen and taken off.
-  const offered = [...new Set([...draft.projectPaths, ...projects])]
+  const [filter, setFilter] = useState('')
+  // One it was given and is no longer recent still shows, so it can be seen and taken off. Ordered by what
+  // it had on opening, so a project ticked now does not jump to the top.
+  const offered = [...new Set([...(channel?.projectPaths ?? []), ...projects, ...draft.projectPaths])]
+  const query = filter.trim().toLowerCase()
+  const shown = query ? offered.filter((project) => project.toLowerCase().includes(query)) : offered
   const save = async () => {
     const credentials = Object.fromEntries(descriptor.credentials.flatMap(({ key }) => (draft.credentials[key]?.trim() ? [[key, draft.credentials[key].trim()]] : [])))
     const parsed = ChannelInput.safeParse({
@@ -182,13 +188,15 @@ function ChannelDialog({ profileId, platform, channel, agent, hasProvider, onClo
       </div>
     </div>
     <div className="agent-channel-step">
-      <h4><span className="agent-channel-step-number" aria-hidden="true">3</span>{t('AgentChannels.step3')}</h4>
+      <h4><span className="agent-channel-step-number" aria-hidden="true">3</span>{t('AgentChannels.step3')}{draft.projectPaths.length > 0 && <span className="agent-channel-step-count">{t('AgentChannels.projectsPicked', { count: draft.projectPaths.length })}</span>}</h4>
       <p className="squad-block-hint muted">{t('AgentChannels.projectsHint')}</p>
+      {offered.length > FILTER_FROM && <input className="input" type="search" value={filter} onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault() }} onChange={(event) => setFilter(event.target.value)} placeholder={t('AgentChannels.filterProjects')} aria-label={t('AgentChannels.filterProjects')} />}
       {offered.length === 0 ? <p className="squad-block-hint muted">{t('AgentChannels.noProjects')}</p> : <div className="agent-channel-projects">
-        {offered.map((project) => <label key={project} className="agent-profile-check" title={project}>
+        {shown.map((project) => <label key={project} className="agent-profile-check" title={project}>
           <input type="checkbox" checked={draft.projectPaths.includes(project)} onChange={(event) => setDraft({ ...draft, projectPaths: event.target.checked ? [...draft.projectPaths, project] : draft.projectPaths.filter((each) => each !== project) })} />
-          <span>{folder(project)} <span className="muted">{project}</span></span>
+          <span className="agent-channel-project">{folder(project)} <span className="muted">{project}</span></span>
         </label>)}
+        {shown.length === 0 && <p className="squad-block-hint muted">{t('AgentChannels.noMatch')}</p>}
       </div>}
     </div>
     <div className="agent-channel-step">
