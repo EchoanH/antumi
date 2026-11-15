@@ -111,7 +111,7 @@ describe('a question from Slack to an agent and back', () => {
   let channel: Channel
   let savedId: string | undefined
 
-  const profile = AgentProfile.parse({ id: '11111111-1111-4111-8111-111111111111', name: '答疑', instructions: '简短回答。', agent: 'claude', archivedAt: null, createdAt: 1, updatedAt: 1 })
+  const profile = AgentProfile.parse({ id: '11111111-1111-4111-8111-111111111111', name: '答疑', instructions: '简短回答。', agent: 'claude', audience: 'channels', archivedAt: null, createdAt: 1, updatedAt: 1 })
   const save = (credentials: { appToken: string; botToken: string }) => channels.save({ profileId: profile.id, platform: 'slack', projectPaths: [repo], allowedUsers: ['U1'], allowedPlaces: ['C1'], allowDirect: true, credentials, ...(savedId ? { id: savedId } : {}) })
   const stateOf = () => channels.list()[0]?.state
   const when = (holds: () => boolean, timeoutMs = 3000) => until(() => (holds() ? true : undefined), timeoutMs)
@@ -234,7 +234,7 @@ describe('a question from Slack to an agent and back', () => {
   it('waits as long as Slack says when told to slow down, then posts', async () => {
     slack.state.limited = 1
     slack.send({ type: 'app_mention', user: 'U1', text: '<@UBOT> hi', ts: '100.1', channel: 'C1' })
-    await when(() => slack.posts().length === 2, 5000)
+    await when(() => slack.posts().length === 2 && store.outboxStates().some((row) => row.op === 'post' && row.state === 'sent'), 5000)
     expect(store.outboxStates().filter((row) => row.op === 'post')).toEqual([{ op: 'post', state: 'sent', text: 'echo: hi' }])
   }, 10_000)
 

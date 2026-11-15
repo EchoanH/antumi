@@ -1,6 +1,7 @@
 import { getLocale, t, tr } from '../i18n'
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode, type RefObject, type HTMLAttributes } from 'react'
 import type { EditorView } from '@codemirror/view'
+import { forChannels } from '@antumi/protocol'
 import type { AgentKind, DelegationTarget, ProjectFileMatch } from '@antumi/protocol'
 import { useCore, useFileMentionsSupported } from '../core-store'
 import { fileTarget, insertMention, matchConversations, matchProjects, mentionQuery, placeMention, type MentionedText, type MentionTarget } from '../chat-mentions'
@@ -110,7 +111,7 @@ export function useChatMentionMenu({ value, setText, setValue, roots, cwd, agent
   const delegates = Boolean(rpc?.features.includes('agent-profiles') && conversation
     && !conversation.parentConversationId && !conversation.discussionId && !conversation.squadRunId && !conversation.routineId && !conversation.helperOf)
   const disabledAgents = usePreferences((s) => s.disabledAgents)
-  const callable = Object.values(profiles).filter((profile) => delegates && profile.archivedAt === null && profile.id !== conversation?.profile?.id
+  const callable = Object.values(profiles).filter((profile) => delegates && profile.archivedAt === null && !forChannels(profile) && profile.id !== conversation?.profile?.id
     && !disabledAgents.includes(profile.agent) && (!conversation?.profile || conversation.profile.callableProfiles.includes(profile.id)))
   // What core says of whom it can delegate to: their quota, and the agents called as they are.
   const [targets, setTargets] = useState<readonly DelegationTarget[]>([])

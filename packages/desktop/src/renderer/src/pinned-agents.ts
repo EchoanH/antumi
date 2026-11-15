@@ -1,3 +1,4 @@
+import { forChannels } from '@antumi/protocol'
 import type { AgentProfile, Conversation } from '@antumi/protocol'
 import { openConversationDraft, selectConversation, useCore } from './core-store'
 import { setPreference, usePreferences } from './preferences'
@@ -6,7 +7,7 @@ import { isListedConversation } from './search-palette'
 export function pinnedAgents(ids: readonly string[], profiles: Readonly<Record<string, AgentProfile>>): AgentProfile[] {
   return [...new Set(ids)].flatMap((id) => {
     const profile = profiles[id]
-    return profile && profile.archivedAt === null ? [profile] : []
+    return profile && profile.archivedAt === null && !forChannels(profile) ? [profile] : []
   })
 }
 

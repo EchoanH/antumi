@@ -114,8 +114,8 @@ When a conversation waits for you, finishes a turn or its agent exits unexpected
 
 Put an agent on Slack and colleagues can mention it in a channel. It answers from the projects you pick: where a feature lives, what an error means. It changes no code and reaches nothing else on this computer.
 
-1. On the **Agents** page create an agent (external agent: Claude Code), say in its Instructions what it answers and how long its answers run, and save.
-2. Open the agent again and, under **Chat platforms** at the bottom, click **Add Slack** and follow the five steps:
+1. On the **Agents** page create an agent, pick **On a chat platform** at the top, say in its Instructions what it answers and how long its answers run, and save. Such an agent answers only on chat platforms: it has no skills or MCP servers to set and does not appear in your own conversations or delegations.
+2. **Chat platforms** now shows below. Click **Add Slack** and follow the five steps:
    - Open Slack's app page, choose **From a manifest**, paste the manifest Antumi gives you, create the app and install it to the workspace.
    - Enter two tokens: the App-Level Token (Basic Information → App-Level Tokens, scope `connections:write`) and the Bot User OAuth Token (OAuth & Permissions).
    - Pick the projects it may read. It reads only files of Git repositories that `.gitignore` does not ignore; files like `.env` and keys are withheld.

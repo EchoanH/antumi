@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { adapterOf } from './agents'
-import { AGENT_CALL_NOT_STARTED, AGENT_KINDS, agentCallOpen, agentDescriptor, checkResumeAgentCall, type AgentCallResumeCheck, agentReadiness, AgentCall, AgentProfile, quotaVerdict, type AgentCallWorkspace, type AgentCallWorktree, type AgentKind, type AgentProfileFields, type AgentUsage, type ChatItem, type Conversation, type DelegationQuota, type DelegationTarget, type DirectAgentCall, type Environment, type ModelProvider, isHelper } from '@antumi/protocol'
+import { AGENT_CALL_NOT_STARTED, AGENT_KINDS, agentCallOpen, agentDescriptor, forChannels, checkResumeAgentCall, type AgentCallResumeCheck, agentReadiness, AgentCall, AgentProfile, quotaVerdict, type AgentCallWorkspace, type AgentCallWorktree, type AgentKind, type AgentProfileFields, type AgentUsage, type ChatItem, type Conversation, type DelegationQuota, type DelegationTarget, type DirectAgentCall, type Environment, type ModelProvider, isHelper } from '@antumi/protocol'
 import type { ConversationService } from './conversation-service'
 import { AgentProfileStore } from './agent-profile-store'
 import { committedHead, describeWorktreeOutcome, isGitCheckout, layOutDelegationWorktree, readWorktreeOutcome, worktreeMemberNote } from './delegation-worktree'
@@ -99,6 +99,8 @@ export class AgentProfileService {
   get(id: string): AgentProfile {
     const profile = this.store.get(id)
     if (profile.archivedAt !== null) throw new Rejection('profile-archived', '智能体已归档')
+    // One set to answer from chat platforms is for nothing else: not a conversation, a delegation or a team.
+    if (forChannels(profile)) throw new Rejection('profile-for-channels', '这个智能体只在聊天平台上回答，不能用在会话、委派或团队里')
     return profile
   }
   save(fields: AgentProfileFields, id?: string): AgentProfile {
@@ -107,9 +109,14 @@ export class AgentProfileService {
       if (target === id) throw new Rejection('profile-self-call', '不能调用自己')
       this.get(target)
     }
-    if (id && this.onChannel(id) && !agentDescriptor(fields.agent).capabilities.lockdown) throw new Rejection('agent-no-lockdown', `${agentDescriptor(fields.agent).label} 不能接入聊天平台，先移除这个智能体的聊天平台接入`)
+    const channels = fields.audience === 'channels'
+    if (channels && !agentDescriptor(fields.agent).capabilities.lockdown) throw new Rejection('agent-no-lockdown', `${agentDescriptor(fields.agent).label} 不能接入聊天平台`)
+    if (id && this.onChannel(id) && !channels) throw new Rejection('profile-has-channels', '先移除这个智能体的聊天平台接入')
+    // On a chat platform it runs locked down: nothing of these is used, so nothing of them is kept
+    // to look as if it were.
+    const kept = channels ? { ...fields, capability: 'readOnly' as const, delegationMode: null, skills: [], mcpServers: [], callableProfiles: [] } : fields
     // A mode kept on a read-only profile would come back with no say from the user if an agent made it develop.
-    const profile = this.store.save(fields.capability === 'develop' ? fields : { ...fields, delegationMode: null }, id)
+    const profile = this.store.save(kept.capability === 'develop' ? kept : { ...kept, delegationMode: null }, id)
     this.events.profile(profile)
     return profile
   }
@@ -174,7 +181,7 @@ export class AgentProfileService {
     const parent = this.chats.get(id)
     if (!this.canDelegate(parent)) return []
     const disabled = this.sources.disabled()
-    return this.list().filter((profile) => profile.archivedAt === null && profile.id !== parent.profile?.id && !disabled.includes(profile.agent)
+    return this.list().filter((profile) => profile.archivedAt === null && !forChannels(profile) && profile.id !== parent.profile?.id && !disabled.includes(profile.agent)
       && (!parent.profile || parent.profile.callableProfiles.includes(profile.id)))
   }
   // A conversation running as a profile calls only the profiles it lists.

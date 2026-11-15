@@ -172,6 +172,8 @@ const REASON_TEXT: Record<string, string> = localized(() => ({
   'investigation-interrupted': t('labels.theIssueFetchWasCutOff'),
   'agent-capacity': t('labels.agentConcurrencyLimitReachedWaitForOtherConversations'),
   'channel-managed': t('labels.channelManaged'),
+  'profile-for-channels': t('labels.profileForChannels'),
+  'profile-not-for-channels': t('labels.profileNotForChannels'),
   'profile-has-channels': t('labels.profileHasChannels'),
   'agent-no-lockdown': t('labels.agentNoLockdown'),
   'channels-unavailable': t('labels.channelsUnavailable'),

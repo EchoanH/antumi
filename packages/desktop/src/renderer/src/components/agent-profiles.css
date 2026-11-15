@@ -44,3 +44,5 @@
 .agent-profile-fields { display: flex; flex-direction: column; gap: 20px; }
 .agent-profile-section { margin: 12px 0 0; font-size: 13px; font-weight: 600; color: var(--text); }
 .agent-profile-section:first-of-type { margin-top: 0; }
+.agent-profile-audience { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.agent-profile-audience .squad-block-hint { margin: 0; }

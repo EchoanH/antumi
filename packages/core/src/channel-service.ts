@@ -173,6 +173,7 @@ export class ChannelService {
     if (existing && (existing.profileId !== fields.profileId || existing.platform !== fields.platform)) throw new Rejection('invalid-params', 'a channel keeps its agent and its platform')
     const profile = this.options.profile(fields.profileId)
     if (!profile || profile.archivedAt != null) throw new Rejection('agent-profile-not-found', 'the agent is gone')
+    if (profile.audience !== 'channels') throw new Rejection('profile-not-for-channels', 'the agent is not set to answer from chat platforms')
     if (!agentDescriptor(profile.agent).capabilities.lockdown) throw new Rejection('agent-no-lockdown', `${agentDescriptor(profile.agent).label} cannot answer from a chat platform`)
     const recent = new Set(this.options.recentProjects())
     const projectPaths = [...new Set(fields.projectPaths ?? [])]

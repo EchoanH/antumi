@@ -39,7 +39,7 @@ describe('ChannelService', () => {
   let channel: Channel
   let seq: number
 
-  const profile = AgentProfile.parse({ id: '11111111-1111-4111-8111-111111111111', name: '答疑', instructions: '简短回答。', agent: 'claude', archivedAt: null, createdAt: 1, updatedAt: 1 })
+  const profile = AgentProfile.parse({ id: '11111111-1111-4111-8111-111111111111', name: '答疑', instructions: '简短回答。', agent: 'claude', audience: 'channels', archivedAt: null, createdAt: 1, updatedAt: 1 })
   const settle = async () => { for (let i = 0; i < 20; i++) await new Promise((resolve) => setTimeout(resolve, 0)) }
   const sent = <T extends CoreToChannelGateway['type']>(type: T) => toGateway.flatMap((message) => (message.type === type ? [message as Extract<CoreToChannelGateway, { type: T }>] : []))
   const posts = () => sent('deliver').filter((message) => message.op === 'post').map((message) => message.text)
@@ -154,6 +154,8 @@ describe('ChannelService', () => {
     await expect(channels.save({ ...base, credentials: { appToken: 'xoxb-swapped' } })).rejects.toMatchObject({ reason: 'channel-credential-invalid' })
     profiles = [{ ...profile, agent: 'codex' }]
     await expect(channels.save(base)).rejects.toMatchObject({ reason: 'agent-no-lockdown' })
+    profiles = [{ ...profile, audience: 'user' }]
+    await expect(channels.save(base)).rejects.toMatchObject({ reason: 'profile-not-for-channels' })
   })
 
   it('answers a mention in its thread, from a locked-down conversation of the asker\'s own', async () => {

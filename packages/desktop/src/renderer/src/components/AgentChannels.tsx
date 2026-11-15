@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import {
-  AGENT_KINDS, CHANNEL_DEFAULTS, CHANNEL_PLATFORMS, ChannelInput, agentDescriptor, channelPlatform,
+  CHANNEL_DEFAULTS, CHANNEL_PLATFORMS, ChannelInput, agentDescriptor, channelPlatform,
   type AgentKind, type Channel, type ChannelCredentialKey, type ChannelPlatform, type ChannelRequest, type ChannelToolCall
 } from '@antumi/protocol'
 import { setChannels, useChannels, useChannelsSupported } from '../channels'
@@ -56,7 +56,6 @@ export function AgentChannels({ profileId, agent, hasProvider }: { profileId: st
       {able && profileId && missing.map((platform) =>
         <button key={platform} type="button" className="button" onClick={() => setOpen({ id: null, platform, view: 'edit' })}><PlusIcon />{t('AgentChannels.add', { platform: channelPlatform(platform).label })}</button>)}
     </header>
-    {!able && <p className="squad-block-hint muted" role="note">{t('AgentChannels.unsupported', { agent: agentLabel(agent), agents: AGENT_KINDS.filter((kind) => agentDescriptor(kind).capabilities.lockdown).map(agentLabel).join('、') })}</p>}
     {able && !profileId && <p className="squad-block-hint muted">{t('AgentChannels.saveFirst')}</p>}
     {able && profileId && channels.length > 0 && <ul className="agent-channel-list">
       {channels.map((channel) => <li key={channel.id} className="agent-channel">

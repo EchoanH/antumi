@@ -65,14 +65,27 @@ describe('reusable agent roles and delegated work', () => {
     await profiles.close(); projects.close(); conversations.close(); tasks.close()
     rmSync(root, { recursive: true, force: true })
   })
-  it('keeps an agent on a chat platform one that can be locked down, and out of the archive', () => {
-    profiles.setChannelGuard((id) => id === reviewer.id)
-    expect(() => profiles.save({ ...reviewer, agent: 'codex' }, reviewer.id)).toThrow(expect.objectContaining({ reason: 'agent-no-lockdown' }))
-    expect(() => profiles.archive(reviewer.id, true)).toThrow(expect.objectContaining({ reason: 'profile-has-channels' }))
-    expect(profiles.save({ ...reviewer, instructions: 'Answer in one line.' }, reviewer.id).instructions).toBe('Answer in one line.')
+  it('sets an agent that answers from chat platforms apart from the user\'s own work', () => {
+    const helper = profiles.save({ name: 'Slack helper', agent: 'claude', capability: 'develop', audience: 'channels', skills: [{ repo: 'r', skill: 's' }], mcpServers: ['mine'], callableProfiles: [reviewer.id] })
+    // Nothing it would not use is kept to look as if it were.
+    expect(helper).toMatchObject({ audience: 'channels', capability: 'readOnly', delegationMode: null, skills: [], mcpServers: [], callableProfiles: [] })
+    expect(() => profiles.get(helper.id)).toThrow(expect.objectContaining({ reason: 'profile-for-channels' }))
+    expect(profiles.available(parentId).map((profile) => profile.id)).not.toContain(helper.id)
+    expect(() => profiles.save({ ...reviewer, callableProfiles: [helper.id] }, reviewer.id)).toThrow(expect.objectContaining({ reason: 'profile-for-channels' }))
+    expect(() => profiles.save({ name: 'Codex helper', agent: 'codex', audience: 'channels' })).toThrow(expect.objectContaining({ reason: 'agent-no-lockdown' }))
+  })
+
+  it('keeps an agent with a channel answering from chat platforms, and out of the archive', () => {
+    const helper = profiles.save({ name: 'Slack helper', agent: 'claude', audience: 'channels' })
+    profiles.setChannelGuard((id) => id === helper.id)
+    expect(() => profiles.save({ ...helper, audience: 'user' }, helper.id)).toThrow(expect.objectContaining({ reason: 'profile-has-channels' }))
+    // A client from before audiences leaves it out, which must not take the agent off its platform.
+    const { audience: _audience, ...old } = helper
+    expect(() => profiles.save(old, helper.id)).toThrow(expect.objectContaining({ reason: 'profile-has-channels' }))
+    expect(() => profiles.archive(helper.id, true)).toThrow(expect.objectContaining({ reason: 'profile-has-channels' }))
+    expect(profiles.save({ ...helper, instructions: 'Answer in one line.' }, helper.id).instructions).toBe('Answer in one line.')
     profiles.setChannelGuard(() => false)
-    expect(profiles.save({ ...reviewer, agent: 'codex' }, reviewer.id).agent).toBe('codex')
-    expect(profiles.archive(reviewer.id, true).archivedAt).not.toBeNull()
+    expect(profiles.save({ ...helper, audience: 'user' }, helper.id).audience).toBe('user')
   })
 
   it('freezes role configuration, isolates history, hides the child and returns the result once', async () => {
