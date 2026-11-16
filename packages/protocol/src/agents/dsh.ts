@@ -18,9 +18,9 @@ export const dsh: AgentDescriptor = {
   capabilities: { unattended: true, bypass: true, autoMode: false, pathMentions: false, optionsWhileBusy: false, skills: true, userMcp: true, modelProviders: ['openai-chat', 'openai-responses', 'anthropic'], accounts: false },
   environment: {
     role: '通过 Antumi 专用 profile 运行；首次使用时准备随应用提供的运行时插件。',
-    install: 'npm install -g @deepseek-ai/dsh@0.2.1-rc.2',
+    install: 'npm install -g @deepseek-ai/dsh@0.2.2-rc.3',
     signIn: '在 DSH 中配置模型服务商，或在 Antumi 的服务商设置中添加 API Key',
-    outdated: { status: '需要 DSH 0.2.1-rc.2', hint: '，请安装 0.2.1-rc.2' }
+    outdated: { status: '需要 DSH 0.2.2-rc.3', hint: '，请安装 0.2.2-rc.3' }
   },
   usageWhere: '在所用模型服务商处查看',
   translations: { en: {
@@ -33,9 +33,9 @@ export const dsh: AgentDescriptor = {
     },
     environment: {
       role: 'Runs in an Antumi profile; prepares the bundled runtime plugin on first use.',
-      install: 'npm install -g @deepseek-ai/dsh@0.2.1-rc.2',
+      install: 'npm install -g @deepseek-ai/dsh@0.2.2-rc.3',
       signIn: 'Configure a model provider in DSH, or add an API key in Antumi provider settings',
-      outdated: { status: 'Requires DSH 0.2.1-rc.2', hint: '; install 0.2.1-rc.2' }
+      outdated: { status: 'Requires DSH 0.2.2-rc.3', hint: '; install 0.2.2-rc.3' }
     },
     usageWhere: 'Check with your model provider'
   } }

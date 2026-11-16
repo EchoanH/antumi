@@ -1,9 +1,9 @@
 # DeepSeek Harness
 
-Antumi 支持官方 DSH `0.2.1-rc.2`。设置 → 外部智能体 显示 CLI 检测结果和安装命令；其他版本暂不作为已验证版本启动。
+Antumi 支持官方 DSH `0.2.2-rc.3`。设置 → 外部智能体 显示 CLI 检测结果和安装命令；其他版本暂不作为已验证版本启动。
 
 ```sh
-npm install -g @deepseek-ai/dsh@0.2.1-rc.2
+npm install -g @deepseek-ai/dsh@0.2.2-rc.3
 ```
 
 DSH 可沿用自己的服务商配置，也能选择 Antumi 设置里的服务商。后者支持 Chat Completions、Responses 和 Anthropic 接口；模型和推理强度以实际目录为准，空闲时可切换。图片支持由 DSH 握手和所选模型决定。回复和思考使用官方 ACP 的已提交语义事件，不伪造逐 token 增量。仅记录实际报告的 token，没有可靠价格时不显示估算费用。

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdtemp, mkdir, readFile, realpath, rm, symlink } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -40,6 +40,30 @@ describe('DSH policy enforcement', () => {
     vi.stubEnv(DSH_MODE_ENV, 'readOnly')
     await expect(fs.writeText(file, 'no', undefined, undefined, { ...policy, mode: 'danger-full-access' })).rejects.toThrow(/read-only/)
     expect(await readFile(path.join(extra, 'file.txt'), 'utf8')).toBe('second')
+  })
+
+  it('fences patches, deletes and moves like writes, and keeps a move inside one project', async () => {
+    const config = DshRuntimeConfig.parse({ workDirs: [project, extra], noEdit: [path.join(extra, 'protected')] })
+    vi.stubEnv(DSH_CONFIG_ENV, JSON.stringify(config))
+    const policy = { mode: 'workspace-write' as const, workspaceRoot: project }
+    const ctx = new Context().extend({ sandboxPolicy: { defaultMode: 'workspace-write', resolve: () => policy } })
+    const fs = new AntumiFileSystem(ctx, { cwd: project, diffBasisMaxBytes: 1024 * 1024 })
+    await mkdir(path.join(extra, 'protected'))
+    const kept = await fs.resolve(path.join(extra, 'protected', 'kept.txt'))
+    await writeFile(path.join(extra, 'protected', 'kept.txt'), 'kept')
+    await expect(fs.patchText(kept, [], undefined, undefined, policy)).rejects.toThrow(/read-only folder/)
+    await expect(fs.deleteFile(kept, undefined, undefined, policy)).rejects.toThrow(/read-only folder/)
+    await expect(fs.moveFile(kept, await fs.resolve(path.join(extra, 'taken.txt')), {}, undefined, policy)).rejects.toThrow(/read-only folder/)
+    const loose = await fs.resolve(path.join(extra, 'loose.txt'))
+    await fs.writeText(loose, 'loose', undefined, undefined, policy)
+    await expect(fs.moveFile(loose, await fs.resolve(path.join(extra, 'protected', 'in.txt')), {}, undefined, policy)).rejects.toThrow(/read-only folder/)
+    await expect(fs.moveFile(loose, await fs.resolve(path.join(project, 'across.txt')), {}, undefined, policy)).rejects.toThrow(/one project/)
+    const moved = await fs.resolve(path.join(extra, 'moved.txt'))
+    await fs.moveFile(loose, moved, {}, undefined, policy)
+    expect(await readFile(path.join(extra, 'moved.txt'), 'utf8')).toBe('loose')
+    await fs.deleteFile(moved, undefined, undefined, policy)
+    await expect(readFile(path.join(extra, 'moved.txt'), 'utf8')).rejects.toThrow()
+    expect(await readFile(path.join(extra, 'protected', 'kept.txt'), 'utf8')).toBe('kept')
   })
 
   it('uses an exact project root for a command and never trusts a child-provided workspace root', () => {

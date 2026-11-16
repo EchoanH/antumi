@@ -19,4 +19,20 @@ export default class AntumiFileSystem extends SandboxedFileSystem {
   override async editText(target: FsTarget, edit: FsEditRequest, expected?: { version: FsVersion }, signal?: AbortSignal, policy?: SandboxExecutionPolicy) {
     return super.editText(target, edit, expected, signal, await this.policy(target, policy))
   }
+
+  override async patchText(target: FsTarget, hunks: Parameters<SandboxedFileSystem['patchText']>[1], expected?: { version: FsVersion }, signal?: AbortSignal, policy?: SandboxExecutionPolicy) {
+    return super.patchText(target, hunks, expected, signal, await this.policy(target, policy))
+  }
+
+  override async deleteFile(target: FsTarget, expected?: { version: FsVersion }, signal?: AbortSignal, policy?: SandboxExecutionPolicy) {
+    return super.deleteFile(target, expected, signal, await this.policy(target, policy))
+  }
+
+  // Upstream fences both ends against one workspace root, so a move across projects is refused rather than widened.
+  override async moveFile(source: FsTarget, destination: FsTarget, options: Parameters<SandboxedFileSystem['moveFile']>[2], signal?: AbortSignal, policy?: SandboxExecutionPolicy) {
+    const from = await this.policy(source, policy)
+    const to = await this.policy(destination, policy)
+    if (from.workspaceRoot !== to.workspaceRoot) throw new Error('Antumi: move files within one project at a time')
+    return super.moveFile(source, destination, options, signal, to)
+  }
 }

@@ -18,7 +18,7 @@ import { dshDialect } from './dsh-dialect'
 import { DSH_PROVIDER_ENV, dshCommand } from './dsh-command'
 
 const execute = promisify(execFile)
-export const DSH_VERSION = '0.2.1-rc.2'
+export const DSH_VERSION = '0.2.2-rc.3'
 const prepares = new Map<string, Promise<void>>()
 
 async function output(command: string, args: string[], timeout = 10_000, env = process.env): Promise<string> {

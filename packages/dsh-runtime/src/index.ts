@@ -89,7 +89,7 @@ export function apply(ctx: Context): void {
     else request.signal?.addEventListener('abort', abort, { once: true })
     if (isPlan) reviewing = true
     write({ jsonrpc: '2.0', id, method: isPlan ? '_antumi/plan' : '_antumi/question', params: isPlan ? {
-      sessionId, toolCallId: plan.intent?.callId ?? id, plan: plan.detail, name: plan.header
+      sessionId, toolCallId: (plan.intent?.kind === 'plan-review' ? plan.intent.callId : undefined) ?? id, plan: plan.detail, name: plan.header
     } : {
       sessionId, toolCallId: request.wait?.callId ?? id,
       questions: request.questions.map((question) => ({ id: question.id, prompt: question.question, allowMultiple: question.multiSelect, options: question.options?.map((option) => ({ id: option.label, label: option.label })) ?? [] }))

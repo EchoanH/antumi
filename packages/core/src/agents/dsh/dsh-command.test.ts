@@ -42,10 +42,11 @@ describe('DSH launch configuration', () => {
   })
 
   it('requires the tested release and offers the matching installation on each host platform', () => {
-    expect(dshCompatible('0.2.1-rc.2')).toBe(true)
+    expect(dshCompatible('0.2.2-rc.3')).toBe(true)
+    expect(dshCompatible('0.2.1-rc.2')).toBe(false)
     expect(dshCompatible('0.2.0')).toBe(false)
     expect(dshCompatible(null)).toBe(false)
-    expect(dshInstallation('win32')).toMatchObject({ agent: 'dsh', shell: 'powershell', command: expect.stringContaining('@0.2.1-rc.2') })
+    expect(dshInstallation('win32')).toMatchObject({ agent: 'dsh', shell: 'powershell', command: expect.stringContaining('@0.2.2-rc.3') })
     expect(dshInstallation('linux')?.shell).toBe('bash')
     expect(dshInstallation('freebsd')).toBeNull()
   })

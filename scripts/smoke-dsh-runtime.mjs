@@ -97,7 +97,7 @@ const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([name]) 
 const children = new Set()
 
 function start(lock = false) {
-  const provider = { providerId: 'smoke', endpoint: { wire, baseUrl, anthropic: wire === 'anthropic' ? { baseUrl, auth: 'auth_token', env: {} } : null }, defaultModel: 'test', smallModel: 'test', apiKey: key, models: [{ id: 'test', label: 'Smoke', contextWindow: 32000, maxOutput: 4096, efforts: [] }] }
+  const provider = { providerId: 'smoke', endpoint: { wire, baseUrl, anthropic: wire === 'anthropic' ? { baseUrl, auth: 'auth_token', env: {} } : null }, defaultModel: 'test', smallModel: 'test', apiKey: key, headers: {}, models: [{ id: 'test', label: 'Smoke', contextWindow: 32000, maxOutput: 4096, efforts: [] }] }
   const launch = dshCommand({ providerSessionId: null, resume: false, handoffPath: null, extraProjects: [extra], provider, allowBypass: true, ...(lock ? { readOnly: { dirs: [main, extra] } } : {}) })
   const child = spawn(process.execPath, [cli, ...launch.args, '--patch', overlay], { cwd: main, env: { ...cleanEnv, ...launch.env, DSH_HOME: scratch, DSH_TELEMETRY_DISABLED: '1' }, stdio: ['pipe', 'pipe', 'pipe'] })
   children.add(child)
