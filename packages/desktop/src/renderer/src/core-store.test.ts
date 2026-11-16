@@ -4,7 +4,7 @@ import { actionableItems } from './attention'
 import {
   openAttentionItem, openConversationDraft, selectConversation, selectTask, openOverview, openGit, setGitLocation, setGitMaximized, toggleGitPanel, toggleFilesPanel, setFilesMaximized, toggleBrowserPanel, filesContext, setOverviewFilter, setOverviewScroll, setOverviewView, setRoutinesOpen,
   refreshAttentionSummaries, setInboxOpen, setTaskStarting, openChatWhileStarting, setSchedulesOpen, setSettingsOpen, setWorktreesOpen, useCore,
-  clearInspectorFile, closeConversationDraft, installAgentCli, openConversationTarget, openDiscussionDraft, switchDraftMode, showConversationChanges, showInspectorFile, showTaskChanges
+  clearInspectorFile, closeConversationDraft, installAgentCli, openConversationTarget, openDiscussionDraft, switchDraftMode, showConversationChanges, showInspectorFile, showTaskChanges, selectSquad, selectDiscussion
 } from './core-store'
 import { conversationSurface } from './components/chat-surface'
 
@@ -29,8 +29,6 @@ describe('Git panel', () => {
     expect(useCore.getState()).toMatchObject({ gitPanelOpen: true, selectedConversationId: chat.id })
     expect(filesContext(useCore.getState()).scope?.conversationId).toBe(chat.id)
     openOverview()
-    expect(useCore.getState().gitPanelOpen).toBe(true)
-    toggleGitPanel()
     expect(useCore.getState()).toMatchObject({ gitPanelOpen: false, overviewOpen: true, utilityPanelOrder: [] })
     openGit()
     expect(useCore.getState()).toMatchObject({ gitPanelOpen: true, gitLocation: { project: '/repo', workspace: '/repo/other' } })
@@ -62,6 +60,57 @@ describe('Git panel', () => {
     expect(useCore.getState().gitPanelOpen).toBe(false)
     toggleGitPanel()
     expect(close).toHaveBeenCalledWith('git')
+  })
+})
+
+describe('side panels while navigating', () => {
+  it.each([
+    { page: 'overview', navigate: () => openOverview() },
+    { page: 'routines', navigate: () => setRoutinesOpen(true) },
+    { page: 'schedules', navigate: () => setSchedulesOpen(true) },
+    { page: 'settings', navigate: () => setSettingsOpen(true) },
+    { page: 'inbox', navigate: () => setInboxOpen(true) },
+    { page: 'worktrees', navigate: () => setWorktreesOpen(true) },
+    { page: 'agents', navigate: () => selectSquad(null) },
+    { page: 'task board', navigate: () => selectTask(null) },
+    { page: 'task detail', navigate: () => selectTask(task.id, 'detail') },
+    { page: 'empty conversation', navigate: () => selectConversation(null) }
+  ])('closes the dock and its maximized state when opening $page', ({ navigate }) => {
+    useCore.setState({ tasks: { [task.id]: task }, conversations: { chat } })
+    selectConversation(chat.id)
+    toggleBrowserPanel()
+    toggleFilesPanel()
+    setFilesMaximized(true)
+    navigate()
+    expect(useCore.getState()).toMatchObject({
+      browserPanelOpen: false, terminalPanelOpen: false, portsPanelOpen: false, filesPanelOpen: false, gitPanelOpen: false,
+      browserMaximized: false, terminalMaximized: false, portsMaximized: false, filesMaximized: false, gitMaximized: false,
+      inspectorOpen: false, conversationInspectorOpen: false, utilityPanelOrder: []
+    })
+    selectConversation(chat.id)
+    expect(useCore.getState().filesPanelOpen).toBe(false)
+  })
+
+  it('closes inspectors too, and closes tools manually opened on a page when leaving it', () => {
+    selectConversation(chat.id)
+    showConversationChanges()
+    setRoutinesOpen(true)
+    expect(useCore.getState().conversationInspectorOpen).toBe(false)
+    toggleFilesPanel()
+    expect(useCore.getState().filesPanelOpen).toBe(true)
+    openOverview()
+    expect(useCore.getState()).toMatchObject({ filesPanelOpen: false, utilityPanelOrder: [] })
+  })
+
+  it('keeps panels open between conversations, task chats, discussions and chat drafts', () => {
+    useCore.setState({ tasks: { [task.id]: { ...task, status: 'running' } }, conversations: { chat } })
+    selectConversation(chat.id)
+    toggleFilesPanel()
+    selectConversation('another')
+    selectTask(task.id, 'chat')
+    selectDiscussion('discussion')
+    openConversationDraft()
+    expect(useCore.getState()).toMatchObject({ filesPanelOpen: true, utilityPanelOrder: ['files'] })
   })
 })
 

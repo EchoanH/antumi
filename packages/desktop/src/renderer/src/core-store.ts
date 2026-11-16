@@ -349,8 +349,27 @@ export const useCore = create<CoreState>()(() => ({
   login: null
 }))
 
+// A page replacing the chat should get the whole workspace. Tools can still be opened there
+// explicitly, for example the terminal while installing an agent from settings.
+function nonChatPage(s: CoreState): string | null {
+  if (s.settingsOpen) return 'settings'
+  if (s.overviewOpen) return 'overview'
+  if (s.inboxOpen) return 'inbox'
+  if (s.worktreesOpen) return 'worktrees'
+  if (s.routinesOpen) return 'routines'
+  if (s.section === 'squads') return 'agents'
+  if (s.section === 'discussions') return s.selectedDiscussionId ? null : 'discussions'
+  if (s.section === 'conversations') return s.selectedConversationId || s.conversationDraft ? null : 'conversations'
+  return s.selectedId && s.view === 'chat' ? null : s.selectedId ? 'task-detail' : 'tasks'
+}
+
 // One side of the room beside the content at a time: the terminal, ports or files panel, or an inspector.
 useCore.subscribe((next, previous) => {
+  const page = nonChatPage(next)
+  if (page !== null && page !== nonChatPage(previous)) {
+    useCore.setState({ ...utilityPanels(next, [], false), inspectorOpen: false, conversationInspectorOpen: false })
+    return
+  }
   const patch = exclusivePanels(next, previous)
   if (patch) useCore.setState(patch)
 })
