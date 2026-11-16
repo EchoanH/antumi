@@ -246,11 +246,12 @@ function DetectedAgentRow({ agent }: { agent: DetectedAgent }) {
   )
 }
 
-// folded: closed until clicked, for a group that is there to browse rather than to act on.
-function Group({ title, count, folded = false, children }: { title: string; count: number; folded?: boolean; children: ReactNode }) {
+// collapsible: the user can close it. It starts open, so what can be installed is in view.
+function Group({ title, count, collapsible = false, children }: { title: string; count: number; collapsible?: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(true)
   if (count === 0) return null
-  if (folded) return (
-    <details className="agent-group">
+  if (collapsible) return (
+    <details className="agent-group" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary className="agent-group-head">
         <span className="agent-group-title">{title}</span>
         <span className="agent-list-count">{count}</span>
@@ -321,7 +322,7 @@ export function InstalledAgentsSettings() {
           <AgentRow key={kind} kind={kind} check={check} enabled={!disabled.includes(kind)} last={enabledCount <= 1} />
         ))}
       </Group>
-      <Group title={t('InstalledAgentsSettings.availableToInstall')} count={missing.length} folded={found.length > 0}>
+      <Group title={t('InstalledAgentsSettings.availableToInstall')} count={missing.length} collapsible={found.length > 0}>
         {missing.map((kind) => <MissingAgentRow key={kind} kind={kind} installation={installationSupported ? environment?.cliInstallations?.find((each) => each.agent === kind) : undefined} />)}
       </Group>
       <Group title={t('InstalledAgentsSettings.notSupportedYet')} count={other.length}>
