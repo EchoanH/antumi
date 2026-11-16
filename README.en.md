@@ -191,3 +191,7 @@ pnpm typecheck && pnpm test
 ```
 
 Add `pnpm build` when the desktop app changed.
+
+## Links
+
+- [LINUX DO](https://linux.do): a Chinese community for developers and AI enthusiasts

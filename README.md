@@ -191,3 +191,7 @@ pnpm typecheck && pnpm test
 ```
 
 桌面端改动再加 `pnpm build`。
+
+## 友情链接
+
+- [LINUX DO](https://linux.do)：新的理想型社区
