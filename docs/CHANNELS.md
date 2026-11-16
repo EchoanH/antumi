@@ -58,6 +58,7 @@ Slack / 飞书  ⇄(出站长连接)⇄  channel-gateway（core 的子进程）
 | `channels.remove` | `{ id }` → `Channel[]`，连同问过的问题和它们的会话 |
 | `channels.requests` | `{ channelId, before?, limit }` → `{ items, before }`，新的在前 |
 | `channels.toolCalls` | `{ requestId }` → `{ tool, target, bytes, at }[]` |
+| `channels.readiness` | `{}` → `{ daemon: 'ready' \| 'outdated' \| 'unavailable', pid }`，功能标记 `channel-readiness` |
 | `channelTools.call` | `{ conversationId, tool, arguments }` → `{ text, isError }` |
 | 通知 `channels.changed` | `{ channels }` |
 
@@ -209,6 +210,8 @@ claude -p --verbose --output-format stream-json --input-format stream-json --inc
 **账号和额度：不强制用模型服务商。** 和这个智能体的普通会话一样：智能体配了模型服务商就走服务商（`claudeProviderEnv`），没配就用 Claude 当前的账号（`accounts.launch(agent)` 给的 `CLAUDE_CONFIG_DIR`），用户不用为此多登录一次。隔离不靠换目录，靠上面的参数：`--setting-sources ""`、`--strict-mcp-config`、`--disable-slash-commands`、`--tools ""`、`--restricted` 让账号目录里用户的设置、MCP、技能、插件、`CLAUDE.md` 都不加载。验收测试读 Claude 启动时 `init` 消息里列出的 tools / mcp_servers / slash_commands / plugins，断言只有我们给的那几项。如果以后某个 CLI 版本让账号目录里的东西漏进来，退路是 core 备一个干净目录 `<home>/channels/homes/<agent>`，只带登录凭据。界面上在「聊天平台」区块提示：没配模型服务商时，同事的提问会用掉这个账号的额度，可用每天次数来限制。
 
 **环境变量**：daemon 多了一个方法 `spawnPipeClean`，只带 `CLEAN_ENV_KEYS`（`PATH`、`HOME`、语言、临时目录、Windows 启动进程要的几个、代理和 CA）和 core 显式给的变量。是单独的方法而不是 `spawnPipe` 的参数：旧 daemon 会忽略不认识的参数、把整个环境传下去，单独的方法它只会报不认识，core 就不启动这类会话。
+
+旧 daemon 只在它什么都不跑时才被 App 换掉（`replaceOldDaemon`），所以升级后一直开着 Agent 的电脑，每个提问都会以 `daemon-outdated` 失败。daemon 的 `info.features` 里有 `clean-pipe` 才算支持；`channels.readiness` 据此回答，桌面端在「聊天平台」区块里提前提示，并给出这个 daemon 的 PID，好让用户退出 App 后结束它。失败的提问在 `channel_requests.error_reason` 里记下拒绝的原因代码（`ChannelRequest.errorReason`），提问记录按它显示本地化的说明，没有代码的才显示原始诊断。
 
 **Codex 的锁死运行**（`codex-lockdown.ts`、`codex-app-server.ts`）：
 

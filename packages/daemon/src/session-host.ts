@@ -218,7 +218,8 @@ export function createSessionHost(emit: (event: DaemonEvent) => void, awake: Awa
       return awake.status()
     },
     info() {
-      return { version: lifecycle.version, pid: process.pid, features: ['agent-cli-maintenance'] }
+      // clean-pipe: spawnPipeClean, which an agent answering on a chat platform is started with.
+      return { version: lifecycle.version, pid: process.pid, features: ['agent-cli-maintenance', 'clean-pipe'] }
     },
     retire() {
       if (retiring) return { retired: true, live: 0, blockers: [] }

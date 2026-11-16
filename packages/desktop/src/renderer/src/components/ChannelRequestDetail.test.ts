@@ -26,6 +26,12 @@ describe('channel question details', () => {
     expect(html).not.toContain('没有读取任何文件。')
   })
 
+  it('explains a failure core named in the owner\'s language instead of its diagnostic', () => {
+    const html = renderToStaticMarkup(createElement(ChannelRequestDetailContent, { request: { ...request, error: 'the running daemon predates chat mode; restart it', errorReason: 'daemon-outdated' }, detail: null, error: null }))
+    expect(html).toContain('Antumi 后台（daemon）是旧版本')
+    expect(html).not.toContain('predates chat mode')
+  })
+
   it('shows the answer and file reads of the selected question', () => {
     const html = renderToStaticMarkup(createElement(ChannelRequestDetailContent, {
       request: { ...request, state: 'answered', conversationId: 'conversation' }, error: null,

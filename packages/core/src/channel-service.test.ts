@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AgentProfile, MAX_CHANNEL_ANSWER_CHARS, type Channel } from '@antumi/protocol'
 import { AttachmentStore } from './attachment-store'
 import type { ChannelEvent, ChannelGatewayToCore, CoreToChannelGateway } from './channel-gateway-ipc'
-import { ChannelService } from './channel-service'
+import { ChannelService, type ChannelServiceOptions } from './channel-service'
 import { ChannelStore } from './channel-store'
 import { ConversationService } from './conversation-service'
 import { ConversationStore } from './conversation-store'
@@ -14,6 +14,7 @@ import { CredentialStore } from './credential-store'
 import { fakeChatDaemon } from './fake-chat-agent'
 import { pngBytes } from './image-fixtures'
 import { ProjectRegistry } from './project-registry'
+import { Rejection } from './rejection'
 import { TaskStore } from './task-store'
 
 // The whole of core's side: a real conversation service on a fake agent, a real store, and a
@@ -156,6 +157,21 @@ describe('ChannelService', () => {
     await expect(channels.save(base)).rejects.toMatchObject({ reason: 'agent-no-lockdown' })
     profiles = [{ ...profile, audience: 'user' }]
     await expect(channels.save(base)).rejects.toMatchObject({ reason: 'profile-not-for-channels' })
+  })
+
+  it('says a daemon from before clean starts fails every question, and keeps the reason on the one that failed', async () => {
+    const readiness = (daemon: ChannelServiceOptions['daemon']) => new ChannelService(store, { conversations, credentials, profile: () => profile, recentProjects: () => [repo], isRepo: async () => true, keepImage: async () => ({ id: 'x' }), changed: () => {}, daemon }).readiness()
+    expect(await readiness(async () => ({ features: ['agent-cli-maintenance'], pid: 42 }))).toEqual({ daemon: 'outdated', pid: 42 })
+    expect(await readiness(async () => ({ features: ['agent-cli-maintenance', 'clean-pipe'], pid: 42 }))).toEqual({ daemon: 'ready', pid: 42 })
+    expect(await readiness(async () => { throw new Error('no daemon') })).toEqual({ daemon: 'unavailable', pid: null })
+    const real = daemon.request.bind(daemon)
+    vi.spyOn(daemon, 'request').mockImplementation(async (method, params) => {
+      if (method === 'spawnPipeClean') throw new Rejection('unknown-method')
+      return real(method, params)
+    })
+    await ask()
+    await deliverAll()
+    expect(channels.requests(channel.id, null, 1).items[0]).toMatchObject({ state: 'failed', errorReason: 'daemon-outdated' })
   })
 
   it('keeps a project it already reads once that is no longer recent, but adds no other', async () => {

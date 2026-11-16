@@ -83,6 +83,8 @@ export const ChannelRequest = z.object({
   refusal: z.string().nullable(),
   // The owner's diagnostic, never posted to the platform. Older cores leave it out.
   error: z.string().nullable().optional(),
+  // The rejection behind it when core named one (daemon-outdated), for a client to explain.
+  errorReason: z.string().nullable().optional(),
   // Whether something that looked like a secret was taken out of its answer.
   redacted: z.boolean(),
   conversationId: z.string().uuid().nullable(),
@@ -95,6 +97,11 @@ export const ChannelRequest = z.object({
 export type ChannelRequest = z.infer<typeof ChannelRequest>
 
 // One read its agent made for a question: every one goes through core, so the list is whole.
+// Whether this computer can answer from a chat platform at all: a daemon from before the clean
+// start it needs fails every question until it is restarted. pid is that daemon's, to end it by.
+export const ChannelReadiness = z.object({ daemon: z.enum(['ready', 'outdated', 'unavailable']), pid: z.number().int().nullable() })
+export type ChannelReadiness = z.infer<typeof ChannelReadiness>
+
 export const ChannelToolCall = z.object({ tool: z.string(), target: z.string(), bytes: z.number().int().nonnegative(), at: z.number() })
 export type ChannelToolCall = z.infer<typeof ChannelToolCall>
 

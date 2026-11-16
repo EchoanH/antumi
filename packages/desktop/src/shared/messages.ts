@@ -11235,8 +11235,8 @@ export const MESSAGES = {
     "en": "Agent startup timed out"
   },
   "labels.runningDaemonIsTooOldForChatRestart": {
-    "zh": "正在运行的终端守护进程版本太旧，不支持聊天界面，请重启它（pnpm dev:daemon）",
-    "en": "Running daemon is too old for chat. Restart it (pnpm dev:daemon)"
+    "zh": "Antumi 后台（daemon）是旧版本，重启后才能用：等正在跑的 Agent 和终端结束，退出 Antumi，结束 Antumi 的后台进程再重新打开。从源码运行时重启 pnpm dev:daemon。",
+    "en": "Antumi's backend (daemon) is an older version and needs a restart: once running agents and terminals are done, quit Antumi, end its backend process and open it again. From source, restart pnpm dev:daemon."
   },
   "labels.earlierChatHistoryNotFound": {
     "zh": "找不到更早的聊天记录",
@@ -13213,6 +13213,7 @@ export const MESSAGES = {
   "AgentChannels.title": {"zh": "聊天平台", "en": "Chat platforms"},
   "AgentChannels.hint": {"zh": "同事在聊天平台上 @ 它提问。", "en": "Colleagues mention it on a chat platform to ask."},
   "AgentChannels.hintDetail": {"zh": "它只读你选的项目来回答，碰不到这台电脑上别的东西。", "en": "It answers only from the projects you pick and reaches nothing else on this computer."},
+  "AgentChannels.daemonOutdated": {"zh": "这台电脑上的 Antumi 后台是旧版本，聊天平台上的提问都会失败。没有 Agent 和终端在运行时，它会自动换成新版。想马上换：退出 Antumi，在活动监视器或任务管理器里结束 PID 为 {pid} 的进程，再重新打开；正在运行的 Agent 和终端会被中断。", "en": "Antumi's backend on this computer is an older version, so every question from a chat platform fails. It is replaced by itself once no agent or terminal runs. To replace it now, quit Antumi, end the process with PID {pid} in Activity Monitor or Task Manager, and open Antumi again; running agents and terminals are interrupted."},
   "AgentChannels.saveFirst": {"zh": "先保存智能体，再添加聊天平台。", "en": "Save the agent first, then add a chat platform."},
   "AgentChannels.quotaHint": {"zh": "没有选模型服务商时，同事的提问会用掉 {agent} 当前账号的额度，用上面的每天次数来限制。", "en": "With no model provider picked, colleagues' questions spend {agent}'s current account. The daily limits above cap it."},
   "AgentChannels.add": {"zh": "添加 {platform}", "en": "Add {platform}"},

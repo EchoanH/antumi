@@ -3,7 +3,7 @@ import {
   CHANNEL_DEFAULTS, CHANNEL_PLATFORMS, ChannelInput, agentDescriptor, channelPlatform,
   type AgentKind, type Channel, type ChannelCredentialKey, type ChannelPlatform, type ChannelRequest
 } from '@antumi/protocol'
-import { setChannels, useChannels, useChannelsSupported } from '../channels'
+import { setChannels, useChannelReadiness, useChannels, useChannelsSupported } from '../channels'
 import { askConfirm } from '../confirm-dialog'
 import { timeAgo } from '../conversation-state'
 import { perform, useCore } from '../core-store'
@@ -35,6 +35,7 @@ export function channelStateText(channel: Pick<Channel, 'state' | 'error' | 'ten
 export function AgentChannels({ profileId, agent, hasProvider }: { profileId: string | null; agent: AgentKind; hasProvider: boolean }) {
   const supported = useChannelsSupported()
   const all = useChannels()
+  const readiness = useChannelReadiness()
   const [open, setOpen] = useState<{ id: string | null; platform: ChannelPlatform; view: 'edit' | 'requests' } | null>(null)
   if (!supported) return null
   const channels = all.filter((each) => each.profileId === profileId)
@@ -61,6 +62,7 @@ export function AgentChannels({ profileId, agent, hasProvider }: { profileId: st
       {able && profileId && missing.map((platform) =>
         <button key={platform} type="button" className="button" onClick={() => setOpen({ id: null, platform, view: 'edit' })}><PlusIcon />{t('AgentChannels.add', { platform: channelPlatform(platform).label })}</button>)}
     </header>
+    {able && readiness?.daemon === 'outdated' && <p className="agent-channel-warning" role="alert">{t('AgentChannels.daemonOutdated', { pid: readiness.pid ?? '?' })}</p>}
     {able && !profileId && <p className="agent-channel-empty">{t('AgentChannels.saveFirst')}</p>}
     {able && profileId && channels.length === 0 && <p className="agent-channel-empty">{t('AgentChannels.none')}</p>}
     {able && profileId && channels.length > 0 && <ul className="agent-channel-list">

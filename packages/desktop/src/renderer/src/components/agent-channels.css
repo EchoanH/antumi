@@ -8,6 +8,8 @@
 .agent-channel-step > :not(h4) { margin-left: 28px; }
 .agent-channel-step a.button { text-decoration: none; }
 .agent-channel-notes { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 12px 0 0 16px; border-top: 1px solid var(--border); font-size: 12px; line-height: 1.6; }
+.agent-channel-warning { margin: 0; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent); border-radius: var(--radius); background: color-mix(in srgb, var(--warning) 10%, var(--surface)); font-size: 12px; line-height: 1.6; }
+.agent-channel-failure { margin: 0; }
 .agent-channel-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .agent-channel { border: 1px solid var(--border); border-radius: 12px; background: color-mix(in srgb, var(--bg) 60%, var(--surface)); }
 .agent-channel-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 16px; }

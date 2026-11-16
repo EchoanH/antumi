@@ -155,7 +155,7 @@ describe('retiring for an update', () => {
     const events: DaemonEvent[] = []
     const leave = vi.fn()
     const host = createSessionHost((event) => events.push(event), undefined, { version: '9.9.9', leave })
-    expect(host.handlers.info({})).toEqual({ version: '9.9.9', pid: process.pid, features: ['agent-cli-maintenance'] })
+    expect(host.handlers.info({})).toEqual({ version: '9.9.9', pid: process.pid, features: ['agent-cli-maintenance', 'clean-pipe'] })
     const keep = `setTimeout(() => {}, 10_000)`
     const owner = 'conversation:11111111-1111-4111-8111-111111111111'
     const agent = host.handlers.spawnPipe({ command: process.execPath, args: ['-e', keep], cwd: process.cwd(), env: { ANTUMI_OWNER: owner } }).sessionId

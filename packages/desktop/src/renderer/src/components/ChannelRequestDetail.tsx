@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { ChannelRequest, ChannelToolCall } from '@antumi/protocol'
 import { perform, useCore } from '../core-store'
 import { t } from '../i18n'
+import { reasonText } from '../labels'
 
 type Detail = { answer: string; reads: ChannelToolCall[] }
 
@@ -30,11 +31,13 @@ export function ChannelRequestDetail({ request }: { request: ChannelRequest }) {
 
 export function ChannelRequestDetailContent({ request, detail, error }: { request: ChannelRequest; detail: Detail | null; error: string | null }) {
   const pending = request.state === 'queued' || request.state === 'running'
+  // One core named is said in the owner's language; anything else as it was written down.
+  const explained = request.errorReason ? reasonText(request.errorReason, '') : ''
   const emptyAnswer = pending ? t('AgentChannels.answerPending') : request.state === 'failed' && !request.conversationId ? t('AgentChannels.startFailed') : t('AgentChannels.noAnswer')
   return <div className="agent-channel-detail">
     <h5>{t('AgentChannels.question')}</h5>
     <pre>{request.text || t('AgentChannels.imagesOnly')}</pre>
-    {request.error && <><h5>{t('AgentChannels.failure')}</h5><pre>{request.error}</pre></>}
+    {request.error && <><h5>{t('AgentChannels.failure')}</h5>{explained ? <p className="agent-channel-failure">{explained}</p> : <pre>{request.error}</pre>}</>}
     {error ? <p className="modal-error" role="alert">{error}</p> : <>
       <h5>{t('AgentChannels.answer')}</h5>
       {detail?.answer ? <pre>{detail.answer}</pre> : <p className="squad-block-hint muted">{detail ? emptyAnswer : '…'}</p>}

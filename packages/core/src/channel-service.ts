@@ -14,6 +14,7 @@ import {
   type Channel,
   type ChannelCredentialKey,
   type ChannelInput,
+  type ChannelReadiness,
   type ChannelRequest,
   type ChannelState,
   type ChannelToolCall,
@@ -97,6 +98,8 @@ export type ChannelServiceOptions = {
   changed: (channels: Channel[]) => void
   // The account an agent runs on, by its email: never to be said in an answer.
   identity?: (agent: AgentKind) => Promise<string | null>
+  // What the running daemon says it can do, and its pid; null when none answers.
+  daemon?: () => Promise<{ features: readonly string[]; pid: number } | null>
   launch?: ChannelGatewayLauncher
   now?: () => number
   home?: string
@@ -163,6 +166,14 @@ export class ChannelService {
   }
 
   // Whether an agent is on a platform: it may then not be archived, nor become one that cannot be locked down.
+  // A daemon from before clean-pipe fails every question (daemon-outdated) until it is restarted,
+  // which it is only once it runs nothing: said up front rather than on the first question.
+  async readiness(): Promise<ChannelReadiness> {
+    const daemon = await this.options.daemon?.().catch(() => null) ?? null
+    if (!daemon) return { daemon: 'unavailable', pid: null }
+    return daemon.features.includes('clean-pipe') ? { daemon: 'ready', pid: daemon.pid } : { daemon: 'outdated', pid: daemon.pid }
+  }
+
   hasChannels(profileId: string): boolean {
     return this.store.channels().some((each) => each.profileId === profileId)
   }
@@ -280,7 +291,7 @@ export class ChannelService {
       busyThreads.add(request.threadId)
       perChannel.set(channel.id, (perChannel.get(channel.id) ?? 0) + 1)
       this.starting.add(request.id)
-      void this.run(request, channel, profile).catch((error) => this.fail(this.store.request(request.id) ?? request, 'failed', SAY.failed, null, error instanceof Error ? error.message : String(error))).finally(() => this.starting.delete(request.id))
+      void this.run(request, channel, profile).catch((error: unknown) => this.fail(this.store.request(request.id) ?? request, 'failed', SAY.failed, null, error)).finally(() => this.starting.delete(request.id))
     }
     this.pump()
   }
@@ -522,10 +533,13 @@ export class ChannelService {
     this.tick()
   }
 
-  private fail(request: StoredRequest, state: 'failed' | 'timeout', say: string, totalTokens: number | null = null, error: string | null = null): void {
+  private fail(request: StoredRequest, state: 'failed' | 'timeout', say: string, totalTokens: number | null = null, error: unknown = null): void {
     this.clearTimeout(request.id)
     if (request.state !== 'running' && request.state !== 'queued') return
-    this.store.updateRequest(request.id, { state, refusal: say === SAY.restarted ? 'restarted' : null, error: error ? redact(error).text.slice(0, 4000) : say, endedAt: this.now(), ...(totalTokens === null ? {} : { totalTokens }) })
+    const detail = error instanceof Error ? error.message : error ? String(error) : null
+    // A rejection's reason is what the owner's client explains it by, in their language.
+    const errorReason = error instanceof Rejection ? error.reason : null
+    this.store.updateRequest(request.id, { state, refusal: say === SAY.restarted ? 'restarted' : null, error: detail ? redact(detail).text.slice(0, 4000) : say, errorReason, endedAt: this.now(), ...(totalTokens === null ? {} : { totalTokens }) })
     const channel = this.store.channel(request.channelId)
     const thread = this.store.threadById(request.threadId)
     if (channel && thread) this.post(channel, request.id, { place: thread.replyPlace, thread: thread.replyThread }, say)

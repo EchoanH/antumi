@@ -1,6 +1,6 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { create } from 'zustand'
-import type { Channel } from '@antumi/protocol'
+import type { Channel, ChannelReadiness } from '@antumi/protocol'
 import { perform, useCore } from './core-store'
 
 // Agents' channels on chat platforms (docs/CHANNELS.md), as core holds them: read once per
@@ -30,4 +30,27 @@ export function useChannels(): Channel[] {
     }
   }, [rpc, supported])
   return useChannelStore((state) => state.channels)
+}
+
+// Whether this computer can answer from a chat platform: asked again whenever the channels change
+// or the window comes back, since the daemon is replaced underneath while the app stays open.
+// Null where core cannot say, or has not yet.
+export function useChannelReadiness(): ChannelReadiness | null {
+  const rpc = useCore((state) => state.rpc)
+  const supported = useCore((state) => state.rpc?.features.includes('channel-readiness') ?? false)
+  const channels = useChannelStore((state) => state.channels)
+  const [readiness, setReadiness] = useState<ChannelReadiness | null>(null)
+  useEffect(() => {
+    if (!rpc || !supported) return setReadiness(null)
+    let live = true
+    // A check in the background: a failure only leaves the warning as it was, never an error.
+    const check = () => void rpc.call('channels.readiness', {}).then((next) => { if (live) setReadiness(next) }, () => {})
+    check()
+    window.addEventListener('focus', check)
+    return () => {
+      live = false
+      window.removeEventListener('focus', check)
+    }
+  }, [rpc, supported, channels])
+  return readiness
 }

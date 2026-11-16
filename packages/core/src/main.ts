@@ -552,7 +552,11 @@ channels = new ChannelService(channelStore, {
   isRepo: async (dir) => (await gitTopLevel(dir)) !== null,
   keepImage: (bytes) => attachments.put(bytes),
   changed: (list) => server?.broadcast('channels.changed', { channels: list }),
-  identity: async (agent) => accounts.list().accounts.find((account) => account.agent === agent && account.id === accounts.activeOf(agent))?.email ?? null
+  identity: async (agent) => accounts.list().accounts.find((account) => account.agent === agent && account.id === accounts.activeOf(agent))?.email ?? null,
+  daemon: async () => {
+    const info = await daemon.request('info', {})
+    return { features: info.features ?? [], pid: info.pid }
+  }
 })
 profiles.setChannelGuard((id) => channels?.hasChannels(id) ?? false)
 conversations.setChannelTools({ mcp: (id) => antumiChannelMcpServer(paths.home, id), tools: CHANNEL_TOOL_NAMES })
