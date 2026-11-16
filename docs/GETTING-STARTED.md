@@ -116,7 +116,7 @@
 
 1. 在 **智能体** 页新建一个智能体，最上面选 **接到聊天平台**，在「工作指令」里写清楚它答什么、答多长，保存。这种智能体只在聊天平台上回答，没有技能、MCP 要配，也不出现在你自己的会话和委派里。
 2. 保存后页面下面出现 **聊天平台**，点 **添加 Slack**，照着五步做：
-   - 打开 Slack 的应用页面，选 **From a manifest**，粘贴 Antumi 给的清单，创建后安装到工作区。
+   - 打开 Slack 的应用页面，选 **Paste a manifest**，粘贴 Antumi 给的清单，创建后安装到工作区。
    - 填两个 token：App-Level Token（Basic Information → App-Level Tokens，权限选 `connections:write`）和 Bot User OAuth Token（OAuth & Permissions）。
    - 选它可以读的项目。只能读 Git 仓库里没被 `.gitignore` 忽略的文件，`.env`、密钥这类文件不提供。
    - 填可以提问的成员 ID 和频道 ID。没填的人问了只会收到「没有权限」。

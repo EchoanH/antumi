@@ -116,7 +116,7 @@ Put an agent on Slack and colleagues can mention it in a channel. It answers fro
 
 1. On the **Agents** page create an agent, pick **On a chat platform** at the top, say in its Instructions what it answers and how long its answers run, and save. Such an agent answers only on chat platforms: it has no skills or MCP servers to set and does not appear in your own conversations or delegations.
 2. **Chat platforms** now shows below. Click **Add Slack** and follow the five steps:
-   - Open Slack's app page, choose **From a manifest**, paste the manifest Antumi gives you, create the app and install it to the workspace.
+   - Open Slack's app page, choose **Paste a manifest**, paste the manifest Antumi gives you, create the app and install it to the workspace.
    - Enter two tokens: the App-Level Token (Basic Information → App-Level Tokens, scope `connections:write`) and the Bot User OAuth Token (OAuth & Permissions).
    - Pick the projects it may read. It reads only files of Git repositories that `.gitignore` does not ignore; files like `.env` and keys are withheld.
    - Enter the member IDs and channel IDs that may ask. Anyone else only gets “no access”.

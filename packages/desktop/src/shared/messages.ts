@@ -13228,7 +13228,7 @@ export const MESSAGES = {
   "AgentChannels.stateFailed": {"zh": "连接失败：{error}", "en": "Connection failed: {error}"},
   "AgentChannels.missingCredentials": {"zh": "还没填完 token", "en": "Tokens are missing"},
   "AgentChannels.step1": {"zh": "建应用", "en": "Create the app"},
-  "AgentChannels.slack.create": {"zh": "打开 Slack 的应用页面，选「From a manifest」，选好工作区，粘贴下面的清单并创建，再把应用安装到工作区。清单里已经开好 Socket Mode，以及要用的事件和权限。", "en": "Open Slack's app page, choose “From a manifest”, pick your workspace, paste the manifest below and create the app, then install it to the workspace. The manifest already turns on Socket Mode and asks for the events and scopes it uses."},
+  "AgentChannels.slack.create": {"zh": "打开 Slack 的应用页面，选「Paste a manifest」，选好工作区，粘贴下面的清单并创建，再把应用安装到工作区。清单里已经开好 Socket Mode，以及要用的事件和权限。", "en": "Open Slack's app page, choose “Paste a manifest”, pick your workspace, paste the manifest below and create the app, then install it to the workspace. The manifest already turns on Socket Mode and asks for the events and scopes it uses."},
   "AgentChannels.openConsole": {"zh": "打开应用页面", "en": "Open the app page"},
   "AgentChannels.copyManifest": {"zh": "复制清单", "en": "Copy manifest"},
   "AgentChannels.step2": {"zh": "填 token", "en": "Tokens"},
