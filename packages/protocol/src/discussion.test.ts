@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_DISCUSSION_REQUIREMENTS, DiscussionCreate, MAX_DISCUSSION_REQUIREMENTS, checkAddDiscussionMember, checkDiscussionAction, checkEditDiscussionProjects, checkArchiveDiscussion, checkNewDiscussionTopic, checkRemoveDiscussionMember, checkDiscussionMention, currentTopic, memberLetter, reviewRound, reviewSteps } from './discussion'
+import { DEFAULT_DISCUSSION_REQUIREMENTS, DiscussionCreate, DiscussionMember, MAX_DISCUSSION_REQUIREMENTS, checkAddDiscussionMember, checkDiscussionAction, checkEditDiscussionProjects, checkArchiveDiscussion, checkNewDiscussionTopic, checkRemoveDiscussionMember, checkDiscussionMention, currentTopic, memberLetter, reviewRound, reviewSteps } from './discussion'
 
 describe('discussion requirements', () => {
   const create = { topic: 'Compare caches', projectPaths: [], members: [{ agent: 'claude', name: 'Ann' }, { agent: 'codex', name: 'Bob' }], chair: 0 }
@@ -13,6 +13,21 @@ describe('discussion requirements', () => {
   it('rejects oversized or malformed requirements before starting agents', () => {
     expect(DiscussionCreate.safeParse({ ...create, requirements: 'x'.repeat(MAX_DISCUSSION_REQUIREMENTS + 1) }).success).toBe(false)
     expect(DiscussionCreate.safeParse({ ...create, requirements: null }).success).toBe(false)
+  })
+
+  it('accepts a model provider for each member without requiring one', () => {
+    const parsed = DiscussionCreate.parse({ ...create, members: [
+      { agent: 'claude', modelProvider: 'gateway', model: 'large', name: 'Ann' },
+      { agent: 'codex', name: 'Bob' }
+    ] })
+    expect(parsed.members).toMatchObject([{ modelProvider: 'gateway', model: 'large' }, { name: 'Bob' }])
+  })
+
+  it('reads members from an older core without a provider', () => {
+    expect(DiscussionMember.parse({
+      id: crypto.randomUUID(), conversationId: crypto.randomUUID(), agent: 'claude',
+      model: null, effort: null, name: 'Ann', role: '', status: 'idle'
+    }).modelProvider).toBeUndefined()
   })
 })
 

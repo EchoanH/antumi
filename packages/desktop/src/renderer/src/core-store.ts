@@ -849,7 +849,7 @@ export function openConversationDraft(projects?: readonly string[], issue: Draft
 
 export type DraftMode = 'single' | 'group'
 // format: the group chat format the page is to start set to, where one is asked for.
-export type DraftCarry = { text: string; projects: readonly string[]; agent: AgentKind | null; model: string | null; format?: DiscussionFormat }
+export type DraftCarry = { text: string; projects: readonly string[]; agent: AgentKind | null; modelProvider?: string | null; model: string | null; format?: DiscussionFormat }
 
 // The new page switching between one agent and a group chat, taking along what was written.
 export function switchDraftMode(mode: DraftMode, carry: DraftCarry): void {
@@ -911,6 +911,10 @@ export function useDiscussionProjectsSupported(): boolean {
 
 export function useDiscussionRequirementsSupported(): boolean {
   return useCore((s) => s.rpc?.features.includes('discussion-requirements') ?? false)
+}
+
+export function useDiscussionModelProvidersSupported(): boolean {
+  return useCore((s) => s.rpc?.features.includes('discussion-model-providers') ?? false)
 }
 
 // Whether core writes a commit message with the target's agent (git.commitMessage).

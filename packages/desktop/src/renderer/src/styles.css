@@ -10646,6 +10646,7 @@ button.island-compact:focus-visible { outline: 2px solid var(--focus); outline-o
 .discussion-projects .chip-remove { padding: 0 8px 0 2px; font-size: 13px; }
 .discussion-projects .chip-add-button { padding: 2px 10px; }
 .discussion-member-form { width: 360px; }
+.discussion-member-form[data-provider] { width: 460px; }
 .discussion-member-form-pickers { display: flex; align-items: center; gap: 4px; }
 .discussion-member-form-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); }
 .discussion-member-form-field .input { color: var(--text); font-size: 13px; }
@@ -10791,7 +10792,10 @@ button.island-compact:focus-visible { outline: 2px solid var(--focus); outline-o
 .discussion-draft-members { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
 /* One column per field, the same in every row and in the head above them. */
 .discussion-draft-member { display: grid; grid-template-columns: 20px minmax(96px, 132px) minmax(96px, 140px) minmax(100px, 150px) minmax(120px, 1fr) auto 24px; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.discussion-draft-member[data-provider] { grid-template-columns: 20px minmax(90px, 120px) minmax(100px, 132px) minmax(100px, 140px) minmax(100px, 140px) minmax(120px, 1fr) auto 24px; }
 .discussion-draft-member > .chat-picker { justify-self: start; max-width: 100%; }
+.discussion-draft-provider { min-width: 0; }
+.discussion-draft-provider > .chat-picker { max-width: 100%; }
 .discussion-draft-member-head { padding-block: 0; border-color: transparent; font-size: 12px; color: var(--text-muted); }
 /* In line with the text of the pickers and fields under each, which keep 8px inside. */
 .discussion-draft-member-head > span { padding-left: 8px; }

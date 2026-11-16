@@ -5,10 +5,13 @@ import { resolveModel, useAgentCatalog } from '../agent-models'
 import { addDiscussionMember, defaultMemberName } from '../discussions'
 import { useInstalledAgents } from '../installed-agents'
 import { agentLabel } from '../labels'
+import { providerFor } from '../model-provider-choice'
+import { useCore, useDiscussionModelProvidersSupported } from '../core-store'
 import { effortLabel } from './ChatOptionsBar'
 import { ChatModelPicker, ChatPicker } from './ChatPicker'
 import { AgentIcon } from './icons'
 import { Popover } from './Popover'
+import { ProviderPicker } from './ProviderPicker'
 
 // A name no member has: the agent's and model's, numbered when another already goes by it.
 function freeName(base: string, taken: readonly string[]): string {
@@ -20,12 +23,16 @@ function freeName(base: string, taken: readonly string[]): string {
 function MemberForm({ discussion, onDone }: { discussion: Discussion; onDone: () => void }) {
   const installed = useInstalledAgents()
   const [agent, setAgent] = useState<AgentKind>(installed[0] ?? 'claude')
+  const [modelProvider, setModelProvider] = useState<string | undefined>()
   const [model, setModel] = useState<string | undefined>()
   const [effort, setEffort] = useState<string | undefined>()
   const [name, setName] = useState<string | null>(null)
   const [role, setRole] = useState('')
   const [busy, setBusy] = useState(false)
-  const catalog = useAgentCatalog(agent, true)
+  const providersSupported = useDiscussionModelProvidersSupported()
+  const providers = useCore((state) => state.modelProviders)
+  const provider = providersSupported ? providerFor(providers, modelProvider, agent) : null
+  const catalog = useAgentCatalog(agent, true, provider)
   const resolved = resolveModel(catalog, { model, effort })
   const names = discussion.members.map((member) => member.name)
   const shownName = name ?? freeName(defaultMemberName(agent, model ?? null), names)
@@ -34,13 +41,15 @@ function MemberForm({ discussion, onDone }: { discussion: Discussion; onDone: ()
     if (busy || taken || !shownName.trim()) return
     setBusy(true)
     const added = await addDiscussionMember(discussion.id, {
-      agent, name: shownName.trim(), role: role.trim(), ...(model ? { model } : {}), ...(resolved.effort ? { effort: resolved.effort } : {})
+      agent, name: shownName.trim(), role: role.trim(),
+      ...(modelProvider ? { modelProvider } : {}),
+      ...(model ? { model } : {}), ...(resolved.effort ? { effort: resolved.effort } : {})
     })
     setBusy(false)
     if (added) onDone()
   }
   return (
-    <form className="note-form discussion-member-form" onSubmit={(event) => { event.preventDefault(); void add() }}>
+    <form className="note-form discussion-member-form" data-provider={providersSupported || undefined} onSubmit={(event) => { event.preventDefault(); void add() }}>
       <p className="note-form-title">{t('DiscussionMemberForm.addAMember')}</p>
       <p className="menu-note">{t('DiscussionMemberForm.theySeeAllEarlierPostsAndJoinFrom')}</p>
       <div className="discussion-member-form-pickers">
@@ -53,9 +62,16 @@ function MemberForm({ discussion, onDone }: { discussion: Discussion; onDone: ()
           options={installed.map((each) => ({ value: each, label: agentLabel(each), icon: <AgentIcon agent={each} /> }))}
           onChange={(value) => {
             const next = installed.find((each) => each === value)
-            if (next) { setAgent(next); setModel(undefined); setEffort(undefined) }
+            if (next) { setAgent(next); setModelProvider(undefined); setModel(undefined); setEffort(undefined) }
           }}
         />
+        {providersSupported && <ProviderPicker
+          agent={agent}
+          value={modelProvider ?? null}
+          placement="below"
+          disabled={busy}
+          onChange={(next) => { setModelProvider(next ?? undefined); setModel(undefined); setEffort(undefined) }}
+        />}
         {catalog?.models.length ? (
           <ChatModelPicker
             align="start"

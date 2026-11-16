@@ -4,7 +4,7 @@ import { useShortcutLabel } from '../keyboard-shortcuts'
 import { getLocale, t, tr } from '../i18n'
 import { useEffect, useMemo, useState } from 'react'
 import { agentDescriptor, ChatPermissionMode, type AgentKind, type ChatCatalog } from '@antumi/protocol'
-import { closeConversationDraft, perform, selectConversation, switchDraftMode, useChatImagesSupported, useChatOptionsSupported, useConversationWorktreesSupported, useCore, useDiscussionsSupported, useFileMentionsSupported, usePastedTextSupported, useSourceInvestigateSupported, useStartBranchSupported } from '../core-store'
+import { closeConversationDraft, perform, selectConversation, switchDraftMode, useChatImagesSupported, useChatOptionsSupported, useConversationWorktreesSupported, useCore, useDiscussionModelProvidersSupported, useDiscussionsSupported, useFileMentionsSupported, usePastedTextSupported, useSourceInvestigateSupported, useStartBranchSupported } from '../core-store'
 import { keepHeldPastes, lostPastes, useComposerFiles } from '../composer-files'
 import { OtherProjectsHint } from './OtherProjectsHint'
 import { ConversationTip } from './ConversationTip'
@@ -83,7 +83,7 @@ export function ConversationDraft() {
     [initial.agent]: { model: initial.model ?? undefined, effort: initial.effort ?? undefined }
   } : profile ? { [profile.agent]: { model: profile.model ?? undefined, effort: profile.effort ?? undefined } } : carry?.agent && carry.model ? { [carry.agent]: { model: carry.model } } : {})
   // The model provider picked, for whichever agent it serves; null is the agent's own account.
-  const [providerId, setProviderId] = useState<string | null>(() => profile?.modelProvider ?? initial?.modelProvider ?? null)
+  const [providerId, setProviderId] = useState<string | null>(() => profile?.modelProvider ?? initial?.modelProvider ?? carry?.modelProvider ?? null)
   const providers = useCore((s) => s.modelProviders)
   const providerOf = (kind: AgentKind | null) => providerFor(providers, providerId, kind)
   // Each agent's models (a provider's where it runs on one), asked for once it is picked; absent
@@ -174,9 +174,13 @@ export function ConversationDraft() {
     setPicks({ ...picks, [agent]: next })
     remember({ model: next.model ?? modelId ?? undefined, effort: next.effort })
   }
-  // A group chat's members run on the agents' own accounts, so a provider's model stays behind.
   const discussionsSupported = useDiscussionsSupported()
-  const toGroup = () => ({ text, projects: projectPaths, agent, model: provider ? null : pick.model ?? null })
+  const discussionProvidersSupported = useDiscussionModelProvidersSupported()
+  const toGroup = () => ({
+    text, projects: projectPaths, agent,
+    ...(provider && discussionProvidersSupported ? { modelProvider: provider.id } : {}),
+    model: provider && !discussionProvidersSupported ? null : pick.model ?? null
+  })
   const groupBlocked = issue ? t('DraftModeSwitch.issueBlocks') : profile ? t('DraftModeSwitch.profileBlocks') : null
 
   const chosen = {

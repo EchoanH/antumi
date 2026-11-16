@@ -2,7 +2,7 @@ import { localized, t, tr } from '../i18n'
 import { useEffect, useRef, useState } from 'react'
 import { DEFAULT_DISCUSSION_REQUIREMENTS, MAX_DISCUSSION_MEMBERS, MAX_DISCUSSION_ROUNDS, MIN_DISCUSSION_MEMBERS, type AgentKind, type Discussion, type DiscussionFormat } from '@antumi/protocol'
 import { resolveModel, useAgentCatalog } from '../agent-models'
-import { closeConversationDraft, selectDiscussion, useCore, useDiscussionFormatsSupported, useDiscussionRequirementsSupported, type DraftCarry } from '../core-store'
+import { closeConversationDraft, selectDiscussion, useCore, useDiscussionFormatsSupported, useDiscussionModelProvidersSupported, useDiscussionRequirementsSupported, type DraftCarry } from '../core-store'
 import { composerDraft } from '../composer-drafts'
 import { createDiscussion, defaultMemberName, loadDiscussionPosts } from '../discussions'
 import { useInstalledAgents } from '../installed-agents'
@@ -20,16 +20,19 @@ import { DraftModeSwitch } from './DraftModeSwitch'
 import { chosenFormat, defaultRounds, DISCUSSION_FORMATS, discussionTurns, FORMAT_REASON, REASON_OF, recommendFormat, type FormatChoice } from '../discussion-formats'
 import { useFormatSuggestion } from '../discussion-format-suggestion'
 import { debateStances } from '../discussion-requirements'
+import { providerFor } from '../model-provider-choice'
+import { ProviderPicker } from './ProviderPicker'
 
 // A member as picked: name is null while it follows the agent and model.
-type Draft = { key: string; agent: AgentKind; model?: string; effort?: string; name: string | null; role: string }
+type Draft = { key: string; agent: AgentKind; modelProvider?: string; model?: string; effort?: string; name: string | null; role: string }
 
 const ROLE_HINTS = localized(() => ([t('DiscussionDraft.supporter'), t('DiscussionDraft.opponent'), t('DiscussionDraft.focusOnSecurityAndRisk'), t('DiscussionDraft.focusOnPerformanceAndCost'), t('DiscussionDraft.critic')]))
 
-function MemberRow({ member, index, agents, chair, author, busy, removable, onChange, onRemove, onChair }: {
+function MemberRow({ member, index, agents, providersSupported, chair, author, busy, removable, onChange, onRemove, onChair }: {
   member: Draft
   index: number
   agents: readonly AgentKind[]
+  providersSupported: boolean
   chair: boolean
   // A review's chair is its author, and the others review.
   author: boolean
@@ -39,11 +42,13 @@ function MemberRow({ member, index, agents, chair, author, busy, removable, onCh
   onRemove: () => void
   onChair: () => void
 }) {
-  const catalog = useAgentCatalog(member.agent, true)
+  const providers = useCore((state) => state.modelProviders)
+  const provider = providersSupported ? providerFor(providers, member.modelProvider, member.agent) : null
+  const catalog = useAgentCatalog(member.agent, true, provider)
   const { model, effort } = resolveModel(catalog, { model: member.model, effort: member.effort })
   const shownName = member.name ?? defaultMemberName(member.agent, member.model ?? null)
   return (
-    <li className="discussion-draft-member">
+    <li className="discussion-draft-member" data-provider={providersSupported || undefined}>
       <span className="discussion-draft-index">{String.fromCharCode(65 + index)}</span>
       <ChatPicker
         label="Agent"
@@ -53,9 +58,19 @@ function MemberRow({ member, index, agents, chair, author, busy, removable, onCh
         options={agents.map((agent) => ({ value: agent, label: agentLabel(agent), icon: <AgentIcon agent={agent} /> }))}
         onChange={(value) => {
           const agent = agents.find((each) => each === value)
-          if (agent) onChange({ ...member, agent, model: undefined, effort: undefined })
+          if (agent) onChange({ ...member, agent, modelProvider: undefined, model: undefined, effort: undefined })
         }}
       />
+      {providersSupported && (
+        <span className="discussion-draft-provider">
+          <ProviderPicker
+            agent={member.agent}
+            value={member.modelProvider ?? null}
+            disabled={busy}
+            onChange={(modelProvider) => onChange({ ...member, modelProvider: modelProvider ?? undefined, model: undefined, effort: undefined })}
+          />
+        </span>
+      )}
       {!catalog && <span className="chat-options-note muted">{catalog === undefined ? t('AgentModelPicker.loadingModels') : t('ChatPicker.defaultModel')}</span>}
       {catalog && (
         <ChatModelPicker
@@ -106,7 +121,12 @@ function membersFor(installed: readonly AgentKind[], carry: DraftCarry | null): 
   const first = carry?.agent ?? installed[0] ?? 'claude'
   const second = installed.find((agent) => agent !== first) ?? first
   return [
-    { key: crypto.randomUUID(), agent: first, ...(carry?.model ? { model: carry.model } : {}), name: null, role: '' },
+    {
+      key: crypto.randomUUID(), agent: first,
+      ...(carry?.modelProvider ? { modelProvider: carry.modelProvider } : {}),
+      ...(carry?.model ? { model: carry.model } : {}),
+      name: null, role: ''
+    },
     { key: crypto.randomUUID(), agent: second, name: null, role: '' }
   ]
 }
@@ -114,7 +134,12 @@ function membersFor(installed: readonly AgentKind[], carry: DraftCarry | null): 
 function settingsFrom(from: Discussion): Settings {
   return {
     choice: from.format,
-    members: from.members.map((member) => ({ key: crypto.randomUUID(), agent: member.agent, model: member.model ?? undefined, effort: member.effort ?? undefined, name: member.name, role: member.role })),
+    members: from.members.map((member) => ({
+      key: crypto.randomUUID(), agent: member.agent,
+      modelProvider: member.modelProvider ?? undefined,
+      model: member.model ?? undefined, effort: member.effort ?? undefined,
+      name: member.name, role: member.role
+    })),
     chair: Math.max(0, from.members.findIndex((member) => member.id === from.chairId)),
     rounds: from.maxRounds,
     anonymous: from.anonymous,
@@ -131,13 +156,14 @@ export function DiscussionDraft({ from }: { from: Discussion | null }) {
   const width = usePreferences((p) => p.chatWidth)
   const typeface = useChatTypeface()
   const requirementsSupported = useDiscussionRequirementsSupported()
+  const providersSupported = useDiscussionModelProvidersSupported()
   // From one agent's draft: what was written, its projects, and its agent as the first member.
   const [carry] = useState(() => useCore.getState().conversationDraftCarry)
   const requested = useCore((s) => s.conversationDraftProjects)
   // Going on from what a group chat produced, the format asked for comes along.
   const [settings] = useState<Settings>(() => {
     const base = from ? settingsFrom(from) : kept ?? {
-      choice: 'auto', members: membersFor(installed, carry), chair: 0, rounds: null, anonymous: false, requirements: DEFAULT_DISCUSSION_REQUIREMENTS
+      choice: 'auto', members: membersFor(installed, providersSupported ? carry : carry && { ...carry, modelProvider: null }), chair: 0, rounds: null, anonymous: false, requirements: DEFAULT_DISCUSSION_REQUIREMENTS
     }
     return carry?.format ? { ...base, choice: carry.format, rounds: null } : base
   })
@@ -193,7 +219,11 @@ export function DiscussionDraft({ from }: { from: Discussion | null }) {
     setChair((current) => (current === index ? 0 : current > index ? current - 1 : current))
   }
   const first = members[0]
-  const toSingle = (): DraftCarry => ({ text: topic, projects: projectPaths, agent: first?.agent ?? null, model: first?.model ?? null })
+  const toSingle = (): DraftCarry => ({
+    text: topic, projects: projectPaths, agent: first?.agent ?? null,
+    ...(first?.modelProvider ? { modelProvider: first.modelProvider } : {}),
+    model: first?.model ?? null
+  })
   const start = async () => {
     if (!canStart) return
     setBusy(true)
@@ -203,6 +233,7 @@ export function DiscussionDraft({ from }: { from: Discussion | null }) {
       projectPaths,
       members: members.map((member, index) => ({
         agent: member.agent,
+        ...(providersSupported && member.modelProvider ? { modelProvider: member.modelProvider } : {}),
         ...(member.model ? { model: member.model } : {}),
         ...(member.effort ? { effort: member.effort } : {}),
         name: names[index] ?? agentLabel(member.agent),
@@ -267,9 +298,10 @@ export function DiscussionDraft({ from }: { from: Discussion | null }) {
               <div className="discussion-draft-field">
                 <ul className="discussion-draft-members" aria-label={t('DiscussionDraft.members')}>
                   {/* What each column of a member is: the name most of all, as it is what @ picks it by. */}
-                  <li className="discussion-draft-member discussion-draft-member-head" aria-hidden="true">
+                  <li className="discussion-draft-member discussion-draft-member-head" data-provider={providersSupported || undefined} aria-hidden="true">
                     <span />
                     <span>Agent</span>
+                    {providersSupported && <span>{t('ProviderPicker.provider')}</span>}
                     <span>{t('AgentModelPicker.model')}</span>
                     <span>{t('DiscussionDraft.nameForMentions')}</span>
                     <span>{t('DiscussionDraft.positionOrPerspective')}</span>
@@ -282,6 +314,7 @@ export function DiscussionDraft({ from }: { from: Discussion | null }) {
                       member={member}
                       index={index}
                       agents={installed}
+                      providersSupported={providersSupported}
                       chair={chair === index}
                       author={reviewing}
                       busy={busy}

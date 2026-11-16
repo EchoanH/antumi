@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { AgentKind } from './agent'
+import { ModelProviderId } from './model-provider-id'
 import { MAX_TASK_REPOS } from './task'
 
 // A group chat: several agents, each in a conversation of its own that the list does not show,
@@ -36,6 +37,8 @@ export const DEFAULT_DISCUSSION_REQUIREMENTS = [
 
 export const DiscussionMemberFields = z.object({
   agent: AgentKind,
+  // Where this member's conversation runs; absent uses the agent's own account.
+  modelProvider: ModelProviderId.optional(),
   model: z.string().trim().min(1).max(200).optional(),
   effort: z.string().trim().min(1).max(200).optional(),
   name: z.string().trim().min(1).max(60),
@@ -51,6 +54,8 @@ export type DiscussionMemberStatus = z.infer<typeof DiscussionMemberStatus>
 export const DiscussionMember = DiscussionMemberFields.extend({
   id: z.string().uuid(),
   conversationId: z.string().uuid(),
+  // Older cores omit it; they always run members on the agent's own account.
+  modelProvider: ModelProviderId.nullable().optional(),
   model: z.string().nullable(),
   effort: z.string().nullable(),
   role: z.string(),

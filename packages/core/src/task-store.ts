@@ -441,7 +441,9 @@ export const MIGRATIONS = [
    CREATE INDEX channel_outbox_due ON channel_outbox (state, next_at);
    ALTER TABLE conversations ADD COLUMN channel TEXT;`,
   `ALTER TABLE channel_requests ADD COLUMN error TEXT;`,
-  `ALTER TABLE channel_requests ADD COLUMN error_reason TEXT;`
+  `ALTER TABLE channel_requests ADD COLUMN error_reason TEXT;`,
+  // The model provider each group-chat member's conversation runs on; null uses its own account.
+  `ALTER TABLE discussion_members ADD COLUMN model_provider TEXT;`
 ]
 
 
