@@ -4,9 +4,11 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import os from 'node:os'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ConversationService, type ConversationEvent } from './conversation-service'
 import { ConversationStore } from './conversation-store'
+import { dsh } from './agents/dsh/dsh-adapter'
+import { Rejection } from './rejection'
 import { AttachmentStore } from './attachment-store'
 import { fakeChatDaemon } from './fake-chat-agent'
 import { pngBytes } from './image-fixtures'
@@ -1172,6 +1174,18 @@ describe('ConversationService', () => {
     expect(daemon.spawns.at(-1)?.args).toEqual(expect.arrayContaining(['--effort', 'high']))
     await expect(service.create('claude', [], false, { model: 'opus' })).rejects.toMatchObject({ reason: 'chat-option-invalid' })
     await expect(service.create('claude', [], false, { model: 'haiku', effort: 'low' })).rejects.toMatchObject({ reason: 'chat-option-invalid' })
+  })
+
+  it('says why an agent listed no models, until it lists some', async () => {
+    const catalog = vi.spyOn(dsh, 'catalog')
+    try {
+      catalog.mockRejectedValueOnce(new Rejection('dsh-runtime-install-failed', 'no pnpm'))
+      expect(await service.chatCatalog('dsh')).toBeNull()
+      expect(service.chatCatalogProblem('dsh')).toEqual({ reason: 'dsh-runtime-install-failed', message: 'no pnpm' })
+      catalog.mockResolvedValueOnce({ models: [{ id: 'flash', label: 'Flash', description: null, efforts: [], isDefault: true }] })
+      expect((await service.chatCatalog('dsh'))?.models.map((model) => model.id)).toEqual(['flash'])
+      expect(service.chatCatalogProblem('dsh')).toBeNull()
+    } finally { catalog.mockRestore() }
   })
 
   it('hands off to the model and effort picked, refusing one the agent does not list before stopping anything', async () => {

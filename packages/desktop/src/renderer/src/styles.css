@@ -8955,6 +8955,8 @@ div.inspector-empty > p { margin: 0 0 8px; }
 .chat-draft-branch[data-blocked] svg,
 .chat-draft-branch[data-blocked] .chat-draft-branch-arrow { color: var(--warning); }
 .chat-options-note { font-size: 12px; }
+/* Models the agent could not list: in the warning colour, as something to fix rather than a default. */
+.models-unavailable { color: var(--warning); }
 
 /* Keep the chat's information hierarchy while its base size follows the setting. */
 .chat-view .mono { font-size: inherit; }

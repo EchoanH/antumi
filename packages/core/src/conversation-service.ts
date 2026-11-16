@@ -188,6 +188,7 @@ export class ConversationService {
   private capacityReleased: (() => void) | null = null
   private readonly freshCatalogs = new Set<AgentKind>()
   private readonly catalogs = new Map<AgentKind, Promise<ChatCatalog | null>>()
+  private readonly catalogProblems = new Map<AgentKind, { reason: string; message: string }>()
   private readonly chats: ChatHost
   private readonly titles: ConversationTitles
   // Sessions being stopped on purpose: their exit reads as a stop, not a crash.
@@ -1581,7 +1582,14 @@ export class ConversationService {
     if (known) return known
     const found = this.freshCatalogs.has(agent) ? null : this.catalogFromStages(agent)
     const adapter = adapterOf(agent)
-    const catalog = found ? Promise.resolve(found) : agentCliAccess.use(agent, () => adapter.catalog ? adapter.catalog(this.sessionsRoot) : this.probeCatalog(agent)).catch(() => null)
+    const catalog = found ? Promise.resolve(found) : agentCliAccess.use(agent, () => adapter.catalog ? adapter.catalog(this.sessionsRoot) : this.probeCatalog(agent)).then((result) => {
+      this.catalogProblems.delete(agent)
+      return result
+    }, (error: unknown) => {
+      if (error instanceof Rejection) this.catalogProblems.set(agent, { reason: error.reason, message: error.message })
+      else this.catalogProblems.delete(agent)
+      return null
+    })
     this.catalogs.set(agent, catalog)
     // A probe that failed is tried again next time rather than remembered.
     void catalog.then((result) => {
@@ -1589,6 +1597,11 @@ export class ConversationService {
       if (!result && this.catalogs.get(agent) === catalog) this.catalogs.delete(agent)
     })
     return catalog
+  }
+
+  // What the last probe that failed said, so a picker with no models can say why.
+  chatCatalogProblem(agent: AgentKind): { reason: string; message: string } | null {
+    return this.catalogProblems.get(agent) ?? null
   }
 
   // On the agent's active account: the user's own may not be signed in.

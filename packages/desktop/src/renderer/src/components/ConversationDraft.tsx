@@ -32,6 +32,7 @@ import { inboxKey, investigationMode, rememberInvestigationProjects } from '../s
 import { rememberedPick, type DraftChoice } from '../draft-choices'
 import { catalogKey, providerFor } from '../model-provider-choice'
 import { ProviderPicker } from './ProviderPicker'
+import { ModelsUnavailableNote } from './ModelsUnavailableNote'
 import { DraftModeSwitch } from './DraftModeSwitch'
 import { AgentAvatar } from './AgentAvatar'
 
@@ -380,6 +381,7 @@ export function ConversationDraft() {
                     />
                     <span className="chat-dock-spacer" />
                     {catalog === undefined && <span className="chat-options-note muted">{t('AgentModelPicker.loadingModels')}</span>}
+                    {catalog === null && !provider && <ModelsUnavailableNote agent={agent} />}
                     {catalog && (
                       <ChatModelPicker
                         models={catalog.models.map((each) => ({ value: each.id, label: each.label, description: each.description, efforts: each.efforts.map((one) => ({ value: one, label: effortLabel(one) })) }))}

@@ -541,6 +541,7 @@ export function createRpcHandlers(
         modelProvider: profile?.modelProvider ?? modelProvider, profile })
     },
     'conversations.chatCatalog': ({ agent, modelProvider }) => conversations.chatCatalog(agent, modelProvider),
+    'conversations.chatCatalogProblem': ({ agent }) => conversations.chatCatalogProblem(agent),
     'conversations.translate': ({ id, text, to, model }) => translations.translate(conversations.get(id).agent, text, to, model, { kind: 'translation', conversationId: id, baseline: () => conversations.costBaseline(id) }, conversations.quickProvider(id)),
     'conversations.setAdditionalProjects': ({ id, projectPaths }) => conversations.setAdditionalProjects(id, projectPaths),
     'conversations.rename': ({ id, title }) => { notChannel(id); return conversations.rename(id, title) },

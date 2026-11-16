@@ -8,6 +8,16 @@ npm install -g @deepseek-ai/dsh@0.2.2-rc.3
 
 DSH 可沿用自己的服务商配置，也能选择 Antumi 设置里的服务商。后者支持 Chat Completions、Responses 和 Anthropic 接口；模型和推理强度以实际目录为准，空闲时可切换。图片支持由 DSH 握手和所选模型决定。回复和思考使用官方 ACP 的已提交语义事件，不伪造逐 token 增量。仅记录实际报告的 token，没有可靠价格时不显示估算费用。
 
+## 常见问题
+
+新建会话时选不了模型，模型栏旁会写明原因，点「去设置」到 设置 → 外部智能体 处理：
+
+- **需要 DSH 0.2.2-rc.3（当前为其他版本）**：DSH 各预发布版之间内部接口不兼容，Antumi 只接受上面这一个版本。请用带版本号的命令重装。不带版本号的 `npm install -g @deepseek-ai/dsh` 装的是 npm 上标为 `latest` 的版本，它不一定是 Antumi 支持的那个。
+- **DeepSeek Harness 首次准备失败**：首次使用要安装随 Antumi 提供的运行时插件，DSH 用 pnpm 从网络下载依赖。请先确认 `pnpm --version` 能运行（`npm install -g pnpm`），网络能访问 npm 源，然后关掉新会话页重新打开即可重试，已有配置不会被清理。
+- **尚未安装 Agent**：执行上面的安装命令后，在 设置 → 外部智能体 里重新检测。
+
+升级 Antumi 后如果 DSH 版本要求变了，也会在这里提示。按新版本重装 DSH 即可，专用 profile 会自动重新准备。
+
 ## 专用 profile 与分发
 
 `packages/dsh-runtime` 是随 Antumi 提供的 DSH 插件，不需要发布到 npm。`scripts/build-plugins.mjs` 构建并打包它；桌面后端打包时将 tarball 放入 `plugins/dsh/runtime.tgz`。
