@@ -75,4 +75,4 @@
 .agent-card .agent-profile-resources { gap: 0; }
 .agent-card .agent-profile-resources > .squad-block { padding: 0 20px; border-left: 1px solid var(--border); }
 .agent-card .agent-profile-resources > .squad-block:first-child { padding-left: 0; border-left: 0; }
-.agent-save-bar { position: sticky; bottom: 0; z-index: 1; margin: 0 -8px; padding: 12px 8px; background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(10px); border-top: 1px solid var(--border); }
+.agent-save-bar { padding: 12px 0; border-top: 1px solid var(--border); }
