@@ -20,7 +20,7 @@ import {
   type ChatItem
 } from '@antumi/protocol'
 import { ChannelGatewayToCore, type ChannelEvent, type CoreToChannelGateway } from './channel-gateway-ipc'
-import { channelMessages, channelNotice } from './channel-output'
+import { channelMessages, channelNotice, redact } from './channel-output'
 import type { ChannelStore, ChannelThread, StoredChannel, StoredRequest } from './channel-store'
 import { runChannelTool } from './channel-tools'
 import { projectsOf } from './channel-tools/project'
@@ -280,7 +280,7 @@ export class ChannelService {
       busyThreads.add(request.threadId)
       perChannel.set(channel.id, (perChannel.get(channel.id) ?? 0) + 1)
       this.starting.add(request.id)
-      void this.run(request, channel, profile).catch(() => this.fail(this.store.request(request.id) ?? request, 'failed', SAY.failed)).finally(() => this.starting.delete(request.id))
+      void this.run(request, channel, profile).catch((error) => this.fail(this.store.request(request.id) ?? request, 'failed', SAY.failed, null, error instanceof Error ? error.message : String(error))).finally(() => this.starting.delete(request.id))
     }
     this.pump()
   }
@@ -503,7 +503,7 @@ export class ChannelService {
     if (turn?.kind !== 'turn') return
     const usage = turn.usage && 'input' in turn.usage ? turn.usage.input + turn.usage.output : null
     const answer = turn.state === 'completed' ? this.options.conversations.replyOf(request.conversationId, request.id) : ''
-    if (turn.state !== 'completed') return this.fail(request, 'failed', SAY.failed, usage)
+    if (turn.state !== 'completed') return this.fail(request, 'failed', SAY.failed, usage, turn.error)
     void this.answer(request, answer || SAY.noAnswer, usage)
   }
 
@@ -522,10 +522,10 @@ export class ChannelService {
     this.tick()
   }
 
-  private fail(request: StoredRequest, state: 'failed' | 'timeout', say: string, totalTokens: number | null = null): void {
+  private fail(request: StoredRequest, state: 'failed' | 'timeout', say: string, totalTokens: number | null = null, error: string | null = null): void {
     this.clearTimeout(request.id)
     if (request.state !== 'running' && request.state !== 'queued') return
-    this.store.updateRequest(request.id, { state, refusal: say === SAY.restarted ? 'restarted' : null, endedAt: this.now(), ...(totalTokens === null ? {} : { totalTokens }) })
+    this.store.updateRequest(request.id, { state, refusal: say === SAY.restarted ? 'restarted' : null, error: error ? redact(error).text.slice(0, 4000) : say, endedAt: this.now(), ...(totalTokens === null ? {} : { totalTokens }) })
     const channel = this.store.channel(request.channelId)
     const thread = this.store.threadById(request.threadId)
     if (channel && thread) this.post(channel, request.id, { place: thread.replyPlace, thread: thread.replyThread }, say)

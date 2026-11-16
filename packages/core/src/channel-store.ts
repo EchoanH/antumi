@@ -19,6 +19,7 @@ export type StoredRequest = {
   // Attachment ids of the pictures that came with it, and what to say after the answer.
   images: string[]; notes: string[]
   state: ChannelRequestState; refusal: string | null; redacted: boolean; conversationId: string | null; day: string
+  error?: string | null
   createdAt: number; startedAt: number | null; endedAt: number | null; totalTokens: number | null
 }
 
@@ -35,14 +36,14 @@ const strings = (raw: unknown): string[] => {
 }
 
 const REQUEST_SELECT = `SELECT id, channel_id AS channelId, thread_id AS threadId, asker, tenant, place, direct, message_id AS messageId, text, images, notes,
-  state, refusal, redacted, conversation_id AS conversationId, day, created_at AS createdAt, started_at AS startedAt, ended_at AS endedAt, total_tokens AS totalTokens FROM channel_requests`
+  state, refusal, error, redacted, conversation_id AS conversationId, day, created_at AS createdAt, started_at AS startedAt, ended_at AS endedAt, total_tokens AS totalTokens FROM channel_requests`
 
 function request(row: Record<string, unknown>): StoredRequest {
   return {
     id: String(row.id), channelId: String(row.channelId), threadId: String(row.threadId ?? ''), asker: String(row.asker), tenant: String(row.tenant), place: String(row.place),
     direct: Boolean(row.direct), messageId: String(row.messageId), text: String(row.text), images: strings(row.images), notes: strings(row.notes),
     state: ChannelRequestState.catch('failed').parse(row.state), refusal: row.refusal == null ? null : String(row.refusal), redacted: Boolean(row.redacted),
-    conversationId: row.conversationId == null ? null : String(row.conversationId), day: String(row.day),
+    conversationId: row.conversationId == null ? null : String(row.conversationId), day: String(row.day), error: row.error == null ? null : String(row.error),
     createdAt: Number(row.createdAt), startedAt: row.startedAt == null ? null : Number(row.startedAt), endedAt: row.endedAt == null ? null : Number(row.endedAt),
     totalTokens: row.totalTokens == null ? null : Number(row.totalTokens)
   }
@@ -155,8 +156,8 @@ export class ChannelStore {
       row.state, row.refusal, Number(row.redacted), row.conversationId, row.day, row.createdAt, row.startedAt, row.endedAt, row.totalTokens)
   }
 
-  updateRequest(id: string, patch: Partial<Pick<StoredRequest, 'state' | 'refusal' | 'redacted' | 'conversationId' | 'startedAt' | 'endedAt' | 'totalTokens' | 'images' | 'notes'>>): void {
-    const columns: Record<string, string> = { state: 'state', refusal: 'refusal', redacted: 'redacted', conversationId: 'conversation_id', startedAt: 'started_at', endedAt: 'ended_at', totalTokens: 'total_tokens', images: 'images', notes: 'notes' }
+  updateRequest(id: string, patch: Partial<Pick<StoredRequest, 'state' | 'refusal' | 'error' | 'redacted' | 'conversationId' | 'startedAt' | 'endedAt' | 'totalTokens' | 'images' | 'notes'>>): void {
+    const columns: Record<string, string> = { state: 'state', refusal: 'refusal', error: 'error', redacted: 'redacted', conversationId: 'conversation_id', startedAt: 'started_at', endedAt: 'ended_at', totalTokens: 'total_tokens', images: 'images', notes: 'notes' }
     const entries = Object.entries(patch).filter(([, value]) => value !== undefined)
     if (entries.length === 0) return
     const values = entries.map(([, value]) => (Array.isArray(value) ? JSON.stringify(value) : typeof value === 'boolean' ? Number(value) : value))
@@ -185,7 +186,7 @@ export class ChannelStore {
       const stored = request(row)
       return ChannelRequest.parse({
         id: stored.id, channelId: stored.channelId, asker: stored.asker, place: stored.place, direct: stored.direct, text: stored.text, images: stored.images.length, state: stored.state,
-        refusal: stored.refusal, redacted: stored.redacted, conversationId: stored.conversationId, createdAt: stored.createdAt, startedAt: stored.startedAt, endedAt: stored.endedAt,
+        refusal: stored.refusal, error: stored.error ?? null, redacted: stored.redacted, conversationId: stored.conversationId, createdAt: stored.createdAt, startedAt: stored.startedAt, endedAt: stored.endedAt,
         totalTokens: stored.totalTokens, toolCalls: Number(row.toolCalls)
       })
     })

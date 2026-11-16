@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AgentProfile, MAX_CHANNEL_ANSWER_CHARS, type Channel } from '@antumi/protocol'
 import { AttachmentStore } from './attachment-store'
 import type { ChannelEvent, ChannelGatewayToCore, CoreToChannelGateway } from './channel-gateway-ipc'
@@ -313,7 +313,20 @@ describe('ChannelService', () => {
     await ask()
     await deliverAll()
     expect(posts()).toEqual(['现在答不了，请稍后再试。'])
-    expect(channels.requests(channel.id, null, 1).items[0]).toMatchObject({ state: 'failed' })
+    expect(channels.requests(channel.id, null, 1).items[0]).toMatchObject({ state: 'failed', error: 'boom: /secret/path' })
+  })
+
+  it('keeps a startup failure for the owner without posting its diagnostic to colleagues', async () => {
+    vi.spyOn(conversations, 'create').mockRejectedValueOnce(new Error('pi lists no model glm-5.2; sk-123456789012345678901234'))
+    await ask()
+    await deliverAll()
+    const reader = new ChannelStore(path.join(root, 'antumi.db'))
+    try {
+      expect(reader.requests(channel.id, null, 1)[0]).toMatchObject({
+        state: 'failed', conversationId: null, startedAt: null, error: 'pi lists no model glm-5.2; [已隐藏]'
+      })
+    } finally { reader.close() }
+    expect(posts()).toEqual(['现在答不了，请稍后再试。'])
   })
 
   it('fetches pictures only for a question that passed, and sends them with it', async () => {

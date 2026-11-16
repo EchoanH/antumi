@@ -40,6 +40,8 @@
 .agent-channel-request-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--text-muted); font-size: 12px; }
 .agent-channel-request-meta [data-state='failed'], .agent-channel-request-meta [data-state='timeout'], .agent-channel-request-meta [data-state='refused'] { color: var(--danger); }
 .agent-channel-request-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-channel-request-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; width: 100%; }
+.agent-channel-request-toggle { flex-shrink: 0; color: var(--text-muted); font-size: 12px; }
 .agent-channel-request[aria-expanded='true'] .agent-channel-request-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .agent-channel-detail { display: flex; flex-direction: column; gap: 8px; padding: 0 0 12px; }
 .agent-channel-detail h5 { margin: 0; color: var(--text-muted); font-size: 12px; font-weight: 500; }

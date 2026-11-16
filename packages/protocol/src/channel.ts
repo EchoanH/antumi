@@ -81,6 +81,8 @@ export const ChannelRequest = z.object({
   images: z.number().int().nonnegative(),
   state: ChannelRequestState,
   refusal: z.string().nullable(),
+  // The owner's diagnostic, never posted to the platform. Older cores leave it out.
+  error: z.string().nullable().optional(),
   // Whether something that looked like a secret was taken out of its answer.
   redacted: z.boolean(),
   conversationId: z.string().uuid().nullable(),

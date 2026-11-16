@@ -439,7 +439,8 @@ export const MIGRATIONS = [
    CREATE TABLE channel_outbox (id TEXT PRIMARY KEY, channel_id TEXT NOT NULL, request_id TEXT, op TEXT NOT NULL, payload TEXT NOT NULL,
      state TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, next_at INTEGER NOT NULL, platform_id TEXT, created_at INTEGER NOT NULL);
    CREATE INDEX channel_outbox_due ON channel_outbox (state, next_at);
-   ALTER TABLE conversations ADD COLUMN channel TEXT;`
+   ALTER TABLE conversations ADD COLUMN channel TEXT;`,
+  `ALTER TABLE channel_requests ADD COLUMN error TEXT;`
 ]
 
 

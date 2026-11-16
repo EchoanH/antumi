@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import {
   CHANNEL_DEFAULTS, CHANNEL_PLATFORMS, ChannelInput, agentDescriptor, channelPlatform,
-  type AgentKind, type Channel, type ChannelCredentialKey, type ChannelPlatform, type ChannelRequest, type ChannelToolCall
+  type AgentKind, type Channel, type ChannelCredentialKey, type ChannelPlatform, type ChannelRequest
 } from '@antumi/protocol'
 import { setChannels, useChannels, useChannelsSupported } from '../channels'
 import { askConfirm } from '../confirm-dialog'
@@ -11,6 +11,7 @@ import { t } from '../i18n'
 import { agentLabel } from '../labels'
 import { useOccludesBrowser } from '../browser-occlusion'
 import { CopyButton } from './CopyButton'
+import { ChannelRequestDetail } from './ChannelRequestDetail'
 import { ChannelPlatformIcon, ChatIcon, CloseIcon, InfoIcon, PlusIcon } from './icons'
 import { Toggle } from './SettingsControls'
 import './agent-channels.css'
@@ -249,10 +250,11 @@ function ChannelRequests({ channel }: { channel: Channel }) {
   useEffect(() => { void load(null) }, [channel.id])
   if (items === null) return null
   return <div className="agent-channel-panel">
+    <div className="agent-channel-actions"><button type="button" className="button small" onClick={() => void load(null)}>{t('AgentChannels.refresh')}</button></div>
     {items.length === 0 ? <p className="squad-block-hint muted">{t('AgentChannels.noRequests')}</p> : <ul className="agent-channel-requests">
       {items.map((request) => <li key={request.id}>
         <button type="button" className="agent-channel-request" aria-expanded={opened === request.id} onClick={() => setOpened(opened === request.id ? null : request.id)}>
-          <span className="agent-channel-request-text">{request.text || t('AgentChannels.imagesOnly')}</span>
+          <span className="agent-channel-request-heading"><span className="agent-channel-request-text">{request.text || t('AgentChannels.imagesOnly')}</span><span className="agent-channel-request-toggle">{t(opened === request.id ? 'AgentChannels.collapseDetail' : 'AgentChannels.viewDetail')}</span></span>
           <span className="agent-channel-request-meta">
             <span data-state={request.state}>{t(`AgentChannels.request.${request.state}`)}{request.refusal ? `（${refusalText(request.refusal)}）` : ''}</span>
             <span>{request.asker}{request.direct ? ` · ${t('AgentChannels.direct')}` : ` · ${request.place}`}</span>
@@ -263,7 +265,7 @@ function ChannelRequests({ channel }: { channel: Channel }) {
             {request.redacted && <span data-state="failed">{t('AgentChannels.redacted')}</span>}
           </span>
         </button>
-        {opened === request.id && <RequestDetail request={request} />}
+        {opened === request.id && <ChannelRequestDetail request={request} />}
       </li>)}
     </ul>}
     {before !== null && <div className="agent-channel-actions"><button type="button" className="button small" onClick={() => void load(before)}>{t('AgentChannels.earlier')}</button></div>}
@@ -272,24 +274,4 @@ function ChannelRequests({ channel }: { channel: Channel }) {
 
 function refusalText(refusal: string): string {
   return refusal === 'quota' ? t('AgentChannels.refusalQuota') : refusal === 'restarted' ? t('AgentChannels.refusalRestarted') : refusal === 'acl' ? t('AgentChannels.refusalAcl') : refusal
-}
-
-// What the agent answered and what it read to do so, as core wrote both down.
-function RequestDetail({ request }: { request: ChannelRequest }) {
-  const [answer, setAnswer] = useState<string | null>(null)
-  const [reads, setReads] = useState<ChannelToolCall[] | null>(null)
-  useEffect(() => {
-    let live = true
-    void perform((rpc) => rpc.call('channels.toolCalls', { requestId: request.id })).then((calls) => { if (live) setReads(calls ?? []) })
-    const { conversationId } = request
-    if (conversationId) void perform((rpc) => rpc.call('conversations.messages', { id: conversationId })).then((messages) => {
-      if (live) setAnswer(messages?.findLast((message) => message.role === 'assistant' && message.eventKey === `chat:${request.id}:assistant`)?.text ?? '')
-    })
-    return () => { live = false }
-  }, [request.id, request.conversationId])
-  return <div className="agent-channel-detail">
-    {answer ? <><h5>{t('AgentChannels.answer')}</h5><pre>{answer}</pre></> : null}
-    <h5>{t('AgentChannels.reads')}</h5>
-    {reads?.length ? <pre>{reads.map((call) => `${call.tool}  ${call.target}`).join('\n')}</pre> : <p className="squad-block-hint muted">{reads ? t('AgentChannels.noReads') : '…'}</p>}
-  </div>
 }
