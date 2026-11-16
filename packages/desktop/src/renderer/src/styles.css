@@ -3583,7 +3583,24 @@ div.inspector-empty > p { margin: 0 0 8px; }
   display: flex;
   align-items: center;
   gap: 6px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
   margin: -4px 0 8px -4px;
+  background: var(--surface);
+}
+
+/* The sticky origin sits under the body's padding, so the bar reaches back over it.
+   Padding, not margin, keeps scrolling lines from showing through the bar. */
+.inspector-body > .file-diff > .file-diff-header {
+  top: -10px;
+  margin: -10px -12px 0 -12px;
+  padding: 6px 12px 8px 8px;
+}
+
+.git-details .file-diff > .file-diff-header {
+  margin: -8px -8px 0 -8px;
+  padding: 4px 8px 8px 4px;
 }
 
 .file-diff-path {
