@@ -16,7 +16,7 @@ const FALLBACK_PROTOCOL_VERSION = '2024-11-05'
 
 type Reply = { jsonrpc: '2.0'; id: string | number | null; result?: unknown; error?: { code: number; message: string } }
 
-export function channelMcpHandler(call: (tool: string, args: unknown) => Promise<{ text: string; isError: boolean }>) {
+export function channelMcpHandler(call: (tool: string, args: unknown) => Promise<{ text: string; isError: boolean }>, onList?: () => Promise<void>) {
   const specs = CHANNEL_TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema, annotations: { readOnlyHint: true } }))
   return async (line: string): Promise<Reply | null> => {
     let raw: unknown
@@ -34,6 +34,7 @@ export function channelMcpHandler(call: (tool: string, args: unknown) => Promise
       case 'ping':
         return reply({})
       case 'tools/list':
+        await onList?.()
         return reply({ tools: specs })
       case 'tools/call': {
         const asked = CallParams.safeParse(params)
@@ -48,7 +49,7 @@ export function channelMcpHandler(call: (tool: string, args: unknown) => Promise
 }
 
 // Each call connects anew, as the full server does, so a core restart between calls is harmless.
-export async function serveChannelMcp(home: string | undefined, conversationId: string): Promise<void> {
+export async function serveChannelMcp(home: string | undefined, conversationId: string, onList?: () => Promise<void>): Promise<void> {
   const handle = channelMcpHandler(async (tool, args) => {
     const endpoint = await readCoreEndpoint(home)
     if (!endpoint) return { text: 'Antumi core 没有运行', isError: true }
@@ -58,7 +59,7 @@ export async function serveChannelMcp(home: string | undefined, conversationId: 
     } finally {
       rpc.close()
     }
-  })
+  }, onList)
   const lines = readline.createInterface({ input: process.stdin, crlfDelay: Number.POSITIVE_INFINITY })
   for await (const line of lines) {
     if (!line.trim()) continue

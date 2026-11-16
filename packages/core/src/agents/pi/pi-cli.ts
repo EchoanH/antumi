@@ -15,12 +15,12 @@ const execute = promisify(execFile)
 // Antumi's extension adds its MCP servers with registerMcpServer, which Pi has from 0.99.
 export const PI_MIN_VERSION = '0.99.0'
 
-export function piCompatible(version: string | null): boolean {
-  return version !== null && semver.valid(version) !== null && semver.gte(version, PI_MIN_VERSION)
+export function piCompatible(version: string | null, minimum = PI_MIN_VERSION): boolean {
+  return version !== null && semver.valid(version) !== null && semver.gte(version, minimum)
 }
 
-async function piVersion(command: string): Promise<string | null> {
-  const launch = launchFile(command, ['--version'], { ...process.env, ...PI_ENV, PI_OFFLINE: '1' })
+async function piVersion(command: string, env: NodeJS.ProcessEnv = process.env): Promise<string | null> {
+  const launch = launchFile(command, ['--version'], { ...env, ...PI_ENV, PI_OFFLINE: '1' })
   const result = await execute(launch.file, launch.args, { env: launch.env, timeout: 10_000, maxBuffer: 1024 * 1024, windowsHide: true }).catch(() => null)
   return result ? parseVersion(`${result.stdout}\n${result.stderr}`) : null
 }
@@ -38,10 +38,12 @@ export async function detectPi(pathEnv: string, platform: NodeJS.Platform): Prom
   }
 }
 
-export async function requirePi(): Promise<string> {
+export async function requirePi(options: { env?: NodeJS.ProcessEnv; minVersion?: string } = {}): Promise<string> {
   const command = await findOnPath('pi', process.env.PATH ?? '', process.platform)
   if (!command) throw new Rejection('pi-cli-missing', '未找到 Pi，请安装后重新检测')
-  if (!piCompatible(await piVersion(command))) throw new Rejection('pi-upgrade-required', `请升级 Pi，Antumi 需要 ${PI_MIN_VERSION} 以上版本`)
+  const version = await piVersion(command, options.env)
+  const minimum = options.minVersion ?? PI_MIN_VERSION
+  if (!piCompatible(version, minimum)) throw new Rejection('pi-upgrade-required', `请升级 Pi，Antumi 需要 ${minimum} 以上版本`)
   return command
 }
 

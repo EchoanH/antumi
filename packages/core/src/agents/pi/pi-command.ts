@@ -14,7 +14,8 @@ export const PI_ENV = { PI_SKIP_VERSION_CHECK: '1' }
 
 // The mode a start runs in: a fenced stage's own whatever was remembered, and bypass only where
 // allowed. Asked by the command and the driver alike, which must agree.
-export function piStartMode(launch: { preferred?: AgentLaunch['preferred']; planOnly?: unknown; readOnly?: unknown; allowBypass?: boolean | undefined }): PiMode {
+export function piStartMode(launch: { preferred?: AgentLaunch['preferred']; planOnly?: unknown; readOnly?: unknown; allowBypass?: boolean | undefined; lockdown?: unknown }): PiMode {
+  if (launch.lockdown) return 'readOnly'
   if (launch.planOnly) return 'plan'
   if (launch.readOnly) return 'readOnly'
   const wanted = launch.preferred?.permissionMode
@@ -24,6 +25,13 @@ export function piStartMode(launch: { preferred?: AgentLaunch['preferred']; plan
 
 // What the extension (pi-extension.ts) is told for this start.
 export function piExtensionConfig(launch: AgentLaunch): PiExtensionConfig {
+  if (launch.lockdown) return {
+    lockdown: true, mode: 'readOnly',
+    servers: launch.mcp ? { [RESERVED_MCP_SERVER_NAME]: { command: launch.mcp.command, args: launch.mcp.args, ...(launch.mcp.env ? { env: launch.mcp.env } : {}) } } : {},
+    noEdit: [], workDirs: [],
+    readTools: launch.lockdown.tools.map((tool) => `mcp__${RESERVED_MCP_SERVER_NAME}__${tool}`),
+    ...(launch.provider ? { provider: piProvider(launch.provider) } : {})
+  }
   const { mcp, userMcp = [], knowledgeBase, todos = true } = launch
   const fenced = launch.planOnly ?? launch.readOnly
   const servers: Record<string, PiMcpServer> = {
@@ -74,16 +82,21 @@ export function piSystemNote(launch: AgentLaunch): string | null {
 // comes from launch.prepare, which writes it.
 export function piCommand(launch: AgentLaunch): AgentCommand {
   const { providerSessionId, resume, forkAt, skills } = launch
-  const note = piSystemNote(launch)
+  const note = launch.lockdown ? launch.instructions : piSystemNote(launch)
+  const allowed = launch.lockdown?.tools.map((tool) => `mcp__${RESERVED_MCP_SERVER_NAME}__${tool}`) ?? []
   return {
     command: 'pi',
     args: [
       '--mode', 'rpc',
+      ...(launch.lockdown ? [
+        '--no-builtin-tools', ...(allowed.length ? ['--tools', allowed.join(',')] : ['--no-tools']),
+        '--no-extensions', '--extension', 'builtin:mcp', '--no-skills', '--no-prompt-templates', '--no-themes', '--no-context-files', '--no-approve', '--offline'
+      ] : []),
       // Its sessions are files; a fork copies one whole into a new session.
-      ...(resume && providerSessionId ? [forkAt ? '--fork' : '--session', providerSessionId] : []),
+      ...(resume && providerSessionId ? [!launch.lockdown && forkAt ? '--fork' : '--session', providerSessionId] : []),
       // Antumi's skills bundle, in the Agent Skills layout.
-      ...(skills ? ['--skill', path.join(skills.dir, '.agents', 'skills')] : []),
-      ...(note ? ['--append-system-prompt', note] : [])
+      ...(!launch.lockdown && skills ? ['--skill', path.join(skills.dir, '.agents', 'skills')] : []),
+      ...(note ? [launch.lockdown ? '--system-prompt' : '--append-system-prompt', note] : [])
     ],
     env: {
       ...PI_ENV,

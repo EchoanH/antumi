@@ -73,6 +73,7 @@ describe('reusable agent roles and delegated work', () => {
     expect(profiles.available(parentId).map((profile) => profile.id)).not.toContain(helper.id)
     expect(() => profiles.save({ ...reviewer, callableProfiles: [helper.id] }, reviewer.id)).toThrow(expect.objectContaining({ reason: 'profile-for-channels' }))
     expect(profiles.save({ name: 'Codex helper', agent: 'codex', audience: 'channels' })).toMatchObject({ agent: 'codex', capability: 'readOnly', audience: 'channels' })
+    expect(profiles.save({ name: 'Pi helper', agent: 'pi', audience: 'channels' })).toMatchObject({ agent: 'pi', capability: 'readOnly', audience: 'channels' })
     expect(() => profiles.save({ name: 'Cursor helper', agent: 'cursor', audience: 'channels' })).toThrow(expect.objectContaining({ reason: 'agent-no-lockdown' }))
   })
 

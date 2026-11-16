@@ -34,7 +34,7 @@ const onList = values['ready-on-list']
 const channelConversation = values['tool-set'] === 'channel' ? values.conversation : undefined
 // An unknown tool set serves nothing rather than everything.
 const served = values['tool-set'] !== undefined
-  ? channelConversation ? serveChannelMcp(values.home, channelConversation) : Promise.reject(new Error(`unknown tool set ${values['tool-set']}`))
+  ? channelConversation ? serveChannelMcp(values.home, channelConversation, ready) : Promise.reject(new Error(`unknown tool set ${values['tool-set']}`))
   : values.run
   ? runUserMcp(values.home ?? antumiHome(), values.run, values['read-only'])
   : serveMcp(values.home, values.conversation, values['plan-only'], onList ? undefined : ready, values.history, !values['no-todos'], onList ? ready : undefined)

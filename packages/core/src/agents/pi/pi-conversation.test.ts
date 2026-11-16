@@ -26,6 +26,7 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
 
 beforeEach(() => {
   root = mkdtempSync(path.join(os.tmpdir(), 'antumi-pi-conversation-'))
+  vi.stubEnv('PI_CODING_AGENT_DIR', path.join(root, 'pi-account'))
   const database = path.join(root, 'antumi.db')
   tasks = new TaskStore(database); store = new ConversationStore(database); projects = new ProjectRegistry(database)
   mkdirSync(path.join(root, 'attachments'))
@@ -40,9 +41,10 @@ beforeEach(() => {
   daemon.request = async (method, params) => {
     const result = await request(method, params)
     // Pi registers Antumi's MCP server from the extension's config, which reports once listed.
-    if (method === 'spawnPipe') {
+    if (method === 'spawnPipe' || method === 'spawnPipeClean') {
       const config = z.object({ servers: z.object({ antumi: z.object({ args: z.array(z.string()) }) }) }).parse(JSON.parse(Spawn.parse(params).env[PI_CONFIG_ENV] ?? '{}'))
       const args = config.servers.antumi.args
+      if (!args.includes('--ready-file')) throw new Error('missing MCP ready file')
       await writePrivateJson(args[args.indexOf('--ready-file') + 1]!, { ready: true })
     }
     if (method !== 'write') return result
@@ -73,7 +75,7 @@ beforeEach(() => {
   }
 })
 
-afterEach(() => { projects.close(); store.close(); tasks.close(); rmSync(root, { recursive: true, force: true }) })
+afterEach(() => { vi.unstubAllEnvs(); projects.close(); store.close(); tasks.close(); rmSync(root, { recursive: true, force: true }) })
 
 const spawn = (index: number) => Spawn.parse(daemon.spawns[index])
 const turns = (id: string) => service.chatPage(id).items.filter((item) => item.kind === 'turn')
@@ -96,6 +98,20 @@ it('starts Pi in RPC mode with Antumi extension, written for this start, and its
   expect(JSON.parse(env[PI_CONFIG_ENV] ?? '{}')).toMatchObject({ mode: 'ask', servers: { antumi: { command: 'node', args: expect.arrayContaining(['--ready-on-list']) } } })
   await service.send(created.id, 'hello'); await settle()
   expect(service.chatPage(created.id).items.filter((item) => item.kind === 'assistant').map((item) => item.kind === 'assistant' && item.text)).toEqual(['echo: hello'])
+})
+
+it('starts a platform conversation with scoped project tools, a clean environment and MCP readiness intact', async () => {
+  service.setChannelTools({ mcp: (id) => ({ command: 'node', args: ['mcp', '--conversation', id, '--tool-set', 'channel'] }), tools: ['project_list', 'project_read'] })
+  const created = await service.create('pi', [], undefined, { channel: { channelId: '22222222-2222-4222-8222-222222222222', platform: 'slack', asker: 'U1', place: 'C1' } })
+  const { args, env } = spawn(0)
+  expect(daemon.clean.has(0)).toBe(true)
+  expect(args).toEqual(expect.arrayContaining(['--no-builtin-tools', '--no-extensions', '--system-prompt']))
+  expect(env.PI_CODING_AGENT_DIR).toContain(path.join('launch', service.stages(created.id)[0]!.id))
+  expect(JSON.parse(env[PI_CONFIG_ENV] ?? '{}')).toMatchObject({ lockdown: true, mode: 'readOnly', readTools: ['mcp__antumi__project_list', 'mcp__antumi__project_read'], servers: { antumi: { args: expect.arrayContaining(['--tool-set', 'channel', '--ready-on-list']) } } })
+  expect(service.list()).toEqual([])
+  await service.send(created.id, 'hello', [], false, false, 'question')
+  await settle()
+  expect(service.replyOf(created.id, 'question')).toContain('hello')
 })
 
 it('forks its session whole from the latest turn', async () => {

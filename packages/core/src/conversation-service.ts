@@ -1329,7 +1329,7 @@ export class ConversationService {
       handoffPath: null,
       extraProjects: [],
       preferred: { model: options.preferred?.model, effort: options.preferred?.effort },
-      mcp: locked.mcp(id),
+      mcp: options.mcp,
       todos: false,
       lockdown: { tools: locked.tools },
       ...(provider ? { provider } : {}),

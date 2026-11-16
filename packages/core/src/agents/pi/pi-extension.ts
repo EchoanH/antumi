@@ -12,6 +12,7 @@ export type PiMcpServer = { command: string; args: string[]; env?: Record<string
 // What the extension is told, through ANTUMI_PI in Pi's environment: one process's mode, servers
 // and fences, so the file itself is the same for every start.
 export type PiExtensionConfig = {
+  lockdown?: boolean
   mode: PiMode
   servers: Record<string, PiMcpServer>
   // Folders no edit or write may touch, in any mode.
@@ -65,6 +66,7 @@ function inside(file, dir) {
 }
 
 function refusal(name, input) {
+  if (config.lockdown) return (config.readTools || []).includes(name) ? null : '聊天平台只能使用指定的项目工具（Antumi）'
   const file = typeof input.path === 'string' ? path.resolve(process.cwd(), input.path) : null
   if ((name === 'edit' || name === 'write') && file && (config.noEdit || []).some((dir) => inside(file, dir))) {
     return input.path + ' 在只读文件夹里，不能修改（Antumi）'
@@ -107,7 +109,7 @@ export default function antumi(pi) {
       console.error('antumi: MCP server ' + name + ' not registered: ' + (error && error.message ? error.message : error))
     }
   }
-  pi.registerCommand(${JSON.stringify(PI_MODE_COMMAND)}, {
+  if (!config.lockdown) pi.registerCommand(${JSON.stringify(PI_MODE_COMMAND)}, {
     description: 'Antumi: switch permission mode',
     handler: async (args) => {
       const next = String(args || '').trim()

@@ -38,6 +38,14 @@ const PROVIDER = { name: 'antumi-glm', baseUrl: 'https://open.bigmodel.cn/api/an
 const KEY = 'ANTUMI_MODEL_PROVIDER_KEY'
 
 describe('Antumi extension for Pi', () => {
+  it('allows only named project tools in a channel, regardless of mode, and registers no mode command', async () => {
+    const { commands, blocked } = await load({ ...CONFIG, lockdown: true, mode: 'bypass', readTools: ['mcp__antumi__project_read'] })
+    expect(commands.size).toBe(0)
+    expect(await blocked('mcp__antumi__project_read')).toBeNull()
+    for (const tool of ['read', 'grep', 'find', 'ls', 'bash', 'powershell', 'edit', 'write', 'codemode', 'tool_search', 'mcp__hostile__read', 'mcp__antumi__terminal_run']) {
+      expect(await blocked(tool, { command: 'cat /etc/passwd' })).toContain('只能使用指定的项目工具')
+    }
+  })
   it('registers the model provider with its key, then takes the key out of the environment Pi starts tools in', async () => {
     process.env[KEY] = 'sk-secret'
     const { providers } = await load({ ...CONFIG, provider: PROVIDER })

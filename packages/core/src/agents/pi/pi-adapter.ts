@@ -1,5 +1,6 @@
 import os from 'node:os'
 import path from 'node:path'
+import { cleanEnv } from '@antumi/protocol/node'
 import { piTranscripts } from './pi-transcripts'
 import { Rejection } from '../../rejection'
 import type { AgentAdapter, AgentStage } from '../agent-adapter'
@@ -10,6 +11,7 @@ import { writePiExtension } from './pi-extension'
 import { piProviderModels } from './pi-models'
 import { PI_MODES } from './pi-modes'
 import { PiRpc } from './pi-rpc'
+import { PI_LOCKDOWN_MIN_VERSION, preparePiLockdown } from './pi-lockdown'
 
 const readyFile = (stage: AgentStage) => mcpReadyFile(stage, 'pi')
 // Pi waits up to 10s for a server whose tools the model is to see; a slow one may take longer.
@@ -40,9 +42,14 @@ export const pi: AgentAdapter = {
   // reports once Pi has listed its tools, which the first message waits for.
   launch: {
     mcp: (server, stage) => mcpServerReporting(server, readyFile(stage), stage.planOnly, true),
-    prepare: async (stage) => {
-      const command = await requirePi()
+    prepare: async (stage, _mcp, launch) => {
       await clearMcpReadyFile(readyFile(stage))
+      if (launch.lockdown) {
+        const prepared = await preparePiLockdown(stage, launch)
+        const command = await requirePi({ env: { ...cleanEnv(process.env), ...prepared.env }, minVersion: PI_LOCKDOWN_MIN_VERSION })
+        return { ...prepared, command }
+      }
+      const command = await requirePi()
       return { command, args: ['--extension', await writePiExtension(stage)] }
     },
     ready: async (stage) => {

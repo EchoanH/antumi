@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { piCompatible, piInstallation } from './pi-cli'
+import { PI_LOCKDOWN_MIN_VERSION } from './pi-lockdown'
 import { parsePiModelId, piEfforts, piModels, piProviderModels } from './pi-models'
 
 describe('Pi CLI', () => {
+  it('requires the verified CLI switches for channel isolation without changing ordinary starts', () => {
+    expect(piCompatible('1.2.9', PI_LOCKDOWN_MIN_VERSION)).toBe(false)
+    expect(piCompatible('1.3.0-beta.1', PI_LOCKDOWN_MIN_VERSION)).toBe(false)
+    expect(piCompatible('1.3.0', PI_LOCKDOWN_MIN_VERSION)).toBe(true)
+    expect(piCompatible('1.3.1', PI_LOCKDOWN_MIN_VERSION)).toBe(true)
+    expect(piCompatible(null, PI_LOCKDOWN_MIN_VERSION)).toBe(false)
+  })
   it('runs a Pi with registerMcpServer: 0.99 on', () => {
     expect(piCompatible('0.98.9')).toBe(false)
     expect(piCompatible('0.99.0')).toBe(true)

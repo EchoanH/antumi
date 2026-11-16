@@ -220,7 +220,7 @@ export class PiRpc implements ChatDriver {
     const handshake = [
       ...(this.sentIds.has(HANDSHAKE.state) ? [] : [{ id: HANDSHAKE.state, type: 'get_state' }]),
       ...(this.sentIds.has(HANDSHAKE.models) ? [] : [{ id: HANDSHAKE.models, type: 'get_available_models' }]),
-      ...(this.catalogOnly || this.sentIds.has(HANDSHAKE.commands) ? [] : [{ id: HANDSHAKE.commands, type: 'get_commands' }])
+      ...(this.catalogOnly || this.options.lockdown || this.sentIds.has(HANDSHAKE.commands) ? [] : [{ id: HANDSHAKE.commands, type: 'get_commands' }])
     ]
     if (handshake.length) return [...frames, ...handshake]
     if (this.catalogOnly || !this.stateRead || !this.modelsRead) return frames
@@ -261,7 +261,8 @@ export class PiRpc implements ChatDriver {
     if (images.length && !this.model?.input?.includes('image')) throw new Rejection('chat-images-unsupported', '当前 Pi 模型不支持图片输入')
     const logged = { id, type: 'prompt', message, ...(streamingBehavior ? { streamingBehavior } : {}) }
     const note = this.mode === 'plan' && !streamingBehavior ? `${PLAN_NOTE}\n\n` : ''
-    const wire = { ...logged, message: `${note}${message}`, ...(images.length ? { images: images.map((image) => ({ type: 'image', data: Buffer.from(image.read()).toString('base64'), mimeType: image.mime })) } : {}) }
+    // Pi executes extension slash commands before tool guards; platform text must stay literal.
+    const wire = { ...logged, message: this.options.lockdown ? `来自聊天平台的提问：\n\n${message}` : `${note}${message}`, ...(images.length ? { images: images.map((image) => ({ type: 'image', data: Buffer.from(image.read()).toString('base64'), mimeType: image.mime })) } : {}) }
     return { wire, logged }
   }
 
@@ -276,6 +277,7 @@ export class PiRpc implements ChatDriver {
 
   private change(option: ChatOption, value: string, id: string): unknown {
     if (option === 'permissionMode') {
+      if (this.options.lockdown) throw new Rejection('channel-managed', '聊天平台会话不能更改权限')
       if (this.options.planOnly && value !== 'plan') throw new Rejection('plan-only', '此阶段只能规划')
       if (this.options.readOnly && value !== 'readOnly') throw new Rejection('plan-only', '只读成员不能换模式')
       if (!this.permissionModes().includes(value)) throw new Rejection('chat-option-invalid', `Pi 不支持 ${value}`)
@@ -292,7 +294,7 @@ export class PiRpc implements ChatDriver {
   }
 
   private changing(): boolean {
-    return [...this.requests.values()].some((request) => request.type === 'set_model' || request.type === 'set_thinking_level' || modeCommand(request) !== null)
+    return [...this.requests.values()].some((request) => request.type === 'set_model' || request.type === 'set_thinking_level' || (!this.options.lockdown && modeCommand(request) !== null))
   }
 
   optionResult(frame: unknown): { pending: boolean; error: string | null } {
@@ -373,7 +375,7 @@ export class PiRpc implements ChatDriver {
     this.serial++
     if (frame.type === 'abort') { this.stopping = true; return }
     if (frame.type !== 'prompt') return
-    const mode = modeCommand(frame)
+    const mode = this.options.lockdown ? null : modeCommand(frame)
     if (mode) { this.mode = mode; return }
     const message = frame.message ?? ''
     if (frame.streamingBehavior === 'steer') { this.steering.set(frame.id, { text: message, images: [...images], ref }); return }
@@ -482,7 +484,7 @@ export class PiRpc implements ChatDriver {
       if (id === HANDSHAKE.commands) return
       if (initial && request.type === 'set_model' && this.onProviderModel('model')) { this.startError = `Pi 没能切到服务商的模型：${error}`; return }
       if (initial) { this.items.notice('warning', `Pi 未采用保存的${request.type === 'set_model' ? '模型' : ' effort'}：${error}`, at); this.nextInitial(at); return }
-      const mode = modeCommand(request)
+      const mode = this.options.lockdown ? null : modeCommand(request)
       if (mode) {
         this.optionErrors.set(id, error)
         this.items.notice('error', `Pi 没能切换到 ${mode}：${error}`, at)
@@ -540,7 +542,7 @@ export class PiRpc implements ChatDriver {
         return
       case 'prompt': {
         const disposition = Disposition.safeParse(response.data).data?.disposition
-        if (modeCommand(request)) return
+        if (!this.options.lockdown && modeCommand(request)) return
         const steer = this.steering.get(id)
         if (steer) { this.steered(id, null, at, disposition === 'started'); return }
         // A command Pi ran itself, without the model: the turn is over.
@@ -604,6 +606,7 @@ export class PiRpc implements ChatDriver {
   }
 
   private permissionModes(): string[] {
+    if (this.options.lockdown) return ['readOnly']
     if (this.options.planOnly) return ['plan']
     if (this.options.readOnly) return ['readOnly']
     return ['ask', 'acceptEdits', 'plan', 'readOnly', ...(this.options.allowBypass ? ['bypass'] : [])]
