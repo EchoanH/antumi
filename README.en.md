@@ -2,18 +2,16 @@
 
 # Antumi
 
-**Get the Claude Code, Codex and other agents you already have working together, through to your review.**
+**Put the Claude Code, Codex and other agents you already have to work: investigating bugs, answering your colleagues in chat, and building together.**
 
-A local desktop app. It drives the agent CLIs you are signed in to: one implements, another reviews, the work is checked in the built-in browser, and you merge the result. No setup or login to redo.
-
-Issues straight to work · Agents working together · Self-verification · Keeps going when quota runs out
+Bugs investigated automatically · An agent that answers for you · Agents working together freely
 
 [![Release](https://img.shields.io/github/v/release/flyhero/antumi?include_prereleases&label=release&color=blue)](https://github.com/flyhero/antumi/releases)
 [![Downloads](https://img.shields.io/github/downloads/flyhero/antumi/total?color=blue)](https://github.com/flyhero/antumi/releases)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-lightgrey)
 [![License](https://img.shields.io/github/license/flyhero/antumi?color=lightgrey)](LICENSE)
 
-[Download](https://github.com/flyhero/antumi/releases) · [Start in three minutes](#start-in-three-minutes) · [Compared with a terminal](#compared-with-opening-a-terminal) · [Supported agents](#supported-agents) · [Docs](#docs)
+[Download](https://github.com/flyhero/antumi/releases) · [Start in three minutes](#start-in-three-minutes) · [Highlights](#highlights) · [Supported agents](#supported-agents) · [Docs](#docs)
 
 [简体中文](README.md) · **English**
 
@@ -38,60 +36,47 @@ https://github.com/user-attachments/assets/74747188-10e9-4d1d-b444-86c867f25c58
 
 ## Who it's for
 
-You already use Claude Code, Codex or another agent CLI in a terminal, and you want them to take a piece of work from a plan through to review, without copying between windows.
+You already use Claude Code, Codex or another agent CLI in a terminal, and you want more from them: a first look at every new bug, answers to your colleagues' questions about the code, and several agents on the bigger jobs.
 
 Antumi does not replace those CLIs, and it does not ask you to sign in again. A session you started in a terminal can be imported and continued.
 
-## Compared with opening a terminal
+## Highlights
 
-The four sections below are the path from a task to finished work. Everything else is under [Also included](#also-included). Details are in the [user guide](docs/GETTING-STARTED.en.md).
+Three things come first. The rest (switching accounts when quota runs out, reading conversations and answering requests on your phone, routines and scheduling, split view, the built-in browser and terminal, the helper and translation, usage totals) is under [Also included](#also-included). Details are in the [user guide](docs/GETTING-STARTED.en.md).
 
-### Start from an issue
+### New bugs are investigated automatically
 
-Issues from GitHub, Jira, Linear and ZenTao sync into the sidebar inbox and import as tasks in one step. Starting creates a worktree and a branch named with the issue number. The agent reads the code and proposes a plan; it changes code only after you approve. A bug whose cause is still unclear can be investigated first. Tasks can depend on each other: the next one unlocks when the previous one passes review.
+When a new issue syncs in from GitHub, Jira, Linear or ZenTao, Antumi opens an investigation conversation on its own: the agent reads the issue, its attached images and the code, finds the cause and proposes a fix. Give it the permission and it goes on to change the code.
 
-[Connect a source](docs/GETTING-STARTED.en.md#task-sources) · [How tasks flow](docs/ARCHITECTURE.md#2-任务模型)
+The inbox shows the status and investigation record of every issue. You can also investigate a single issue by hand, or import it as a task: the agent proposes a plan and changes code only after you approve.
 
-<img src="docs/assets/features/intake.webp" alt="Intake: import a GitHub issue from the inbox as a task, start it, and the agent reads the code and proposes a plan for you to approve" width="100%" />
+[Connect a source](docs/GETTING-STARTED.en.md#task-sources) · [Automatic investigation](docs/SOURCE-AUTO-INVESTIGATION.md) (Chinese) · [The inbox](docs/ARCHITECTURE.md#任务来源与收件箱) (Chinese)
 
-### Several agents on one job
+<img src="docs/assets/features/investigate.webp" alt="Automatic investigation: turn it on in the source's settings, a new bug syncs into the inbox and is investigated on its own, and the agent reads the code and reports the cause and a proposed fix" width="100%" />
 
-Five windows means switching between them to see who is waiting for approval and who is done. In Antumi, type `@` in the composer to hand work to another agent that is ready on this machine, or to a saved role (a code reviewer, a test verifier). The sub-session works on its own, and the result comes back to the main conversation. Read-only analysis, and development in its own worktree, can run at the same time.
+### An agent answers for you in team chat
 
-Bigger work can go to a team: a lead splits it up, a developer builds it, a reviewer checks it.
+Put an agent on Slack, Feishu or DingTalk and it stands in for you there. Colleagues mention it to ask where a feature lives or what an error means, with a screenshot if they like. It reads the code to answer, in a reply under their message, and you are not interrupted.
 
-Each task gets its own worktree, so the code does not collide. Approvals, questions and reviews sit together in the overview. You get a system notification when an agent finishes or is waiting for you.
+It reads and never changes anything, sees only the projects you picked, and is never given files such as keys. Who asked what, which files it read and what it answered are all on record.
 
-[Delegation](docs/ARCHITECTURE.md#智能体与委派) · [Teams](docs/ARCHITECTURE.md#团队) · [Handoff](docs/GETTING-STARTED.en.md#handoff)
+[Set it up](docs/GETTING-STARTED.en.md#let-colleagues-ask-on-slack-feishu-or-dingtalk) · [What it can reach](docs/CHANNELS.md#信任模型) (Chinese)
+
+<img src="docs/assets/features/channel.webp" alt="Answering in team chat: an agent connected to Feishu, a colleague mentions it in a group, it reads the code and replies there, and Antumi's record shows the question, the answer and the files it read" width="100%" />
+
+### Agents work together freely
+
+Any supported agents can be paired: Claude Code builds and Codex reviews, or the other way round. There are three ways to do it:
+
+- **Delegation.** Type `@` in the composer to hand work to another agent that is ready on this machine, or to a saved agent (a code reviewer, a test verifier). The sub-session works on its own, and the result comes back to the main conversation. Read-only analysis, and development in its own worktree, can run at the same time.
+- **Teams.** Bigger work goes to a team: a lead splits it up, a developer builds it, a reviewer checks it, all in one worktree.
+- **Group chat.** Two to five agents discuss a plan: a round table, split research, or draft and review. Each member can use a different model. Discussion is read-only and does not change code.
+
+You can also hand a conversation to another agent partway through. Each task gets its own worktree, so the code does not collide. Approvals, questions and reviews sit together in the overview. You get a system notification when an agent finishes or is waiting for you.
+
+[Delegation](docs/ARCHITECTURE.md#智能体与委派) · [Teams](docs/ARCHITECTURE.md#团队) · [Group chat](docs/ARCHITECTURE.md#群聊) · [Handoff](docs/GETTING-STARTED.en.md#handoff)
 
 <img src="docs/assets/features/delegate.webp" alt="Delegation: type @ to name the code reviewer, the card shows it working, and the review comes back to the main conversation" width="100%" />
-
-### It checks first, then you review
-
-The agent opens the page in the built-in browser, clicks, reads the console and network requests, and takes screenshots. It watches the dev server in the built-in terminal and keeps fixing what it finds. You can take over the page at any time, or add a selected element or a screenshot to the conversation. When it is done, look at the diff of the whole task branch, run the project's checks, and merge when you are satisfied.
-
-[Built-in browser](docs/ARCHITECTURE.md#5-内置浏览器) · [After review](docs/ARCHITECTURE.md#验收之后)
-
-<img src="docs/assets/features/verify.webp" alt="Self-verification: the agent screenshots the page and sees an overdue to-do not marked, reads the console error, fixes it, and screenshots again to confirm" width="100%" />
-
-### When quota runs out, it continues
-
-With more than one Claude Code or Codex account, a used-up quota switches to the next account and the same conversation keeps going. With no account left to switch to, it waits for the quota to reset and then continues, or you hand the conversation to another agent. You can also hold the next message until quota resets or until a set time. The status bar shows each agent's usage and when it resets.
-
-[Several accounts](docs/GETTING-STARTED.en.md#multiple-accounts) · [Scheduling](docs/GETTING-STARTED.en.md#scheduling-send-when-quota-resets-or-at-a-set-time) · [Quota pacing](docs/ARCHITECTURE.md#额度节奏与建议)
-
-<img src="docs/assets/features/handoff.webp" alt="Handoff: switch the composer from Claude Code to Codex, add a note, and Codex continues with tests" width="100%" />
-
-## Your data stays on your machine
-
-Worth knowing before you install:
-
-- Tasks, conversations and worktrees live in `~/.antumi/`. The core features do not depend on a service hosted by Antumi.
-- core listens on `127.0.0.1` only, and every connection needs the local token.
-- Agents start as argument arrays, not through a shell, with `--` before the prompt.
-- Jira and GitHub credentials are stored on their own (mode 600). They are not returned to the interface and not given to agents.
-- Imported issue text is wrapped in `<untrusted-source>` before it reaches an agent. EXIF is stripped from task images before they are saved.
-- A worktree with uncommitted changes, or with a commit that exists only there, is kept. Branches are never deleted. Idle worktrees are removed after 7 days by default; change or turn that off under Settings → Conversations.
 
 ## Start in three minutes
 
@@ -107,7 +92,7 @@ You need at least one agent CLI installed and signed in. ZCode uses the desktop 
 
 3. **Review.** A system notification arrives when it is done. In the inspector on the right, read the diff of the whole branch, run the project's checks, and have the agent open the page in the built-in browser. Merge when you are satisfied.
 
-To import issues, install the source plugin under Settings → Plugins first. Routines and scheduled sends need the computer to stay awake. Model providers and extra accounts are in the [user guide](docs/GETTING-STARTED.en.md), also under Help → User guide in the app.
+To import issues or have them investigated automatically, install the source plugin under Settings → Plugins first. Routines, scheduled sends, automatic investigation and chat-platform answers all need the computer to stay awake. Model providers, extra accounts and chat platforms are in the [user guide](docs/GETTING-STARTED.en.md), also under Help → User guide in the app.
 
 <details>
 <summary><b>macOS notifications, Windows, Linux</b></summary>
@@ -146,6 +131,9 @@ Packaging: `pnpm dist:mac` (Apple Silicon), `pnpm dist:win` (x64, can be built o
 
 Any of them can hand off to another. In a plain conversation or a single-agent task, type `@` to delegate to any agent that is installed and ready.
 
+<details>
+<summary><b>How each agent is connected, its permission modes and what it supports</b></summary>
+
 | Agent | Integration | Common permission modes | Plan approval | Read-only delegation | Routines / scheduling |
 |---|---|---|:-:|:-:|:-:|
 | [**Claude Code**](https://github.com/anthropics/claude-code) | `claude -p` (stream-json) | Ask each time · Accept edits · Plan · Automatic | ✓ | ✓ | ✓ |
@@ -163,12 +151,16 @@ An agent marked — for read-only delegation can only be given work that may cha
 
 You can also skip the official account. Under Settings → Model providers, connect a coding plan such as Volcengine Ark, Zhipu or Kimi, or a custom endpoint. Cursor cannot use a provider. Using a subscription account through a proxy may break its terms and get the account banned; see the [user guide](docs/GETTING-STARTED.en.md#model-providers).
 
+</details>
+
 ## Also included
 
 | | |
 |---|---|
-| **Group chat** | Two to five agents discuss a plan: a round table, split research, or draft and review. Discussion is read-only and does not change code. [Docs](docs/ARCHITECTURE.md#群聊) |
-| **Teams** | A lead, developers and a reviewer share one worktree. Development runs one at a time; read-only analysis can run together. [Docs](docs/ARCHITECTURE.md#团队) |
+| **Keeps going when quota runs out** | With more than one Claude Code or Codex account, a used-up quota switches to the next account and the same conversation keeps going. With no account left, it waits for the reset and continues, or you hand off to another agent. [Docs](docs/GETTING-STARTED.en.md#multiple-accounts) |
+| **Phone app** | On an Android phone, read conversations, answer requests, send messages and images, create and start tasks. Agents still run on the computer. [Docs](docs/GETTING-STARTED.en.md#on-your-phone) |
+| **Agents** | Save a role, a model, skills and MCP servers as one of My agents. Chat with it, delegate to it with `@`, add it to a team, or pin it to the sidebar. [Docs](docs/ARCHITECTURE.md#智能体与委派) |
+| **Chat commands** | Save a prompt you use often as a command, and pin up to three above the composer to send with one click. Under Settings → Chat commands. |
 | **Split view** | Hold ⌘ and click another conversation: implement on one side, read another agent's advice on the other. [Docs](docs/GETTING-STARTED.en.md#split-view-two-conversations-side-by-side) |
 | **Routines and scheduling** | Run daily, on weekdays or weekly, or hold a message until a time or until quota resets. Cursor and Antigravity are not supported yet. The computer needs to stay awake. [Docs](docs/GETTING-STARTED.en.md#scheduling-send-when-quota-resets-or-at-a-set-time) |
 | **Helper and translation** | Select a passage and hand it to the helper, or translate a reply into your language. A lightweight model does it, outside the main conversation's context. Language and auto-translate are under Settings → Conversations. [Docs](docs/GETTING-STARTED.en.md#helper-and-translation) |
@@ -183,9 +175,9 @@ Shortcuts you will use: <kbd>N</kbd> on the board to note a task, <kbd>⌘</kbd>
 
 | | |
 |---|---|
-| **Using** | [User guide](docs/GETTING-STARTED.en.md) · [Usage ledger](docs/USAGE-ANALYTICS.md) · [Markdown themes](docs/MARKDOWN-THEMES.md) (Chinese) · [Antigravity](docs/ANTIGRAVITY.md) · [DeepSeek Harness](docs/DEEPSEEK.md) · [ZCode](docs/ZCODE.md) · [Kimi Code](docs/KIMI.md) · [Gemini CLI](docs/GEMINI.md) |
+| **Using** | [User guide](docs/GETTING-STARTED.en.md) · [Automatic investigation](docs/SOURCE-AUTO-INVESTIGATION.md) (Chinese) · [Usage ledger](docs/USAGE-ANALYTICS.md) · [Markdown themes](docs/MARKDOWN-THEMES.md) (Chinese) · [Antigravity](docs/ANTIGRAVITY.md) · [DeepSeek Harness](docs/DEEPSEEK.md) · [ZCode](docs/ZCODE.md) · [Kimi Code](docs/KIMI.md) · [Gemini CLI](docs/GEMINI.md) |
 | **Extending** | [Task source plugins](docs/PLUGINS.md): GitHub, Jira, Linear, ZenTao, or write your own |
-| **Developing** | [Architecture](docs/ARCHITECTURE.md) (Chinese) · [AGENTS.md](AGENTS.md) · [DESIGN.md](DESIGN.md) |
+| **Developing** | [Architecture](docs/ARCHITECTURE.md) (Chinese) · [Chat platforms](docs/CHANNELS.md) (Chinese) · [Phone app](docs/MOBILE.md) (Chinese) · [AGENTS.md](AGENTS.md) · [DESIGN.md](DESIGN.md) |
 | **Releasing** | [Releasing and packaging](docs/RELEASING.md) · [Changelog](CHANGELOG.md) |
 
 ## Contributing
@@ -199,11 +191,3 @@ pnpm typecheck && pnpm test
 ```
 
 Add `pnpm build` when the desktop app changed.
-
-## Next
-
-In order: everyday use, auto-update and CI on Windows; agents working on repositories over SSH or in WSL, with the board staying on this machine; more agent CLIs.
-
-## License
-
-[Apache License 2.0](LICENSE).

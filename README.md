@@ -2,18 +2,16 @@
 
 # Antumi（安图米）
 
-**让已经装好的 Claude Code、Codex 等 Agent 一起把任务做到你验收。**
+**让已经装好的 Claude Code、Codex 等 Agent 自动排查 bug、替你在群里答疑、几个一起把活做完。**
 
-本地桌面应用。它驱动你登录好的 Agent CLI：一个实现，另一个审查，在内置浏览器里自己验证，结果由你合并。配置和登录都不用重来。
-
-从 issue 开工 · 多 Agent 协作 · 自己验证 · 额度用完接着跑
+Bug 自动排查 · 智能体替你答疑 · 多 Agent 自由协作
 
 [![Release](https://img.shields.io/github/v/release/flyhero/antumi?include_prereleases&label=release&color=blue)](https://github.com/flyhero/antumi/releases)
 [![Downloads](https://img.shields.io/github/downloads/flyhero/antumi/total?color=blue)](https://github.com/flyhero/antumi/releases)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-lightgrey)
 [![License](https://img.shields.io/github/license/flyhero/antumi?color=lightgrey)](LICENSE)
 
-[下载](https://github.com/flyhero/antumi/releases) · [三分钟开始](#三分钟开始) · [和终端比](#和直接开终端比) · [支持的 Agent](#支持的-agent) · [文档](#文档)
+[下载](https://github.com/flyhero/antumi/releases) · [三分钟开始](#三分钟开始) · [主要能力](#主要能力) · [支持的 Agent](#支持的-agent) · [文档](#文档)
 
 **简体中文** · [English](README.en.md)
 
@@ -38,60 +36,47 @@ https://github.com/user-attachments/assets/74747188-10e9-4d1d-b444-86c867f25c58
 
 ## 适合谁
 
-你已经在终端里用 Claude Code、Codex 或其他 Agent CLI，想让它们一起把一件事从计划做到验收，而不是在几个窗口之间复制粘贴。
+你已经在终端里用 Claude Code、Codex 或其他 Agent CLI，想让它们多干点活：新 bug 来了先查一遍，同事问代码的事替你答，大一点的活几个 Agent 一起做。
 
 Antumi 不替换这些 CLI，也不要求重新登录。终端里聊到一半的会话可以导进来接着聊。
 
-## 和直接开终端比
+## 主要能力
 
-下面四段是从接到任务到交出结果的整条路径。其余能力见[还能做什么](#还能做什么)，细节在[使用指南](docs/GETTING-STARTED.md)。
+主打下面三件事。其余的（额度用完自动换号接着跑、在手机上看会话和回答确认、定时与预约、分屏、内置浏览器和终端、小助手与翻译、用量统计）见[还能做什么](#还能做什么)，细节在[使用指南](docs/GETTING-STARTED.md)。
 
-### 从 issue 开工
+### 新 bug 进来，自动排查
 
-GitHub、Jira、Linear、禅道的 issue 同步进侧栏「收件箱」，一键导入成任务。开始后自动建好 worktree 和带 issue 编号的分支。Agent 先读代码、拿出计划，你批准后才改代码。原因还不清楚的 bug 可以先排查再动手。任务之间可设前置依赖，前一个验收通过才解锁下一个。
+GitHub、Jira、Linear、禅道的新 issue 一同步进来，Antumi 就自动开一个排查会话：Agent 读问题原文、附件图片和代码，找出原因，给出修改方案。你放开权限，它接着把代码改了。
 
-[接入来源](docs/GETTING-STARTED.md#任务来源) · [任务怎么流转](docs/ARCHITECTURE.md#2-任务模型)
+每条问题的状态和排查记录都在收件箱里。也可以只挑一条手动排查，或导入成任务：Agent 先拿出计划，你批准后才改代码。
 
-<img src="docs/assets/features/intake.webp" alt="任务演示：在收件箱把 GitHub issue 导入成任务，打开后点「开始执行」，Agent 读完代码拿出计划等你批准" width="100%" />
+[接入来源](docs/GETTING-STARTED.md#任务来源) · [自动排查](docs/SOURCE-AUTO-INVESTIGATION.md) · [收件箱](docs/ARCHITECTURE.md#任务来源与收件箱)
 
-### 多个 Agent 一起做
+<img src="docs/assets/features/investigate.webp" alt="自动排查演示：在来源设置里打开「新问题自动排查」，新 bug 同步进收件箱后自动开始排查，Agent 读完代码给出原因和修改方案" width="100%" />
 
-五个窗口里谁在等批准、谁已经做完，得挨个切过去看。在 Antumi 里，输入框打 `@` 就能把活交给本机另一个已就绪的 Agent，或交给存好的角色（代码审查员、测试验证专员）。子会话独立工作，结果回到主会话。只读分析和独立 worktree 里的开发可以同时进行。
+### 智能体当你的替身，在群里答疑
 
-复杂一点的活可以交给团队：队长拆分任务，开发实现，评审把关。
+把智能体接到飞书、钉钉或 Slack，它就是你在群里的替身。同事 @ 它问「这个功能在哪实现的」「这个报错是什么原因」，也可以发截图；它读代码来回答，答案回在那条消息下面，你不用被打断。
 
-每个任务一个 worktree，代码互不干扰。等你批准、回答、验收的事集中在总览里，做完或在等你时会发系统通知。
+它只读不改，只能看你选的项目，密钥这类文件不提供。谁问了什么、它读了哪些文件、答了什么，都有记录。
 
-[委派](docs/ARCHITECTURE.md#智能体与委派) · [团队](docs/ARCHITECTURE.md#团队) · [移交](docs/GETTING-STARTED.md#无缝移交)
+[怎么接](docs/GETTING-STARTED.md#让同事在-slack飞书或钉钉上提问) · [它能碰到什么](docs/CHANNELS.md#信任模型)
+
+<img src="docs/assets/features/channel.webp" alt="群里答疑演示：智能体接上飞书，同事在群里 @ 它提问，它读代码后把答案回在群里，Antumi 的提问记录里能看到问题、回答和读过的文件" width="100%" />
+
+### 多个 Agent 自由协作
+
+支持的 Agent 可以任意搭配：Claude Code 实现、Codex 审查，或者反过来。有三种搭法：
+
+- **委派。** 输入框打 `@`，把活交给本机另一个已就绪的 Agent，或交给存好的智能体（代码审查员、测试验证专员）。子会话独立工作，结果回到主会话。只读分析和独立 worktree 里的开发可以同时进行。
+- **团队。** 复杂一点的活交给团队：队长拆分任务，开发实现，评审把关，都在同一个 worktree 里。
+- **群聊。** 2–5 个 Agent 讨论方案：圆桌、分工调研或起草评审，每位成员可以用不同的模型。讨论只读，不改代码。
+
+聊到一半也可以把会话移交给另一个 Agent 接着做。每个任务一个 worktree，代码互不干扰。等你批准、回答、验收的事集中在总览里，做完或在等你时会发系统通知。
+
+[委派](docs/ARCHITECTURE.md#智能体与委派) · [团队](docs/ARCHITECTURE.md#团队) · [群聊](docs/ARCHITECTURE.md#群聊) · [移交](docs/GETTING-STARTED.md#无缝移交)
 
 <img src="docs/assets/features/delegate.webp" alt="委派演示：在输入框 @ 代码审查员，主 Agent 委派后卡片显示工作中，审查结果自动回到主会话" width="100%" />
-
-### 它先验证，你再验收
-
-Agent 在内置浏览器里打开页面、点击、读控制台和网络请求、截图，在内置终端里看开发服务器的输出，发现问题自己接着修。你随时可以接管页面，或把选中的元素、截图加进会话。做完后看整条任务分支的 diff、跑项目检查，满意了再合并。
-
-[内置浏览器](docs/ARCHITECTURE.md#5-内置浏览器) · [验收](docs/ARCHITECTURE.md#验收之后)
-
-<img src="docs/assets/features/verify.webp" alt="自己验证演示：Agent 打开页面截图发现逾期待办没标红，读控制台找到报错并修改，再截图确认修好" width="100%" />
-
-### 额度用完，接着跑
-
-配了多个 Claude Code 或 Codex 账号时，额度用完会自动换号，在原会话里继续。没有可换的号，就等额度恢复后自动继续，也可以移交给另一个 Agent。下一条消息还能预约到额度恢复后或指定时间再发。底部状态栏显示各 Agent 的用量和恢复时间。
-
-[多个账号](docs/GETTING-STARTED.md#多个账号) · [预约](docs/GETTING-STARTED.md#预约额度恢复后或到点再发) · [额度节奏](docs/ARCHITECTURE.md#额度节奏与建议)
-
-<img src="docs/assets/features/handoff.webp" alt="无缝移交演示：在输入框把 Claude Code 换成 Codex，写下补充说明，Codex 接着补测试" width="100%" />
-
-## 数据在你的机器上
-
-装之前可以先知道这几件事：
-
-- 任务、会话和 worktree 在 `~/.antumi/`。核心功能不依赖 Antumi 托管服务。
-- core 只监听 `127.0.0.1`，连接要带本机 token。
-- Agent 以参数数组启动，不经过 shell；prompt 前加 `--`。
-- Jira、GitHub 凭据单独存放（权限 600），不返回给界面，也不交给 Agent。
-- 导入的 issue 原文包在 `<untrusted-source>` 里交给 Agent；任务图片保存前去掉 EXIF。
-- 有未提交改动、或只有这份 worktree 里才有的提交，清理时一律保留，分支从不删。闲置 worktree 默认 7 天后清理，可在设置 → 会话里调整或关闭。
 
 ## 三分钟开始
 
@@ -107,7 +92,7 @@ Agent 在内置浏览器里打开页面、点击、读控制台和网络请求�
 
 3. **验收。** 做完会有系统通知。在右侧检查器看整条分支的 diff，跑项目检查，让 Agent 在内置浏览器里打开页面。满意了再合并。
 
-要从 issue 导入任务，先在设置 → 插件装上来源插件。定时和预约需要电脑保持唤醒。接服务商、配多个账号见[使用指南](docs/GETTING-STARTED.md)，应用里也可以从帮助 → 使用指南打开。
+要从 issue 导入任务或自动排查，先在设置 → 插件装上来源插件。定时、预约、自动排查和聊天平台答疑都需要电脑保持唤醒。接服务商、配多个账号、接聊天平台见[使用指南](docs/GETTING-STARTED.md)，应用里也可以从帮助 → 使用指南打开。
 
 <details>
 <summary><b>macOS 通知、Windows、Linux</b></summary>
@@ -146,6 +131,9 @@ ANTUMI_HOME=~/.antumi-demo pnpm dev
 
 它们之间都能相互移交。普通会话和单 Agent 任务里打 `@`，可以把活委派给本机已就绪的任何一个。
 
+<details>
+<summary><b>各 Agent 的接入方式、权限模式和支持的功能</b></summary>
+
 | Agent | 接入方式 | 常用权限模式 | 计划审批 | 只读委派 | 定时 / 预约 |
 |---|---|---|:-:|:-:|:-:|
 | [**Claude Code**](https://github.com/anthropics/claude-code) | `claude -p`（stream-json） | 逐项确认 · 自动接受编辑 · 规划 · 自动判断 | ✓ | ✓ | ✓ |
@@ -163,12 +151,16 @@ ANTUMI_HOME=~/.antumi-demo pnpm dev
 
 也可以不走官方账号：在设置 → 服务商接入火山方舟、智谱、Kimi 等编程套餐，或自定义接口。Cursor 用不了服务商。通过代理使用订阅账号可能违反服务条款并导致封号，见[使用指南](docs/GETTING-STARTED.md#模型服务商)。
 
+</details>
+
 ## 还能做什么
 
 | | |
 |---|---|
-| **群聊** | 2–5 个 Agent 讨论方案：圆桌、分工调研或起草评审。讨论只读，不改代码。[说明](docs/ARCHITECTURE.md#群聊) |
-| **团队** | 队长、开发和评审在同一个 worktree 里协作：开发串行，只读分析可并行。[说明](docs/ARCHITECTURE.md#团队) |
+| **额度用完接着跑** | 配了多个 Claude Code 或 Codex 账号时自动换号，在原会话里继续；没有可换的号就等额度恢复后自动继续，或移交给另一个 Agent。[说明](docs/GETTING-STARTED.md#多个账号) |
+| **手机端** | 在 Android 手机上看会话、回答确认、发消息和图片、新建和开始任务。Agent 仍在电脑上运行。[说明](docs/GETTING-STARTED.md#在手机上使用) |
+| **智能体** | 把角色、模型、技能和 MCP 存成「我的智能体」，直接聊天、被 `@` 委派或加入团队，还能固定在侧栏。[说明](docs/ARCHITECTURE.md#智能体与委派) |
+| **聊天命令** | 把常用的指令存成命令，最多固定 3 条在输入框上方，点一下就发。在设置 → 聊天命令。 |
 | **分屏** | 按住 ⌘ 点另一个会话，一边实现，一边看另一个 Agent 的建议。[说明](docs/GETTING-STARTED.md#分屏两个会话并排) |
 | **定时与预约** | 按每天、工作日或每周跑；也可以把一条消息预约到指定时间或额度恢复后。Cursor 与 Antigravity 暂不支持。电脑需保持唤醒。[说明](docs/GETTING-STARTED.md#预约额度恢复后或到点再发) |
 | **小助手与翻译** | 选中一段交给小助手解释，或把回复翻成你的语言。用轻量模型，不占主会话上下文。语言和自动翻译在设置 → 会话。[说明](docs/GETTING-STARTED.md#小助手与翻译) |
@@ -183,9 +175,9 @@ ANTUMI_HOME=~/.antumi-demo pnpm dev
 
 | | |
 |---|---|
-| **使用** | [使用指南](docs/GETTING-STARTED.md) · [用量账本](docs/USAGE-ANALYTICS.md) · [Markdown 主题](docs/MARKDOWN-THEMES.md) · [Antigravity](docs/ANTIGRAVITY.md) · [DeepSeek Harness](docs/DEEPSEEK.md) · [ZCode](docs/ZCODE.md) · [Kimi Code](docs/KIMI.md) · [Gemini CLI](docs/GEMINI.md) |
+| **使用** | [使用指南](docs/GETTING-STARTED.md) · [新问题自动排查](docs/SOURCE-AUTO-INVESTIGATION.md) · [用量账本](docs/USAGE-ANALYTICS.md) · [Markdown 主题](docs/MARKDOWN-THEMES.md) · [Antigravity](docs/ANTIGRAVITY.md) · [DeepSeek Harness](docs/DEEPSEEK.md) · [ZCode](docs/ZCODE.md) · [Kimi Code](docs/KIMI.md) · [Gemini CLI](docs/GEMINI.md) |
 | **扩展** | [任务来源插件](docs/PLUGINS.md)：GitHub、Jira、Linear、禅道，或自己写一个 |
-| **开发** | [技术架构](docs/ARCHITECTURE.md) · [AGENTS.md](AGENTS.md) · [DESIGN.md](DESIGN.md) |
+| **开发** | [技术架构](docs/ARCHITECTURE.md) · [聊天平台接入](docs/CHANNELS.md) · [手机端](docs/MOBILE.md) · [AGENTS.md](AGENTS.md) · [DESIGN.md](DESIGN.md) |
 | **发布** | [发版与打包](docs/RELEASING.md) · [更新日志](CHANGELOG.md) |
 
 ## 参与
@@ -199,11 +191,3 @@ pnpm typecheck && pnpm test
 ```
 
 桌面端改动再加 `pnpm build`。
-
-## 接下来
-
-按优先级：Windows 上的日常使用、自动更新和 CI；让 Agent 在 SSH / WSL 里的仓库上干活，看板留在本机；继续接入更多 Agent CLI。
-
-## 许可
-
-[Apache License 2.0](LICENSE)。
