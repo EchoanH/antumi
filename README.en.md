@@ -52,7 +52,7 @@ The inbox shows the status and investigation record of every issue. You can also
 
 [Connect a source](docs/GETTING-STARTED.en.md#task-sources) · [Automatic investigation](docs/SOURCE-AUTO-INVESTIGATION.md) (Chinese) · [The inbox](docs/ARCHITECTURE.md#任务来源与收件箱) (Chinese)
 
-<img src="docs/assets/features/investigate.webp" alt="Automatic investigation: turn it on in the source's settings, a new bug syncs into the inbox and is investigated on its own, and the agent reads the code and reports the cause and a proposed fix" width="100%" />
+<img src="docs/assets/features/investigate.webp" alt="Automatic investigation: a new bug is filed on GitHub, syncs into the inbox and is investigated on its own; the agent reads the code, reports the cause and a proposed fix, and makes the change once you tell it to" width="100%" />
 
 ### An agent answers for you in team chat
 

@@ -52,7 +52,7 @@ GitHub、Jira、Linear、禅道的新 issue 一同步进来，Antumi 就自动�
 
 [接入来源](docs/GETTING-STARTED.md#任务来源) · [自动排查](docs/SOURCE-AUTO-INVESTIGATION.md) · [收件箱](docs/ARCHITECTURE.md#任务来源与收件箱)
 
-<img src="docs/assets/features/investigate.webp" alt="自动排查演示：在来源设置里打开「新问题自动排查」，新 bug 同步进收件箱后自动开始排查，Agent 读完代码给出原因和修改方案" width="100%" />
+<img src="docs/assets/features/investigate.webp" alt="自动排查演示：GitHub 上来了一个新 bug，同步进收件箱后自动开始排查，Agent 读完代码给出原因和修改方案，回一句「按方案改」它接着改" width="100%" />
 
 ### 智能体当你的替身，在群里答疑
 
