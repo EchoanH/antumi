@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { cursorProviderError } from '@antumi/protocol'
 import type { AcpDialect } from '../acp/acp-dialect'
 import { AcpConfig } from '../acp/acp-schema'
+import { CursorTodos } from './cursor-todos'
 
 const ModelCatalog = z.looseObject({ models: z.array(z.looseObject({ value: z.string(), name: z.string(), configOptions: z.array(AcpConfig).catch([]) })) })
 const RawTool = z.looseObject({ tool: z.string().optional(), toolName: z.string().optional(), _toolName: z.string().optional(), providerIdentifier: z.string().optional(), args: z.unknown().optional() })
@@ -16,6 +17,7 @@ export const cursorDialect: AcpDialect = {
   modes: { ask: 'agent', plan: 'plan', readOnly: 'ask' },
   clientMeta: { parameterizedModelPicker: true, subagents: true },
   authMethod: 'cursor_login',
+  createTodos: () => new CursorTodos(),
   models: { method: 'cursor/list_available_models', parse: (result) => ModelCatalog.safeParse(result).data?.models ?? null },
   toolName: (rawInput) => {
     const raw = RawTool.safeParse(rawInput).data

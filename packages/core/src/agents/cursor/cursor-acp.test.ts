@@ -55,6 +55,80 @@ function permission(driver: CursorAcp, id: string | number = 9): void {
 }
 
 describe('Cursor ACP', () => {
+  it.each([
+    { format: 'numeric', pending: 1, inProgress: 2, completed: 3, cancelled: 4 },
+    { format: 'protobuf JSON', pending: 'TODO_STATUS_PENDING', inProgress: 'TODO_STATUS_IN_PROGRESS', completed: 'TODO_STATUS_COMPLETED', cancelled: 'TODO_STATUS_CANCELLED' }
+  ])('turns $format TODO tool inputs into a checklist and hides sparse tool updates', ({ pending, inProgress, completed, cancelled }) => {
+    const driver = opened(); prompt(driver)
+    update(driver, { sessionUpdate: 'tool_call', toolCallId: 'todos', kind: 'other', title: 'Update TODOs', rawInput: { _toolName: 'updateTodos', todos: [
+      { id: 'one', content: 'Read code', status: completed },
+      { id: 'two', content: 'Fix code', status: inProgress },
+      { id: 'three', content: 'Run tests', status: pending },
+      { id: 'four', content: 'Cancelled step', status: cancelled }
+    ] } })
+    update(driver, { sessionUpdate: 'tool_call_update', toolCallId: 'todos', status: 'completed' })
+    update(driver, { sessionUpdate: 'tool_call', toolCallId: 'read', kind: 'other', title: 'Read TODOs', rawInput: {} })
+    update(driver, { sessionUpdate: 'tool_call_update', toolCallId: 'read', status: 'completed' })
+    expect(items(driver, 'tool')).toEqual([])
+    expect(items(driver, 'todos')).toMatchObject([{ todos: [
+      { content: 'Read code', status: 'completed', activeForm: null },
+      { content: 'Fix code', status: 'in_progress', activeForm: null },
+      { content: 'Run tests', status: 'pending', activeForm: null }
+    ] }])
+    expect(items(driver, 'state')[0]?.todos).toEqual(items(driver, 'todos')[0]?.todos)
+  })
+
+  it('merges TODOs by id and acknowledges the Cursor extension, including replacement and clearing', () => {
+    const driver = opened(); prompt(driver)
+    const extension = (id: string, params: unknown) => {
+      receive(driver, { id, method: 'cursor/update_todos', params })
+      expect(due(driver)).toEqual([{ jsonrpc: '2.0', id, result: {} }])
+    }
+    extension('initial', { merge: false, todos: [{ id: 'one', content: 'Read', status: 'completed' }, { id: 'two', content: 'Fix', status: 'pending' }] })
+    update(driver, { sessionUpdate: 'tool_call', toolCallId: 'partial', rawInput: { _toolName: 'updateTodos', todos: [{ id: 'two', content: 'Fix', status: 2 }] } })
+    expect(items(driver, 'state')[0]?.todos.map((todo) => todo.status)).toEqual(['completed', 'in_progress'])
+    extension('merge', { merge: true, todos: [{ id: 'two', content: 'Fix', status: 'completed' }] })
+    expect(items(driver, 'state')[0]?.todos.map((todo) => todo.status)).toEqual(['completed', 'completed'])
+    extension('empty-merge', { merge: true, todos: [] })
+    expect(items(driver, 'state')[0]?.todos).toHaveLength(2)
+    extension('replace', { merge: false, todos: [{ id: 'new', content: 'Test', status: 'in_progress' }] })
+    expect(items(driver, 'state')[0]?.todos).toMatchObject([{ content: 'Test', status: 'in_progress' }])
+    extension('invalid', { todos: [{ id: 'bad' }] })
+    expect(items(driver, 'state')[0]?.todos).toHaveLength(1)
+    extension('clear', { merge: false, todos: [] })
+    expect(items(driver, 'state')[0]?.todos).toEqual([])
+    expect(items(driver, 'tool')).toEqual([])
+  })
+
+  it('isolates TODOs between drivers and ignores another session or load history', () => {
+    const driver = opened(); const other = opened(); prompt(driver); prompt(other)
+    update(driver, { sessionUpdate: 'tool_call', toolCallId: 'todos', rawInput: { _toolName: 'updateTodos', todos: [{ id: 'one', content: 'Read', status: 1 }] } })
+    receive(driver, { method: 'cursor/update_todos', params: { sessionId: 'child', merge: false, todos: [] } })
+    expect(items(driver, 'state')[0]?.todos).toHaveLength(1)
+    expect(items(other, 'state')[0]?.todos).toEqual([])
+    const idle = opened()
+    receive(idle, { id: 'history', method: 'cursor/update_todos', params: { merge: false, todos: [{ id: 'old', content: 'Old', status: 'pending' }] } })
+    expect(items(idle, 'state')[0]?.todos).toEqual([])
+    expect(due(idle)).toMatchObject([{ id: 'history', result: {} }])
+  })
+
+  it('rebuilds the same checklist from logged tool and extension frames', () => {
+    const driver = opened(); const replay = opened(); prompt(driver); prompt(replay)
+    const frames = [
+      { method: 'session/update', params: { sessionId: 'session', update: { sessionUpdate: 'tool_call', toolCallId: 'todos', rawInput: { _toolName: 'updateTodos', todos: [{ id: 'one', content: 'Read', status: 2 }] } } } },
+      { method: 'session/update', params: { sessionId: 'session', update: { sessionUpdate: 'tool_call_update', toolCallId: 'todos', status: 'completed' } } },
+      { id: 'extension', method: 'cursor/update_todos', params: { merge: false, todos: [{ id: 'one', content: 'Read', status: 'completed' }] } }
+    ]
+    for (const frame of frames) {
+      receive(driver, frame)
+      receive(replay, driver.logged(frame))
+    }
+    expect(items(replay, 'todos')).toEqual(items(driver, 'todos'))
+    expect(items(replay, 'state')[0]?.todos).toMatchObject([{ content: 'Read', status: 'completed' }])
+    expect(items(replay, 'tool')).toEqual([])
+    expect(due(replay)).toEqual(due(driver))
+  })
+
   it.each(['cursor-session.jsonl', 'cursor-resume-plan.jsonl'])('replays the real CLI recording %s without repeating provider history or losing tool identity', (file) => {
     const records = readFileSync(new URL(`./fixtures/${file}`, import.meta.url), 'utf8').trim().split('\n').map(parseChatRecord)
     expect(records.every(Boolean)).toBe(true)

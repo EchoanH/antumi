@@ -10,7 +10,7 @@ import { Rejection } from '../../rejection'
 import { referencePathIn } from '../../reference-paths'
 import { startNote } from '../../agent-prompt'
 import { withoutCost } from '../../model-metering'
-import type { AcpDialect } from './acp-dialect'
+import type { AcpDialect, AcpTodos } from './acp-dialect'
 import { AcpConfig, valuesOf, type AcpOptionValue } from './acp-schema'
 
 // ACP lists a server's env as name and value pairs.
@@ -101,6 +101,7 @@ export class AcpDriver implements ChatDriver {
   // Kept whole for plan reviews; the displayed unified diff may have been clipped.
   private readonly fileContents = new Map<string, string>()
   private readonly toolWrites = new Map<string, string[]>()
+  private readonly todos: AcpTodos | undefined
   private initialized = false
   private authenticated = false
   private initSent = false
@@ -139,6 +140,7 @@ export class AcpDriver implements ChatDriver {
   private turnCostReported = false
 
   constructor(private readonly dialect: AcpDialect, private readonly stageId: string, private readonly options: ChatStageOptions, private readonly catalogOnly = false) {
+    this.todos = dialect.createTodos?.()
     this.items = new ChatItems(stageId)
     this.state = new StageState(this.items)
     this.antumi = new AntumiRequests(this.items)
@@ -439,6 +441,15 @@ export class AcpDriver implements ChatDriver {
   }
 
   private receive(frame: Frame, at: number): void {
+    if (this.todos && frame.method === this.todos.method) {
+      const scope = z.looseObject({ sessionId: z.string().optional() }).safeParse(frame.params).data?.sessionId
+      if (this.turn && (!scope || scope === this.session)) {
+        const todos = this.todos.update(frame.params)
+        if (todos) this.state.setTodos(todos, this.turn.ref, at)
+      }
+      if (frame.id !== undefined) this.owed.set(keyOf(frame.id), result(frame.id, {}))
+      return
+    }
     if (frame.method && frame.id !== undefined) { this.reverse(frame, at); return }
     if (frame.method === 'session/update') {
       const update = z.looseObject({ sessionId: z.string(), update: Update }).safeParse(frame.params)
@@ -689,6 +700,11 @@ export class AcpDriver implements ChatDriver {
     const block = this.turn?.block ? this.items.get(this.turn.block) : null
     if (block?.kind === 'assistant' || block?.kind === 'reasoning') this.items.put({ ...block, streaming: false }, at)
     if (this.turn) this.turn.block = null
+    const todos = this.todos?.tool(update)
+    if (todos) {
+      this.state.setTodos(todos, this.turn?.ref ?? null, at)
+      return
+    }
     const id = `tool:${update.toolCallId}`
     const previous = this.items.get(id)
     const old = previous?.kind === 'tool' ? previous : null

@@ -1,6 +1,12 @@
-import type { ChatPermissionMode } from '@antumi/protocol'
+import type { ChatPermissionMode, ChatTodo } from '@antumi/protocol'
 import type { AcpModel } from './acp-schema'
 import type { ChatStageOptions } from '../../chat-driver'
+
+export interface AcpTodos {
+  readonly method: string
+  tool(update: unknown): ChatTodo[] | null
+  update(params: unknown): ChatTodo[] | null
+}
 
 // What one agent adds to ACP, or names its own way. AcpDriver speaks the standard protocol and
 // asks its dialect for the rest, so an agent that speaks ACP is a dialect, not a driver.
@@ -33,6 +39,8 @@ export interface AcpDialect {
   toolName?(rawInput: unknown, name: string | undefined, title?: string, toolCallId?: string): string | null
   // The input worth showing, where the agent wraps a call's arguments.
   toolInput?(rawInput: unknown, context: { kind?: string; title?: string; locations?: { path: string; line?: number }[] }): unknown
+  // A checklist carried by tools and an extension rather than ACP's standard plan update.
+  createTodos?(): AcpTodos
   // Some agents carry questions and plan reviews over the standard permission request.
   permissionPrompt?(request: unknown): { kind: 'question'; text: string } | { kind: 'plan'; text: string; runMode: ChatPermissionMode } | { kind: 'plan'; path: string; runMode: ChatPermissionMode } | null
   // The Task call a subagent announced on its parent's session runs for; without it, subagents
