@@ -20,9 +20,10 @@ export function InboxEntry() {
   const failed = active.some((inbox) => inbox.problem)
   return (
     <button type="button" className="inbox-entry" aria-current={open}
+      title={t('InboxEntry.inbox', { value1: failed ? t('InboxEntry.syncFailed') : waiting ? t(fresh ? 'InboxEntry.pendingFresh' : 'InboxEntry.pending', { waiting: waiting }) : '' })}
       aria-label={t('InboxEntry.inbox', { value1: failed ? t('InboxEntry.syncFailed') : waiting ? t(fresh ? 'InboxEntry.pendingFresh' : 'InboxEntry.pending', { waiting: waiting }) : '' })} onClick={() => setInboxOpen(true)}>
       <InboxIcon />
-      <span>{t('InboxEntry.inbox_1125')}</span>
+      <span className="sidebar-navigation-label">{t('InboxEntry.inbox_1125')}</span>
       {failed
         ? <span className="inbox-entry-alert" aria-hidden="true">!</span>
         : <CountBadge count={waiting} data-fresh={fresh || undefined} />}

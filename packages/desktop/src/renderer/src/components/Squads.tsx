@@ -27,9 +27,9 @@ export function SquadsEntry() {
   if (!supported && !profilesSupported) return null
   return (
     <>
-      <button type="button" className="inbox-entry sidebar-squads" aria-current={open} onClick={() => { selectSquad(null); if (profilesSupported) useCore.setState({ agentProfilesTab: 'profiles' }) }}>
+      <button type="button" className="inbox-entry sidebar-squads" aria-current={open} aria-label={t(profilesSupported ? 'AgentProfiles.title' : 'ChatPlan.squad')} title={t(profilesSupported ? 'AgentProfiles.title' : 'ChatPlan.squad')} onClick={() => { selectSquad(null); if (profilesSupported) useCore.setState({ agentProfilesTab: 'profiles' }) }}>
         <SquadIcon />
-        <span>{t(profilesSupported ? 'AgentProfiles.title' : 'ChatPlan.squad')}</span>
+        <span className="sidebar-navigation-label">{t(profilesSupported ? 'AgentProfiles.title' : 'ChatPlan.squad')}</span>
       </button>
       {profilesSupported && <SidebarPinnedAgents />}
     </>

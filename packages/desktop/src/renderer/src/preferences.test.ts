@@ -135,6 +135,38 @@ describe('group chats joining the conversation list', () => {
   })
 })
 
+describe('the sidebar splitting into a menu and a list', () => {
+  it.each([
+    [{}, 264],
+    [{ sidebarWidth: 400 }, 344],
+    [{ sidebarWidth: 240 }, 240]
+  ])('gives the list the room the one column had beside the icon menu: %j', async (saved, width) => {
+    storage.set('antumi.preferences', JSON.stringify(saved))
+    const { usePreferences } = await import('./preferences')
+    expect(usePreferences.getState().conversationListWidth).toBe(width)
+  })
+
+  it('keeps a sidebar that was put away out of the way, down to the icons', async () => {
+    storage.set('antumi.preferences', JSON.stringify({ sidebarHidden: true }))
+    const { usePreferences } = await import('./preferences')
+    expect(usePreferences.getState().sidebarMenuCollapsed).toBe(true)
+    expect(usePreferences.getState().sidebarHidden).toBe(true)
+  })
+
+  it('keeps the one column for a sidebar that showed', async () => {
+    storage.set('antumi.preferences', JSON.stringify({ sidebarWidth: 400 }))
+    const { usePreferences } = await import('./preferences')
+    expect(usePreferences.getState().sidebarMenuCollapsed).toBe(false)
+    expect(usePreferences.getState().sidebarWidth).toBe(400)
+  })
+
+  it('leaves a list width set since alone', async () => {
+    storage.set('antumi.preferences', JSON.stringify({ sidebarWidth: 400, sidebarMenuCollapsed: true, conversationListWidth: 300 }))
+    const { usePreferences } = await import('./preferences')
+    expect(usePreferences.getState().conversationListWidth).toBe(300)
+  })
+})
+
 describe('windows sharing preferences', () => {
   it('keeps what another window changed when a window with an older copy saves', async () => {
     const main = await import('./preferences')

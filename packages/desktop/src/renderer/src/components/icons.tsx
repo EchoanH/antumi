@@ -457,6 +457,18 @@ export function BoardIcon() {
 }
 
 // A list of lines, each with a mark in front.
+// Four panes of unequal height, a tall and a short side by side: the overview's dashboard.
+export function DashboardIcon() {
+  return (
+    <svg {...stroked}>
+      <rect x="2.5" y="2.5" width="6" height="8" rx="1" />
+      <rect x="11.5" y="2.5" width="6" height="5" rx="1" />
+      <rect x="11.5" y="9.5" width="6" height="8" rx="1" />
+      <rect x="2.5" y="12.5" width="6" height="5" rx="1" />
+    </svg>
+  )
+}
+
 export function ListIcon() {
   return (
     <svg {...stroked}>

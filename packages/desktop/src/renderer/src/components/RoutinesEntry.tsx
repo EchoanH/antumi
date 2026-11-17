@@ -14,9 +14,9 @@ export function RoutinesEntry() {
   const supported = useRoutinesSupported()
   if (!supported) return null
   return (
-    <button type="button" className="inbox-entry sidebar-routines" aria-current={open} onClick={() => setRoutinesOpen(true)}>
+    <button type="button" className="inbox-entry sidebar-routines" aria-current={open} aria-label={t('RoutinesEntry.scheduled')} title={t('RoutinesEntry.scheduled')} onClick={() => setRoutinesOpen(true)}>
       <ClockIcon />
-      <span>{t('RoutinesEntry.scheduled')}</span>
+      <span className="sidebar-navigation-label">{t('RoutinesEntry.scheduled')}</span>
       <CountBadge count={unread} aria-label={t('RoutinesEntry.unreadRuns', { unread: unread })} />
       {failed > 0 && <span className="inbox-entry-alert" role="img" aria-label={t('RoutinesEntry.schedulesFailedToStart', { failed: failed })} title={t('RoutinesEntry.schedulesFailedToStart', { failed: failed })}>!</span>}
     </button>

@@ -172,7 +172,7 @@ export const MESSAGES = {
   "chatTools.downloads": {"zh": "查看下载", "en": "View downloads"},
   "ChatComposer.sendKeyHint": {"zh": "，{keys} 发送", "en": "; {keys} to send"},
   "KeyboardShortcuts.count": {"zh": "共 {count} 项可自定义快捷键", "en": "{count} customizable shortcuts"},
-  "KeyboardShortcuts.sidebar": {"zh": "显示 / 隐藏侧栏", "en": "Toggle sidebar"},
+  "KeyboardShortcuts.sidebar": {"zh": "展开 / 收起主菜单", "en": "Expand / collapse main menu"},
   "ChatComposer.sendToAgentNow": {"zh": "不等回合结束，现在就交给 Agent{keys}", "en": "Send to Agent now without waiting for this turn to end{keys}"},
   "ConversationView.paneLabel": {"zh": "分栏 {number}{active}", "en": "Pane {number}{active}"},
   "composerPlaceholder.interruptKey": {"zh": "；{keys} 中断", "en": "; {keys} to interrupt"},
@@ -8354,6 +8354,9 @@ export const MESSAGES = {
     "zh": "侧边栏宽 {shown} 像素",
     "en": "Sidebar width {shown} pixels"
   },
+  "Sidebar.mainMenu": { "zh": "主菜单", "en": "Main menu" },
+  "Sidebar.showConversations": { "zh": "显示会话列表", "en": "Show conversation list" },
+  "Sidebar.hideConversations": { "zh": "隐藏会话列表", "en": "Hide conversation list" },
   "Sidebar.dragToResizeDoubleClickToReset": {
     "zh": "拖动调整宽度，双击恢复默认",
     "en": "Drag to resize; double-click to reset"
@@ -10284,12 +10287,12 @@ export const MESSAGES = {
     "en": "Toolbar"
   },
   "WindowBrand.expandSidebar": {
-    "zh": "展开侧边栏",
-    "en": "Expand sidebar"
+    "zh": "展开主菜单",
+    "en": "Expand main menu"
   },
   "WindowBrand.collapseSidebar": {
-    "zh": "收起侧边栏",
-    "en": "Collapse sidebar"
+    "zh": "收起主菜单",
+    "en": "Collapse main menu"
   },
   "WireLogView.failedToStart": {
     "zh": "没能启动",

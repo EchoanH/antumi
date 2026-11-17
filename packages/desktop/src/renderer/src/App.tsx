@@ -90,7 +90,9 @@ export function App() {
   const filesMaximized = useCore((s) => s.filesMaximized)
   const search = useCore((s) => s.search)
   const utilityPanelOrder = useCore((s) => s.utilityPanelOrder)
-  const sidebarHidden = usePreferences((s) => s.sidebarHidden)
+  const menuCollapsed = usePreferences((s) => s.sidebarMenuCollapsed)
+  // Only the narrow menu's list can be put away; the menu itself stays.
+  const sidebarHidden = usePreferences((s) => s.sidebarHidden) && menuCollapsed
   const maximizedUtility = browserPanelOpen && browserMaximized
     ? 'browser'
     : terminalPanelOpen && terminalMaximized
@@ -138,13 +140,15 @@ export function App() {
           <SettingsPage />
         ) : (
           <>
-            <Sidebar hidden={sidebarHidden}>
-              <OverviewEntry />
-              <InboxEntry />
-              <RoutinesEntry />
-              <SquadsEntry />
+            <Sidebar>
+              {!menuCollapsed && <>
+                <OverviewEntry />
+                <InboxEntry />
+                <RoutinesEntry />
+                <SquadsEntry />
+              </>}
               <EnvironmentNotice />
-              <SidebarTasks />
+              {!menuCollapsed && <SidebarTasks />}
               <ConversationList />
             </Sidebar>
             {overviewOpen ? (

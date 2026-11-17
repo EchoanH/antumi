@@ -6,7 +6,7 @@ import { PALETTES } from './palettes'
 import { PROJECT_COLORS } from './project-colors'
 import { MarkdownThemeLibrary, MarkdownThemeSelection } from './markdown-theme-packs'
 import { PetLevelPreference, PetSizePreference, PetStylePreference } from './pet-preferences'
-import { DEFAULT_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from './sidebar-width'
+import { COLLAPSED_NAVIGATION_WIDTH, DEFAULT_CONVERSATION_LIST_WIDTH, DEFAULT_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from './sidebar-width'
 import { SetupProgress } from './setup-progress'
 import { ShortcutSettings } from '../../shared/keyboard-shortcuts'
 
@@ -100,8 +100,11 @@ const Preferences = z.object({
   // unasked again.
   guideSeen: z.boolean().catch(false),
   setup: SetupProgress,
-  // On, the sidebar is put away and the panes take the whole window.
+  // On, the menu shrinks to icons and the conversation list stands beside it, a column of its own.
+  sidebarMenuCollapsed: z.boolean().catch(false),
+  // On, that list is put away and only the icons stay. Ignored while the menu is expanded.
   sidebarHidden: z.boolean().catch(false),
+  conversationListWidth: z.number().int().min(MIN_SIDEBAR_WIDTH).max(MAX_SIDEBAR_WIDTH).catch(DEFAULT_CONVERSATION_LIST_WIDTH),
   // As the user dragged it, before the cap a small window puts on it.
   sidebarWidth: z.number().int().min(MIN_SIDEBAR_WIDTH).max(MAX_SIDEBAR_WIDTH).catch(DEFAULT_SIDEBAR_WIDTH),
   // The file tree's width beside the inspector's editor, as the user dragged it.
@@ -181,6 +184,16 @@ function load(): Preferences {
     const hidden = 'sidebarDiscussions' in saved && saved.sidebarDiscussions === false
     const archived = ('showArchivedConversations' in saved && saved.showArchivedConversations === true) || ('showArchivedDiscussions' in saved && saved.showArchivedDiscussions === true)
     saved = { ...saved, conversationKinds: hidden ? 'conversations' : 'all', showArchivedConversations: archived }
+  }
+  // Up to 0.21.7 the sidebar was one column, put away whole. Its list keeps the room the icons
+  // leave it, and a sidebar put away stays out of the way, down to the icons.
+  if (typeof saved === 'object' && saved !== null && !('sidebarMenuCollapsed' in saved)) {
+    const width = 'sidebarWidth' in saved && typeof saved.sidebarWidth === 'number' ? saved.sidebarWidth : DEFAULT_SIDEBAR_WIDTH
+    saved = {
+      ...saved,
+      sidebarMenuCollapsed: 'sidebarHidden' in saved && saved.sidebarHidden === true,
+      conversationListWidth: Math.round(Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, width - COLLAPSED_NAVIGATION_WIDTH)))
+    }
   }
   // Windows write only what they change, so what was carried over is stored now, or the carrying
   // over would run again on old fields and undo a later change.

@@ -17,6 +17,11 @@ describe('clampSidebarWidth', () => {
     expect(clampSidebarWidth(480, 900)).toBe(360)
   })
 
+  it('counts the menu beside the list against the window share', () => {
+    expect(sidebarMaxWidth(900, 56)).toBe(304)
+    expect(clampSidebarWidth(480, 900, 160)).toBe(MIN_SIDEBAR_WIDTH)
+  })
+
   it('never goes under the narrowest, however small the window', () => {
     expect(sidebarMaxWidth(400)).toBe(MIN_SIDEBAR_WIDTH)
     expect(clampSidebarWidth(300, 400)).toBe(MIN_SIDEBAR_WIDTH)

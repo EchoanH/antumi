@@ -16,7 +16,7 @@ export function SidebarTasks() {
       <div className="sidebar-tasks-entry">
         <button type="button" className="inbox-entry" aria-current={open} aria-label={t('SidebarTasks.tasks', { value1: waiting ? t('SidebarTasks.needYourResponse', { waiting: waiting }) : '' })} onClick={() => selectTask(null)}>
           <BoardIcon />
-          <span>{t('sidebar.tasks')}</span>
+          <span className="sidebar-navigation-label">{t('sidebar.tasks')}</span>
           <CountBadge count={waiting} title={t('SidebarTasks.tasksNeedYourResponse', { waiting: waiting })} />
         </button>
         <button

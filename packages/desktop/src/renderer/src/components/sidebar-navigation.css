@@ -1,0 +1,25 @@
+/* The menu collapsed to icons, beside the conversation list. The entries are the sidebar's own,
+   shown here by their icon, with names on hover. */
+.sidebar-navigation { width: var(--sidebar-navigation-width); flex: 0 0 auto; min-height: 0; display: flex; flex-direction: column; border-right: 1px solid var(--border); padding: 8px 0; }
+.sidebar-navigation-items { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 4px 0; }
+.sidebar-navigation-footer { flex-shrink: 0; padding-top: 8px; }
+.sidebar-navigation-separator { height: 1px; margin: 12px; background: var(--border); }
+.sidebar-navigation .inbox-entry { position: relative; min-height: 40px; justify-content: center; padding: 8px; font-weight: 400; }
+.sidebar-navigation .inbox-entry[aria-current='true'] { color: var(--accent); background: var(--accent-bg); border-color: transparent; box-shadow: none; }
+.sidebar-navigation .inbox-entry > svg { width: 20px; height: 20px; }
+.sidebar-navigation .inbox-entry[aria-current='true'] > svg { color: inherit; }
+.sidebar-navigation .sidebar-navigation-label { display: none; }
+.sidebar-navigation :is(.inbox-entry-count, .inbox-entry-alert) { position: absolute; top: -2px; right: -4px; min-width: 16px; padding: 0 4px; line-height: 16px; font-size: 12px; }
+.sidebar-navigation .sidebar-tasks-entry .inbox-entry { padding: 8px; }
+.sidebar-navigation .sidebar-tasks-add { display: none; }
+.sidebar-navigation .overview-entry { margin-top: 0; }
+.sidebar-navigation [data-tooltip-side='right']::after { top: 50%; right: auto; left: calc(100% + 8px); transform: translateY(-50%); }
+.sidebar-navigation-footer [data-tooltip][aria-expanded='true']::after { display: block; }
+
+/* Scrollable menus clip CSS tooltips; native titles keep names available there. */
+.sidebar-navigation-items [data-tooltip]::after { display: none; }
+.sidebar-navigation .sidebar-pinned-agents { margin: 4px 8px 8px; max-height: none; overflow: visible; }
+.sidebar-navigation .sidebar-pinned-agent::before,
+.sidebar-navigation .sidebar-pinned-agent::after { display: none; }
+.sidebar-navigation .sidebar-pinned-agent-open { min-height: 40px; justify-content: center; padding: 8px; }
+.sidebar-navigation :is(.sidebar-pinned-agent-name, .sidebar-pinned-agent-menu) { display: none; }
