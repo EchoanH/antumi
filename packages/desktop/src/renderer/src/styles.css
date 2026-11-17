@@ -1349,7 +1349,7 @@ button.task-tag:hover {
 .inbox-page > *,
 .routines-page > * { width: 100%; max-width: var(--page-wide); margin-inline: auto; }
 /* Something about when routines can run that wants acting on, apart from what the page is for. */
-.routines-notice { margin: 0 0 16px; padding: 8px 12px; border-left: 3px solid var(--warning); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--warning) 8%, transparent); font-size: 12px; line-height: 1.6; }
+.routines-notice { margin-block: 0 16px; padding: 8px 12px; border-left: 3px solid var(--warning); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--warning) 8%, transparent); font-size: 12px; line-height: 1.6; }
 .inbox-page > .restore-bar { margin-bottom: 12px; }
 
 .detail {
