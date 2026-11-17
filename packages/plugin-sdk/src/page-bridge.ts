@@ -46,12 +46,14 @@ function applyTheme(theme: PageTheme, previous?: PageTheme): void {
   root.dataset.scheme = theme.scheme
 }
 
+// Across every connect() in the page: two bridges must not answer each other's calls.
+let calls = 0
+
 export function connect(): Promise<PageHost> {
   const token = location.hash.slice(1)
   const send = (message: PluginPageFrameMessage) => parent.postMessage(message, '*')
   return new Promise((resolve, reject) => {
     let current: { theme: PageTheme; locale: 'zh-CN' | 'en'; state: unknown } | undefined
-    let counter = 0
     const listeners = new Set<(theme: PageTheme) => void>()
     const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>()
     const timer = setTimeout(() => {
@@ -64,7 +66,7 @@ export function connect(): Promise<PageHost> {
       let value: unknown
       try { value = json(params, 64 * 1024) } catch (error) { return Promise.reject(error) }
       return new Promise((resolve, reject) => {
-        const id = ++counter
+        const id = ++calls
         const timer = setTimeout(() => { pending.delete(id); reject(new Error('Plugin page call timed out')) }, 60_000)
         pending.set(id, { resolve, reject, timer })
         send({ antumiPluginPage: token, kind: 'call', id, method, params: value })

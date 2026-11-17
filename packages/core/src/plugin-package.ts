@@ -39,10 +39,14 @@ export async function readManifest(root: string, antumiVersion: string): Promise
   for (const page of manifest.contributes.pages) {
     const entry = packagePath(root, page.entry)
     if (!page.entry.endsWith('.html') || !page.entry.includes('/')) throw new Error('插件页面入口必须是子目录中的 HTML')
+    // Everything in the entry's directory goes to the page, and the backend is not the page's to read.
+    if (manifest.entry.main.startsWith(`${path.posix.dirname(page.entry)}/`)) throw new Error('插件页面的目录不能包含插件入口')
     let current = root
     for (const part of page.entry.split('/')) {
       current = path.join(current, part)
-      if ((await lstat(current)).isSymbolicLink()) throw new Error('插件页面不允许符号链接')
+      const info = await lstat(current).catch(() => null)
+      if (!info) throw new Error('找不到插件页面入口')
+      if (info.isSymbolicLink()) throw new Error('插件页面不允许符号链接')
     }
     if (!(await lstat(entry)).isFile()) throw new Error('找不到插件页面入口')
   }

@@ -41,7 +41,8 @@ export type PluginPageHostMessage = z.infer<typeof PluginPageHostMessage>
 export function pluginPageState(raw: unknown): unknown {
   try {
     const text = JSON.stringify(raw)
-    if (!text || text.length > MAX_PLUGIN_PAGE_STATE) return null
+    // Bytes, as the SDK counts them: a page's text is rarely ASCII.
+    if (!text || new TextEncoder().encode(text).length > MAX_PLUGIN_PAGE_STATE) return null
     const parsed = z.json().safeParse(raw)
     return parsed.success ? parsed.data : null
   } catch { return null }

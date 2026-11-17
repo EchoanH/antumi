@@ -26,6 +26,8 @@ export class PluginService {
   private readonly loaded = new Map<string, Loaded>()
   private readonly problems = new Map<string, string>()
   private readonly pageCalls = new Map<string, number>()
+  // Saved records this version cannot read (a newer Antumi's, say), written back as they were.
+  private unread: unknown[] = []
   private pending: Promise<unknown> = Promise.resolve()
   private closing = false
   private readonly catalog = recommended.map((entry) => RecommendedPlugin.parse(entry))
@@ -39,15 +41,23 @@ export class PluginService {
     private readonly changed: (plugins: PluginInfo[]) => void = () => {}
   ) {}
 
+  private save(registry: Registry): Promise<void> {
+    return writePrivateJson(this.pointer, { ...registry, plugins: [...registry.plugins, ...this.unread] })
+  }
+
   async load(): Promise<void> {
     await mkdir(this.root, { recursive: true, mode: 0o700 })
     const raw = await readJsonIfExists(this.pointer)
     if (raw !== undefined) {
       const saved = Registry.extend({ plugins: z.array(z.unknown()) }).parse(raw)
-      this.registry = { ...saved, plugins: saved.plugins.flatMap((record) => {
+      const plugins: Installed[] = []
+      for (const record of saved.plugins) {
         const parsed = Installed.safeParse(record)
-        return parsed.success ? [parsed.data] : []
-      }) }
+        if (parsed.success) plugins.push(parsed.data)
+        else this.unread.push(record)
+      }
+      if (this.unread.length > 0) console.error(`[plugins] ${this.unread.length} saved plugin record(s) could not be read and are left as they are`)
+      this.registry = { ...saved, plugins }
     }
     for (const record of this.registry.plugins) {
       try {
@@ -124,7 +134,11 @@ export class PluginService {
       }
       await walk(directory, '')
       return { version: record.manifest.version, entry: path.basename(declaration.entry), files }
-    } catch (error) { throw sourceRejection(error) }
+    } catch (error) {
+      // The plugin's folder went while it was read: removed or replaced mid-call.
+      if (error instanceof Error && 'code' in error && (error.code === 'ENOENT' || error.code === 'ENOTDIR')) throw sourceRejection(new Error('插件页面文件不可用，请重试'))
+      throw sourceRejection(error)
+    }
   }
 
   async pageCall(id: string, page: string, method: string, params: unknown): Promise<{ result: unknown }> {
@@ -205,7 +219,7 @@ export class PluginService {
       await this.sources.pause(ids)
       try {
         const next = { ...this.registry, plugins: this.registry.plugins.filter((plugin) => plugin.manifest.id !== id) }
-        await writePrivateJson(this.pointer, next)
+        await this.save(next)
         this.registry = next
         this.loaded.get(id)?.process.stop()
         this.loaded.delete(id)
@@ -249,7 +263,7 @@ export class PluginService {
         if (expectedId && current.manifest.version === manifest.version) {
           if (!isDeepStrictEqual(current.origin, origin)) {
             const next = { ...this.registry, plugins: this.registry.plugins.map((record) => record.manifest.id === manifest.id ? { ...record, origin } : record) }
-            await writePrivateJson(this.pointer, next)
+            await this.save(next)
             this.registry = next
             this.publish([])
           }
@@ -327,7 +341,7 @@ export class PluginService {
           : [...this.registry.plugins, record],
         owners: { ...this.registry.owners, ...Object.fromEntries(ids.map((source) => [source, id])) }
       }
-      await writePrivateJson(this.pointer, next)
+      await this.save(next)
       this.registry = next
       this.loaded.get(id)?.process.stop()
       if (candidate) this.loaded.set(id, candidate)

@@ -30,6 +30,9 @@ it('accepts what the desktop answers with', () => {
 it('keeps a page state that is JSON within the limit', () => {
   expect(pluginPageState({ read: { a: 1 } })).toEqual({ read: { a: 1 } })
   expect(pluginPageState('x'.repeat(MAX_PLUGIN_PAGE_STATE))).toBeNull()
+  // Counted in bytes: these are a third of the limit in characters, and over it once encoded.
+  expect(pluginPageState('界'.repeat(Math.ceil(MAX_PLUGIN_PAGE_STATE / 3)))).toBeNull()
+  expect(pluginPageState('界'.repeat(MAX_PLUGIN_PAGE_STATE / 3 - 10))).not.toBeNull()
   expect(pluginPageState(undefined)).toBeNull()
   expect(pluginPageState({ at: new Date(0) })).toBeNull()
 })

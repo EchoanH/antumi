@@ -63,6 +63,18 @@ describe('plugin packages', () => {
     await expect(readManifest(root, '0.19.6')).rejects.toThrow()
   })
 
+  it('names a missing page entry without its path, and keeps the backend out of a page directory', async () => {
+    const manifest = await pluginFixture(root)
+    const page = (entry: string) => JSON.stringify({ ...manifest, contributes: { pages: [{ id: 'demo', label: 'Demo', entry }] } })
+    await writeFile(path.join(root, 'manifest.json'), page('gone/index.html'))
+    await expect(readManifest(root, '0.19.6')).rejects.toThrow(/^找不到插件页面入口$/)
+    await mkdir(path.join(root, 'dist'))
+    await writeFile(path.join(root, 'dist/index.html'), '<!doctype html>')
+    await writeFile(path.join(root, 'dist/main.mjs'), '')
+    await writeFile(path.join(root, 'manifest.json'), JSON.stringify({ ...JSON.parse(page('dist/index.html')), entry: { runtime: 'node', main: 'dist/main.mjs' } }))
+    await expect(readManifest(root, '0.19.6')).rejects.toThrow('不能包含插件入口')
+  })
+
   it('refuses duplicate pages and checks the host before an unfamiliar manifest shape', async () => {
     const manifest = await pluginFixture(root, { source: null, pages: [{ id: 'demo', label: 'Demo', entry: 'page/index.html' }] })
     await writeFile(path.join(root, 'manifest.json'), JSON.stringify({ ...manifest, contributes: { pages: [...manifest.contributes.pages, ...manifest.contributes.pages] } }))

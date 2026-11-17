@@ -109,6 +109,11 @@ describe('plugin installation and activation', () => {
     expect(plugins.list()).toHaveLength(1)
     expect(plugins.list()[0]?.problem).toBeTruthy()
     await expect(plugins.pageFiles(info.id, 'demo')).rejects.toThrow()
+    // A record this version cannot read is another version's, and stays in the file when it is rewritten.
+    await plugins.setEnabled(info.id, false)
+    const rewritten = JSON.parse(await readFile(pointer, 'utf8'))
+    expect(rewritten.plugins).toHaveLength(2)
+    expect(rewritten.plugins).toContainEqual({ manifest: { id: 'bad.plugin' } })
   })
 
   it('loads an installed plugin after upgrading from a stable host to a beta, preserving settings', async () => {
