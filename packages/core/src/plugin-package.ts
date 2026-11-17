@@ -18,19 +18,33 @@ export function packagePath(root: string, name: string): string {
 }
 
 function allowedFile(name: string): boolean {
-  return /\.(?:m?js|cjs|json|md|txt|map)$/i.test(name) || /^(?:LICENSE|NOTICE)$/i.test(path.basename(name))
+  return /\.(?:m?js|cjs|json|md|txt|map|html|css|svg|png|jpe?g|webp|gif)$/i.test(name) || /^(?:LICENSE|NOTICE)$/i.test(path.basename(name))
 }
 
 export async function readManifest(root: string, antumiVersion: string): Promise<PluginManifest> {
   const file = path.join(root, 'manifest.json')
   const info = await lstat(file)
   if (!info.isFile() || info.size > 128 * 1024) throw new Error('插件 manifest 无效或过大')
-  const manifest = PluginManifest.parse(JSON.parse(await readFile(file, 'utf8')))
-  // Beta hosts use the same plugin contract; semver otherwise excludes them from stable ranges.
-  if (!valid(manifest.version) || !validRange(manifest.engines.antumi) || !satisfies(antumiVersion, manifest.engines.antumi, { includePrerelease: true })) throw new Error('插件版本无效或不兼容当前 Antumi')
+  const raw: unknown = JSON.parse(await readFile(file, 'utf8'))
+  const engines = z.object({ engines: z.object({ antumi: z.string() }) }).parse(raw).engines
+  // Beta hosts share the contract with stable releases.
+  if (!validRange(engines.antumi) || !satisfies(antumiVersion, engines.antumi, { includePrerelease: true })) throw new Error('插件版本无效或不兼容当前 Antumi')
+  const manifest = PluginManifest.parse(raw)
+  if (!valid(manifest.version)) throw new Error('插件版本无效或不兼容当前 Antumi')
   if (new Set(manifest.contributes.sources.map((source) => source.id)).size !== manifest.contributes.sources.length) throw new Error('插件重复声明了来源')
   for (const source of manifest.contributes.sources) {
     if (new Set(source.settings.map((field) => field.key)).size !== source.settings.length) throw new Error('插件重复声明了设置字段')
+  }
+  if (new Set(manifest.contributes.pages.map((page) => page.id)).size !== manifest.contributes.pages.length) throw new Error('插件重复声明了页面')
+  for (const page of manifest.contributes.pages) {
+    const entry = packagePath(root, page.entry)
+    if (!page.entry.endsWith('.html') || !page.entry.includes('/')) throw new Error('插件页面入口必须是子目录中的 HTML')
+    let current = root
+    for (const part of page.entry.split('/')) {
+      current = path.join(current, part)
+      if ((await lstat(current)).isSymbolicLink()) throw new Error('插件页面不允许符号链接')
+    }
+    if (!(await lstat(entry)).isFile()) throw new Error('找不到插件页面入口')
   }
   pluginEnvironment(manifest.env, {})
   if (!/\.(?:mjs|cjs|js)$/.test(manifest.entry.main)) throw new Error('插件入口必须是 JavaScript')

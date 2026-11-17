@@ -64,7 +64,7 @@ export class PluginProcess {
     if (this.stopped) return Promise.reject(new SourceError('request-failed', '插件已停止'))
     const controller = new AbortController()
     this.controllers.add(controller)
-    const abort = AbortSignal.any([controller.signal, ...(signal ? [signal] : []), AbortSignal.timeout(method === 'login' ? 15 * 60_000 : 120_000)])
+    const abort = AbortSignal.any([controller.signal, ...(signal ? [signal] : []), AbortSignal.timeout(method === 'login' ? 15 * 60_000 : method === 'page' ? 30_000 : 120_000)])
     const result = this.invoke(method, params, abort, session)
     void result.finally(() => this.controllers.delete(controller)).catch(() => {})
     return result
@@ -155,7 +155,8 @@ export class PluginProcess {
             if (!handshaken) {
               const hello = pluginSchemas.handshake.result.parse(message.result)
               const expected = this.manifest.contributes.sources.map((source) => source.id).sort()
-              if (hello.id !== this.manifest.id || hello.version !== this.manifest.version || JSON.stringify([...hello.sources].sort()) !== JSON.stringify(expected)) throw new Error('manifest mismatch')
+              const pages = this.manifest.contributes.pages.map((page) => page.id).sort()
+              if (hello.id !== this.manifest.id || hello.version !== this.manifest.version || JSON.stringify([...hello.sources].sort()) !== JSON.stringify(expected) || JSON.stringify([...hello.pages].sort()) !== JSON.stringify(pages)) throw new Error('manifest mismatch')
               clearTimeout(handshakeTimer)
               if (method === 'handshake') finish({ value: pluginSchemas[method].result.parse(message.result) })
               else {

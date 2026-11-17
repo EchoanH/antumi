@@ -1,14 +1,14 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PluginProcess, pluginEnvironment, stderrLines } from './plugin-process'
 import { pluginFixture } from './plugin-fixtures'
 
 describe('plugin process boundary', () => {
   let directory: string
   beforeEach(async () => { directory = await mkdtemp(path.join(os.tmpdir(), 'antumi-plugin-process-')) })
-  afterEach(async () => { await rm(directory, { recursive: true, force: true }) })
+  afterEach(async () => { vi.restoreAllMocks(); await rm(directory, { recursive: true, force: true }) })
 
   it('keeps multiple login prompts in one process and starts the next operation separately', async () => {
     const manifest = await pluginFixture(directory)
@@ -68,6 +68,33 @@ describe('plugin process boundary', () => {
   it('rejects incompatible handshakes', async () => {
     const manifest = await pluginFixture(directory, { behavior: { badHandshake: true } })
     await expect(new PluginProcess(manifest, path.join(directory, 'main.mjs')).providers()).rejects.toThrow('协议')
+  })
+
+  it('loads pages alone, checks page handshakes and keeps page prompts and output bounded', async () => {
+    const pages = [{ id: 'demo', label: 'Demo', entry: 'page/index.html' }]
+    const manifest = await pluginFixture(directory, { source: null, pages })
+    const runtime = new PluginProcess(manifest, path.join(directory, 'main.mjs'))
+    expect(await runtime.providers()).toEqual([])
+    await expect(runtime.call('page', { page: 'demo', method: 'echo', params: { ok: true } })).resolves.toEqual({ result: { ok: true } })
+    for (const behavior of [{ badPages: true }, { mode: 'callback' }, { mode: 'oversize' }]) {
+      await pluginFixture(directory, { source: null, pages, behavior })
+      await expect(runtime.call('page', { page: 'demo', method: 'echo', params: null })).rejects.toThrow()
+    }
+  })
+
+  it('gives page calls a 30 second timeout', async () => {
+    const timeout = AbortSignal.timeout.bind(AbortSignal)
+    const timed = vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => timeout(ms === 30_000 ? 500 : ms))
+    const manifest = await pluginFixture(directory, { source: null, pages: [{ id: 'demo', label: 'Demo', entry: 'page/index.html' }], behavior: { mode: 'hang' } })
+    const runtime = new PluginProcess(manifest, path.join(directory, 'main.mjs'))
+    await expect(runtime.call('page', { page: 'demo', method: 'wait', params: null })).rejects.toThrow('超时')
+    expect(timed).toHaveBeenCalledWith(30_000)
+  })
+
+  it('accepts an old sources-only handshake without pages', async () => {
+    const manifest = await pluginFixture(directory, { behavior: { legacyHandshake: true } })
+    const runtime = new PluginProcess(manifest, path.join(directory, 'main.mjs'))
+    expect((await runtime.providers()).map((provider) => provider.id)).toEqual(['demo'])
   })
 
   it('terminates a process that ignores cancellation', async () => {

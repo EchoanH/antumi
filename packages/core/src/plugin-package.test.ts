@@ -47,6 +47,30 @@ describe('plugin packages', () => {
     await expect(readManifest(root, version)).rejects.toThrow('不兼容')
   })
 
+  it('accepts page assets but refuses fonts', async () => {
+    await extractPlugin(pluginZip(Object.fromEntries(['html', 'css', 'svg', 'png', 'jpg', 'jpeg', 'webp', 'gif'].map((extension) => [`page/asset.${extension}`, 'asset']))), root)
+    await expect(extractPlugin(pluginZip({ 'page/font.woff2': 'font' }), root)).rejects.toThrow()
+    const from = path.join(root, 'font-input')
+    const to = path.join(root, 'font-output')
+    await mkdir(from); await mkdir(to)
+    await writeFile(path.join(from, 'font.woff2'), 'font')
+    await expect(copyPlugin(from, to)).rejects.toThrow()
+  })
+
+  it.each(['index.html', 'page/missing.html', '../page.html', 'page/index.js'])('refuses invalid page entry %s', async (entry) => {
+    const manifest = await pluginFixture(root)
+    await writeFile(path.join(root, 'manifest.json'), JSON.stringify({ ...manifest, contributes: { pages: [{ id: 'demo', label: 'Demo', entry }] } }))
+    await expect(readManifest(root, '0.19.6')).rejects.toThrow()
+  })
+
+  it('refuses duplicate pages and checks the host before an unfamiliar manifest shape', async () => {
+    const manifest = await pluginFixture(root, { source: null, pages: [{ id: 'demo', label: 'Demo', entry: 'page/index.html' }] })
+    await writeFile(path.join(root, 'manifest.json'), JSON.stringify({ ...manifest, contributes: { pages: [...manifest.contributes.pages, ...manifest.contributes.pages] } }))
+    await expect(readManifest(root, '0.19.6')).rejects.toThrow('重复')
+    await writeFile(path.join(root, 'manifest.json'), JSON.stringify({ ...manifest, engines: { antumi: '>=9.0.0' }, contributes: { future: true } }))
+    await expect(readManifest(root, '0.19.6')).rejects.toThrow('插件版本无效或不兼容当前 Antumi')
+  })
+
   it('downloads only the selected release asset and requires an unambiguous ZIP', async () => {
     const archive = pluginZip({ 'main.mjs': 'export {}' })
     const calls: string[] = []
