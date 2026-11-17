@@ -45,8 +45,10 @@ import {
   type Squad,
   type SquadRun,
   type SquadPlanRef,
-  type PullRequestLink
+  type PullRequestLink,
+  type PluginInfo
 } from '@antumi/protocol'
+import { findPluginPage, type PluginPageRef } from './plugin-pages'
 import { receiveChatDelta, receiveChatItems } from './chat-state'
 import { forgetDiscussionPosts, receiveDiscussionPosts } from './discussions'
 import { fileScopeKey, forgetFileTabs, type FileScope } from './file-tabs'
@@ -78,7 +80,8 @@ export type ConnectionState = 'waiting-for-core' | 'connecting' | 'connected'
 // What the right-hand pane shows for the selected task.
 // terminal: a task's agent in a terminal · chat: a task started in the chat view, in its chat
 export type TaskView = 'detail' | 'chat'
-export type Section = 'tasks' | 'conversations' | 'discussions' | 'squads'
+// plugin: a page a plugin ships (pluginPage), full size in the main pane.
+export type Section = 'tasks' | 'conversations' | 'discussions' | 'squads' | 'plugin'
 
 // A sign-in this window started. The flow lives in core and ends if the connection drops.
 export type LoginState = {
@@ -120,6 +123,10 @@ export type CoreState = {
   squadPlan: SquadPlanRef | null
   discussions: Record<string, Discussion>
   selectedDiscussionId: string | null
+  // The plugin page the plugin section shows.
+  pluginPage: PluginPageRef | null
+  // The plugins core runs, as it last said; null until it does, or on a core without them.
+  plugins: PluginInfo[] | null
   // The group a new group chat copies, if any: a new object each time, so the page starts over.
   discussionDraftFrom: { discussion: Discussion } | null
   // The projects the new-conversation page was last asked to start with; a new object each time, so
@@ -271,6 +278,8 @@ export const useCore = create<CoreState>()(() => ({
   squadPlan: null,
   discussions: {},
   selectedDiscussionId: null,
+  pluginPage: null,
+  plugins: null,
   discussionDraftFrom: null,
   conversationDraftMode: 'single',
   conversationDraftCarry: null,
@@ -358,6 +367,7 @@ function nonChatPage(s: CoreState): string | null {
   if (s.worktreesOpen) return 'worktrees'
   if (s.routinesOpen) return 'routines'
   if (s.section === 'squads') return 'agents'
+  if (s.section === 'plugin') return 'plugin'
   if (s.section === 'discussions') return s.selectedDiscussionId ? null : 'discussions'
   if (s.section === 'conversations') return s.selectedConversationId || s.conversationDraft ? null : 'conversations'
   return s.selectedId && s.view === 'chat' ? null : s.selectedId ? 'task-detail' : 'tasks'
@@ -527,6 +537,7 @@ export function showBrowserTab(tabId: string): void {
 // A new terminal starts in the folder of whatever the user is looking at: a task's worktree, a
 // conversation's project. Core falls back to home.
 function contextFolder(s: CoreState): string | undefined {
+  if (s.section === 'plugin') return undefined
   if (s.section === 'discussions') return (s.selectedDiscussionId ? s.discussions[s.selectedDiscussionId] : undefined)?.projectPaths[0]
   if (s.section === 'conversations') {
     const conversation = s.selectedConversationId ? s.conversations[s.selectedConversationId] : undefined
@@ -698,7 +709,7 @@ export function toggleFilesPanel(): void {
 // What the user is looking at, which the files panel follows: a key that changes when they look
 // elsewhere, and the folders it has, null where it has none (a page, or nothing selected).
 export function filesContext(s: CoreState): { key: string; scope: FileScope | null } {
-  if (s.settingsOpen || s.overviewOpen || s.inboxOpen || s.worktreesOpen || s.routinesOpen) return { key: 'page', scope: null }
+  if (s.settingsOpen || s.overviewOpen || s.inboxOpen || s.worktreesOpen || s.routinesOpen || s.section === 'plugin') return { key: 'page', scope: null }
   if (s.section === 'discussions') {
     const discussion = s.selectedDiscussionId ? s.discussions[s.selectedDiscussionId] : undefined
     return { key: `discussion:${s.selectedDiscussionId ?? ''}`, scope: discussion?.projectPaths.length ? { conversationId: null, roots: discussion.projectPaths } : null }
@@ -887,6 +898,28 @@ const PAGES_CLOSED = { settingsOpen: false, worktreesOpen: false, routinesOpen: 
 
 export function selectSquad(id: string | null, draft = false): void {
   useCore.setState({ section: 'squads', agentProfilesTab: 'squads', selectedSquadId: id, squadDraft: draft, ...PAGES_CLOSED })
+}
+
+// A plugin's page, full size in the main pane. Whatever else is selected stays so, for leaving it.
+export function openPluginPage(plugin: string, page: string): void {
+  useCore.setState({ section: 'plugin', pluginPage: { plugin, page }, ...PAGES_CLOSED })
+}
+
+// Back to the conversations, as they were before the page opened.
+export function leavePluginPage(): void {
+  useCore.setState((s) => s.section === 'plugin' ? { section: 'conversations', pluginPage: null } : { pluginPage: null })
+}
+
+// The plugins as core says they are now; a page whose plugin was disabled or removed, or no longer
+// ships it, closes.
+export function receivePlugins(plugins: PluginInfo[]): void {
+  useCore.setState({ plugins })
+  const { pluginPage } = useCore.getState()
+  if (pluginPage && !findPluginPage(plugins, pluginPage)) leavePluginPage()
+}
+
+export function usePluginPagesSupported(): boolean {
+  return useCore((state) => state.rpc?.features.includes('plugin-pages') ?? false)
 }
 
 export function useSquadsSupported(): boolean {
@@ -1631,6 +1664,8 @@ export function startCoreConnection(scope: 'app' | 'requests' = 'app'): void {
         rpc.on('skills.changed', ({ repos }) => useCore.setState({ skillRepos: repos }))
         rpc.on('mcpServers.changed', ({ servers }) => useCore.setState({ mcpServers: servers }))
         rpc.on('modelProviders.changed', ({ providers }) => useCore.setState({ modelProviders: providers }))
+        let pluginsChanged = false
+        rpc.on('plugins.changed', ({ plugins }) => { pluginsChanged = true; receivePlugins(plugins) })
         rpc.on('schedules.changed', ({ runs }) => {
           if (!initialized) changedSchedules = runs
           useCore.setState({ schedules: runs })
@@ -1697,6 +1732,8 @@ export function startCoreConnection(scope: 'app' | 'requests' = 'app'): void {
         if (full && rpc.features.includes('chat-commands')) void rpc.call('chatCommands.list', {}).then((chatCommands) => useCore.setState({ chatCommands })).catch(() => {})
         if (full && rpc.features.includes('skills-library')) void rpc.call('skills.list', {}).then((skillRepos) => useCore.setState({ skillRepos })).catch(() => {})
         if (full && rpc.features.includes('mcp-servers')) void rpc.call('mcpServers.list', {}).then((mcpServers) => useCore.setState({ mcpServers })).catch(() => {})
+        // A list that answers after a change was announced would be the older of the two.
+        if (full && rpc.features.includes('plugins')) void rpc.call('plugins.list', {}).then((plugins) => { if (!pluginsChanged) receivePlugins(plugins) }).catch(() => {})
         const accounts = full && rpc.features.includes('agent-accounts') ? await rpc.call('accounts.list', {}).catch(() => null) : null
         if (full && rpc.features.includes('environment')) void rpc.call('system.environment', {}).then((environment) => useCore.setState({ environment })).catch(() => {})
         useCore.setState((s) => ({
@@ -1723,7 +1760,10 @@ export function startCoreConnection(scope: 'app' | 'requests' = 'app'): void {
           terminals,
           activeTerminalId: activeAmong(s.activeTerminalId, terminals),
           terminalCommands,
-          ...(s.inboxOpen && !inboxes.some((inbox) => inbox.active) ? OVERVIEW : {})
+          ...(s.inboxOpen && !inboxes.some((inbox) => inbox.active) ? OVERVIEW : {}),
+          ...(rpc.features.includes('plugins') ? {} : { plugins: null }),
+          // A core without pages (an older one, after a restart) has none to show.
+          ...(s.section === 'plugin' && !rpc.features.includes('plugin-pages') ? { section: 'conversations' as const, pluginPage: null } : {})
         }))
         initialized = true
         taskChanges.clear()

@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import type { PanelShortcutAction } from '../../shared/panel-shortcuts'
-import { ShortcutAction, SHORTCUTS } from '../../shared/keyboard-shortcuts'
+import { ShortcutAction, SHORTCUTS, type ShortcutInput } from '../../shared/keyboard-shortcuts'
 import { closePanelWindow, focusPanelWindow, forwardPanelShortcut, onBrowserShortcut, sendPanelCommand, syncPanelShortcuts } from './desktop-bridge'
 import type { PanelKind } from '../../shared/panel-window'
 import { focusSplitPane, openSearch, setNewTaskOpen, toggleSplit, toggleBrowserPanel, toggleFilesPanel, toggleGitPanel, toggleTerminalPanel, setSettingsOpen, useCore } from './core-store'
@@ -66,6 +66,13 @@ function runAppShortcut(action: ShortcutAction, addressFocused?: boolean): boole
 
 export function runForwardedShortcut(action: ShortcutAction, addressFocused: boolean): void {
   runAppShortcut(action, addressFocused)
+}
+
+// A chord pressed where the window cannot hear it, inside a plugin page's frame: the app shortcut it
+// matches runs as if pressed here. False when it matches none.
+export function runShortcutChord(input: ShortcutInput): boolean {
+  const action = ShortcutAction.options.find((candidate) => SHORTCUTS[candidate].scope === 'app' && isShortcut(candidate, input))
+  return action ? runAppShortcut(action) : false
 }
 
 export function usePanelWindowShortcuts(kind: PanelKind): void {

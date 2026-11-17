@@ -1,7 +1,8 @@
 import { getLocale, t, tr } from '../i18n'
 import { useEffect, useId, useState } from 'react'
 import type { PluginInfo, PluginInstallSource, RecommendedPlugin } from '@antumi/protocol'
-import { perform, useCore } from '../core-store'
+import { perform, receivePlugins, useCore } from '../core-store'
+import { pluginPageLabel } from '../plugin-pages'
 import { pickPlugin } from '../desktop-bridge'
 import { SettingsGroup, Toggle } from './SettingsControls'
 import { ChatPicker } from './ChatPicker'
@@ -12,11 +13,19 @@ function RepositoryLink({ repository }: { repository: string }) {
   return <a className="plugin-repository" href={`https://github.com/${repository}`} target="_blank" rel="noreferrer" data-tooltip={t('PluginSettings.openOnGitHub')}>{repository}</a>
 }
 
+// What the plugin brings, by name: its sources, else its pages, else its id. Never empty: it labels
+// the plugin's switch.
+function pluginName(plugin: PluginInfo): string {
+  const names = plugin.sources.length > 0 ? plugin.sources.map((source) => source.name) : plugin.pages.map((page) => pluginPageLabel(page, getLocale()))
+  return names.join('、') || plugin.id
+}
+
 export function PluginSettings() {
   const ids = useId()
   const rpc = useCore((state) => state.rpc)
   const [recommended, setRecommended] = useState<RecommendedPlugin[]>([])
-  const [plugins, setPlugins] = useState<PluginInfo[] | null>(null)
+  // Kept by the store, which loads them on connect and follows plugins.changed.
+  const plugins = useCore((state) => state.plugins)
   const [busy, setBusy] = useState(false)
   const [kind, setKind] = useState<'local' | 'github'>('local')
   const [location, setLocation] = useState('')
@@ -28,19 +37,12 @@ export function PluginSettings() {
 
   useEffect(() => {
     setRecommended([])
-    if (!rpc) { setPlugins(null); return }
+    if (!rpc?.features.includes('plugin-recommendations')) return
     let active = true
-    let changed = false
-    const off = rpc.on('plugins.changed', ({ plugins }) => { changed = true; if (active) setPlugins(plugins) })
-    void perform((connection) => connection.call('plugins.list', {})).then((result) => {
-      if (active && !changed && result) setPlugins(result)
+    void perform((connection) => connection.call('plugins.recommended', {})).then((result) => {
+      if (active && result) setRecommended(result)
     })
-    if (rpc.features.includes('plugin-recommendations')) {
-      void perform((connection) => connection.call('plugins.recommended', {})).then((result) => {
-        if (active && result) setRecommended(result)
-      })
-    }
-    return () => { active = false; off() }
+    return () => { active = false }
   }, [rpc])
 
   const run = async (action: Parameters<typeof perform>[0], message: string) => {
@@ -52,7 +54,7 @@ export function PluginSettings() {
       if (result !== null) {
         setStatus(message)
         const updated = await perform((connection) => connection.call('plugins.list', {}))
-        if (updated) setPlugins(updated)
+        if (updated) receivePlugins(updated)
       }
     } finally { setBusy(false) }
   }
@@ -88,7 +90,7 @@ export function PluginSettings() {
           <div key={plugin.id} className="plugin-row">
             <div className="settings-row">
               <div className="settings-row-text">
-                <span id={`${ids}-${plugin.id}`} className="settings-row-label">{plugin.sources.map((source) => source.name).join('、')}</span>
+                <span id={`${ids}-${plugin.id}`} className="settings-row-label">{pluginName(plugin)}</span>
                 <p className="settings-row-description">{plugin.id} · {plugin.version} · {plugin.enabled ? plugin.problem ? t('PluginSettings.failedToStart') : t('PluginSettings.enabled') : t('PluginSettings.disabled')}</p>
                 <p className="settings-row-description">{plugin.origin.kind === 'bundled' ? t('PluginSettings.bundledWithAntumi') : plugin.origin.kind === 'github' ? <>GitHub · <RepositoryLink repository={plugin.origin.repository} /></> : plugin.origin.path}</p>
               </div>
