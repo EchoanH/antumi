@@ -19,12 +19,12 @@ export function cleanableOnceAway(list: readonly ManagedWorktree[], conversation
 }
 
 // Read from core as it stands: the list kept for the status bar may predate the conversation.
-export async function worktreesToOffer(conversationId: string): Promise<string[]> {
+export async function worktreesToOffer(...conversationIds: string[]): Promise<string[]> {
   const rpc = useCore.getState().rpc
   if (!rpc || !archivedWorktreesSupported()) return []
   const list = await rpc.call('worktrees.list', {}).catch(() => null)
   if (list) useWorktrees.setState({ list })
-  return list ? cleanableOnceAway(list, conversationId) : []
+  return list ? conversationIds.flatMap((id) => cleanableOnceAway(list, id)) : []
 }
 
 // Cleans them, saying which stayed and why; true when every one went.

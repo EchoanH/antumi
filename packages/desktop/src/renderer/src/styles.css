@@ -5419,7 +5419,7 @@ div.inspector-empty > p { margin: 0 0 8px; }
 .session-import-folder-toggle .settings-project-name { flex-shrink: 0; max-width: 32%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-import-count, .session-import-selected { flex-shrink: 0; font-size: 12px; color: var(--text-muted); white-space: nowrap; }
 .session-import-selected { color: var(--accent); }
-.session-import-folder input, .session-import-row > input[type='checkbox'] { accent-color: var(--accent); }
+.session-import-folder input, .session-import-row > input[type='checkbox'], .session-import-list-actions > input[type='checkbox'] { accent-color: var(--accent); }
 .session-import-row { gap: 8px; padding: 8px 0 8px 24px; }
 .session-import-agent { display: inline-flex; flex-shrink: 0; }
 .session-import-agent .agent-mark { width: 14px; height: 14px; }

@@ -150,18 +150,42 @@ export async function archiveConversation(id: string, archived: boolean) {
   return result
 }
 
-// What deleting it also deletes: the conversations it delegated to go with it.
-async function delegatesNote(id: string): Promise<string> {
+// What deleting them also deletes: the conversations they delegated to go with them.
+async function delegatesNote(ids: readonly string[]): Promise<string> {
   const rpc = useCore.getState().rpc
   if (!rpc?.features.includes('agent-profiles')) return ''
   const all = await rpc.call('conversations.list', { includeTasks: true, includeDelegates: true }).catch(() => [])
-  const count = all.filter((each) => each.parentConversationId === id).length
+  const parents = new Set(ids)
+  const count = all.filter((each) => each.parentConversationId != null && parents.has(each.parentConversationId)).length
   return count > 0 ? `\n\n${t('ConversationActions.alsoDeletesItsDelegates', { count })}` : ''
+}
+
+// Several at once, asked once; resolves how many went. One core refuses stops the rest, and says why.
+export async function deleteConversations(ids: readonly string[]): Promise<number> {
+  if (ids.length === 0) return 0
+  const worktrees = await worktreesToOffer(...ids)
+  const delegates = await delegatesNote(ids)
+  const message = t('ConversationActions.deleteConversations', { count: ids.length }) + delegates
+  let clean = false
+  if (worktrees.length > 0) {
+    const answer = await askConfirmWithOption({ message, confirm: t('ChatCommandSettings.delete'), danger: true, option: { label: t('ConversationActions.alsoCleanTheirWorktrees', { count: worktrees.length }), checked: true } })
+    if (!answer) return 0
+    clean = answer.option
+  } else if (!await askConfirm({ message, confirm: t('ChatCommandSettings.delete'), danger: true })) {
+    return 0
+  }
+  let deleted = 0
+  for (const id of ids) {
+    if ((await perform((rpc) => rpc.call('conversations.delete', { id }))) === null) break
+    deleted++
+  }
+  if (deleted > 0 && clean) await cleanAway(worktrees)
+  return deleted
 }
 
 export async function deleteConversation(conversation: Conversation): Promise<boolean> {
   const worktrees = await worktreesToOffer(conversation.id)
-  const delegates = await delegatesNote(conversation.id)
+  const delegates = await delegatesNote([conversation.id])
   let clean = false
   if (worktrees.length > 0) {
     const answer = await askConfirmWithOption({ message: t('ConversationActions.deleteThisConversationWithItsWorktree') + delegates, confirm: t('ChatCommandSettings.delete'), danger: true, option: { label: t('ConversationActions.alsoCleanItsWorktree'), checked: true } })

@@ -38,6 +38,8 @@
 .settings .settings-section-header p { max-width: 65ch; color: var(--text-muted); }
 /* Rows sit in a card a shade off the page, so each group reads as one thing. */
 .settings .settings-card { padding: 0 16px; border: 1px solid var(--border-2); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--bg) 45%, var(--surface)); }
+.settings-section-tabs { padding: 14px 0; border-bottom: 1px solid var(--border); }
+.settings-section-tabs .segmented { width: fit-content; max-width: 100%; flex-wrap: wrap; }
 .settings .settings-card .settings-card { padding: 0; border: 0; border-radius: 0; background: transparent; }
 .settings .settings-card > .settings-note:first-child { padding-top: 14px; }
 .settings .settings-card > p.muted:only-child { margin: 0; padding: 14px 0; }

@@ -1,10 +1,10 @@
 import { UsageSettings } from './UsageSettings'
 import { getLocale, localized, messageSearchText, t, tr, useLocale } from '../i18n'
 import type { BrowserSite, BrowserStatus, WireUsage } from '@antumi/protocol'
-import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type ReactElement } from 'react'
 import { AGENT_KINDS, agentDescriptor, LANGUAGE_NAMES, PROTOCOL_VERSION, quickModel, TRANSLATE_LANGUAGES, UNATTENDED_MODES, type AgentKind, type SourceDescriptor, type UnattendedMode } from '@antumi/protocol'
 import packageJson from '../../../../package.json'
-import { perform, setAwakeMode, setChatSettings, setSettingsOpen, useAwakeSupported, useCore, useBrowserSupported, useChatCommandsSupported, useKnowledgeBaseSupported, useMcpServersSupported, useModelProvidersSupported, useSessionImportSupported, useAccountsSupported, useProjectConfigEditSupported, useSkillsSupported, useTranslateSupported, useWireLogSupported } from '../core-store'
+import { perform, setAwakeMode, setChatSettings, setSettingsOpen, useAwakeSupported, useCore, useBrowserSupported, useChatCommandsSupported, useConversationArchiveSupported, useKnowledgeBaseSupported, useMcpServersSupported, useModelProvidersSupported, useSessionImportSupported, useAccountsSupported, useProjectConfigEditSupported, useSkillsSupported, useTranslateSupported, useWireLogSupported } from '../core-store'
 import { setPreference, usePreferences, type Preferences } from '../preferences'
 import { ProjectColorPicker } from './ProjectColorPicker'
 import { ProjectIcon } from './ProjectIcon'
@@ -53,6 +53,7 @@ import { KnowledgeBaseSettings } from './KnowledgeBaseSettings'
 import { SkillsSettingsSection } from './SkillsSettingsSection'
 import { McpSettingsSection } from './McpSettingsSection'
 import { SessionImportSettings } from './SessionImportSettings'
+import { ArchivedConversationSettings } from './ArchivedConversationSettings'
 import { ModelProviderSettings } from './ModelProviderSettings'
 import { AgentAccountSettings } from './AgentAccountSettings'
 import { CopyButton } from './CopyButton'
@@ -366,6 +367,27 @@ function PermissionSettings() {
 }
 
 function ConversationSettings() {
+  const archive = useConversationArchiveSupported()
+  const [tab, setTab] = useState<'general' | 'archived'>('general')
+  const tabLabel = useId()
+  const shown = archive && tab === 'archived' ? 'archived' : 'general'
+  return (
+    <>
+      {archive && (
+        <div className="settings-section-tabs">
+          <span id={tabLabel} hidden>{t('sidebar.conversations')}</span>
+          <Segmented labelId={tabLabel} value={shown} onChange={setTab} options={[
+            { value: 'general', label: t('ConversationSettings.general') },
+            { value: 'archived', label: t('ConversationSettings.archived') }
+          ]} />
+        </div>
+      )}
+      {shown === 'archived' ? <ArchivedConversationSettings /> : <ConversationGeneralSettings />}
+    </>
+  )
+}
+
+function ConversationGeneralSettings() {
   const chatSettings = useCore((s) => s.chatSettings)
   const installed = useInstalledAgents()
   return (
@@ -701,7 +723,8 @@ const CONVERSATION_SECTION: Section = localized(() => ({
     t('SettingsPage.chinese'), t('SettingsPage.english'), 'english', t('SettingsPage.japanese'),
     t('SettingsPage.korean'), t('SettingsPage.autoTranslate'), t('SettingsPage.original'),
     t('SettingsPage.translation'), t('AgentModelPicker.model'), t('SettingsPage.quick'),
-    t('ConversationBranches.commitMessage'), t('DiscussionView.summary'), 'haiku'
+    t('ConversationBranches.commitMessage'), t('DiscussionView.summary'), 'haiku',
+    t('ConversationSettings.archived'), t('ArchivedConversationSettings.title'), t('ChatCommandSettings.delete')
   ],
   Icon: ChatIcon,
   Body: ConversationSettings
