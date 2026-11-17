@@ -193,7 +193,7 @@
 ### 任务来源与收件箱
 
 
-任务除了手写，也可以从 issue 系统导入。每种系统是一个**任务来源**，GitHub、Jira、Linear 和禅道都通过独立来源插件接入，在「设置 → 插件」推荐列表选择，从对应插件的 GitHub Release 下载后安装；新安装的 Antumi 不预装任务来源。插件只提供来源，不扩展 Agent 或界面，见 [任务来源插件](PLUGINS.md)。
+任务除了手写，也可以从 issue 系统导入。每种系统是一个**任务来源**，GitHub、Jira、Linear 和禅道都通过独立来源插件接入，在「设置 → 插件」推荐列表选择，从对应插件的 GitHub Release 下载后安装；新安装的 Antumi 不预装任务来源。插件除了来源还可以自带页面（在隔离的 iframe 里显示，侧栏多一个入口），不扩展 Agent，见 [插件](PLUGINS.md)。
 
 四个来源的源码统一在 `flyhero/antumi-plugins` 的 `plugins/<slug>` 目录，插件保持独立版本和 ZIP，主仓库只维护 `plugins-recommended.json` 中的推荐名称、说明、仓库地址与标签前缀，不附带来源插件的 ZIP 或程序。core 在用户点击安装时从对应插件标签前缀下版本最高的正式 Release 下载 ZIP，校验 ID 与协议后安装；查看列表、启动和构建都不会下载来源插件。旧版已安装的插件继续可用，旧 Jira 配置在主动安装独立插件后继续使用。SDK 在 `packages/plugin-sdk` 维护，协议唯一来源为 `packages/protocol`，来源图片通过可选字段传输。
 
