@@ -67,6 +67,7 @@ export function runSourcePlugin(options: Options): { close(): void } {
     if (!handshaken || called) throw new SourceError('request-failed', '每个插件进程必须先握手，再执行一个操作')
     called = true
     const method = request.method
+    if (method === 'page') throw new SourceError('not-found', '插件未声明这个页面')
     const params = pluginSchemas[method].params.parse(request.params)
     const source = sources.get(params.source)
     if (!source) throw new SourceError('not-found', '插件未声明这个任务来源')

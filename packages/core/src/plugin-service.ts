@@ -3,7 +3,7 @@ import path from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { rcompare } from 'semver'
 import { z } from 'zod'
-import { PluginInfo, PluginManifest, PluginVersion, type PluginInstallSource, RecommendedPlugin } from '@antumi/protocol'
+import { PluginInfo, PluginManifest, type PluginPageFiles, PluginVersion, type PluginInstallSource, RecommendedPlugin } from '@antumi/protocol'
 import { readJsonIfExists, writePrivateJson } from '@antumi/protocol/node'
 import { renameWhenFree } from './patient-rename'
 import { packagePath, readManifest, stagePlugin } from './plugin-package'
@@ -74,9 +74,19 @@ export class PluginService {
     return { kind: 'github', repository: entry.repository, ...(entry.tagPrefix ? { tagPrefix: entry.tagPrefix } : {}), ...(entry.asset ? { asset: entry.asset } : {}) }
   }
 
+  // One page's files, for the desktop to serve to its frame.
+  async pageFiles(_id: string, _page: string): Promise<PluginPageFiles> {
+    throw new Error('plugin pages are not implemented yet')
+  }
+
+  // A page's call to its own plugin's backend.
+  async pageCall(_id: string, _page: string, _method: string, _params: unknown): Promise<{ result: unknown }> {
+    throw new Error('plugin pages are not implemented yet')
+  }
+
   list(): PluginInfo[] {
     return this.registry.plugins.map((record) => ({
-      id: record.manifest.id, version: record.manifest.version, sources: record.manifest.contributes.sources,
+      id: record.manifest.id, version: record.manifest.version, sources: record.manifest.contributes.sources, pages: record.manifest.contributes.pages,
       enabled: record.enabled, versions: [...record.versions].sort(rcompare), origin: record.origin,
       problem: this.problems.get(record.manifest.id) ?? null
     }))

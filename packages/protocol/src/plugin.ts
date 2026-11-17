@@ -2,16 +2,24 @@ import { z } from 'zod'
 import { SourceCommentOptions, SourceCommentPage, SourceCommentState } from './source-comments'
 import { MAX_ATTACHMENT_BYTES, MAX_TASK_IMAGES } from './attachments'
 import { LoginNotice, LoginPrompt, SettingField, SourceId, SourceIssue, SourceProblem } from './source'
+import { TextTranslations } from './localization'
 
 export const PLUGIN_PROTOCOL_VERSION = 1
 export const PluginId = z.string().max(120).regex(/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/)
 export const PluginVersion = z.string().max(80).regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/)
 export const PluginSource = z.object({ id: SourceId, name: z.string().min(1).max(64), settings: z.array(SettingField).max(32), commentSync: z.literal(1).optional() })
+// A page the plugin draws itself, which the desktop shows in a sandboxed frame. entry is its HTML,
+// in a directory of its own inside the package: everything in that directory is served to the frame.
+export const PluginPageId = z.string().regex(/^[a-z][a-z0-9-]{0,31}$/)
+export const PluginPage = z.object({ id: PluginPageId, label: z.string().min(1).max(64), translations: TextTranslations.optional(), entry: z.string().min(1).max(240) })
+export type PluginPage = z.infer<typeof PluginPage>
 export const PluginManifest = z.object({
   id: PluginId,
   version: PluginVersion,
   engines: z.object({ antumi: z.string().min(1).max(100) }),
-  contributes: z.object({ sources: z.array(PluginSource).min(1).max(16) }),
+  // Plugins from before pages name sources alone; one with neither does nothing.
+  contributes: z.object({ sources: z.array(PluginSource).max(16).default([]), pages: z.array(PluginPage).max(4).default([]) })
+    .refine((value) => value.sources.length + value.pages.length > 0),
   entry: z.object({ runtime: z.literal('node'), main: z.string().min(1).max(240) }),
   env: z.array(z.string().regex(/^[A-Z_][A-Z0-9_]*$/)).max(32).default([])
 })
@@ -25,7 +33,7 @@ export const PluginInstallSource = z.discriminatedUnion('kind', [
 export type PluginInstallSource = z.infer<typeof PluginInstallSource>
 export const PluginInfo = z.object({
   id: PluginId, version: PluginVersion, enabled: z.boolean(),
-  sources: z.array(PluginSource), versions: z.array(PluginVersion),
+  sources: z.array(PluginSource), pages: z.array(PluginPage).default([]), versions: z.array(PluginVersion),
   origin: z.union([PluginInstallSource, z.object({ kind: z.literal('bundled') })]),
   problem: z.string().nullable()
 })
@@ -53,8 +61,9 @@ const SourceImages = z.array(SourceImage).max(MAX_TASK_IMAGES)
 export const PluginCredential = z.object({ kind: z.string().max(32), payload: z.record(z.string(), z.string()) })
 export type PluginCredential = z.infer<typeof PluginCredential>
 const Settings = z.record(z.string(), z.string())
+export const PluginPageMethod = z.string().min(1).max(64)
 export const pluginMethods = {
-  handshake: { params: z.object({ protocolVersion: z.number().int() }), result: z.object({ protocolVersion: z.literal(PLUGIN_PROTOCOL_VERSION), id: PluginId, version: PluginVersion, sources: z.array(SourceId) }) },
+  handshake: { params: z.object({ protocolVersion: z.number().int() }), result: z.object({ protocolVersion: z.literal(PLUGIN_PROTOCOL_VERSION), id: PluginId, version: PluginVersion, sources: z.array(SourceId), pages: z.array(PluginPageId).default([]) }) },
   normalizeSettings: { params: z.object({ source: SourceId, settings: Settings }), result: Settings },
   normalizeKey: { params: z.object({ source: SourceId, key: z.string() }), result: z.string() },
   envCredential: { params: z.object({ source: SourceId }), result: PluginCredential.nullable() },
@@ -65,6 +74,9 @@ export const pluginMethods = {
   comments: { params: SourceCommentOptions.extend({ source: SourceId, settings: Settings, credential: PluginCredential, key: z.string() }), result: SourceCommentPage },
   // One image a comment names (SourceComment.images), asked for only when the comment goes to an agent.
   image: { params: z.object({ source: SourceId, settings: Settings, credential: PluginCredential, key: z.string(), id: z.string().min(1).max(500) }), result: SourceImage },
+  // A page calling its own plugin's backend. Both ends are the plugin's, so method, params and
+  // result pass through core unread.
+  page: { params: z.object({ page: PluginPageId, method: PluginPageMethod, params: z.unknown() }), result: z.object({ result: z.unknown() }) },
   fetch: {
     params: z.object({ source: SourceId, settings: Settings, credential: PluginCredential, key: z.string(), images: z.boolean().optional() }),
     result: SourceIssue.extend({ markdown: z.string().max(50_000), images: SourceImages.optional(), imagesDeferred: z.number().int().nonnegative().max(1000).optional(), commentState: SourceCommentState.optional() })
@@ -77,7 +89,7 @@ export type PluginParams<M extends PluginMethod> = z.output<(typeof pluginMethod
 export type PluginResult<M extends PluginMethod> = z.output<(typeof pluginMethods)[M]['result']>
 export const PluginCall = z.object({
   type: z.literal('call'), id: z.string(),
-  method: z.enum(['handshake', 'normalizeSettings', 'normalizeKey', 'envCredential', 'login', 'list', 'fetch', 'comments', 'image']),
+  method: z.enum(['handshake', 'normalizeSettings', 'normalizeKey', 'envCredential', 'login', 'list', 'fetch', 'comments', 'image', 'page']),
   params: z.unknown()
 })
 export const PluginAnswer = z.object({ type: z.literal('answer'), id: z.string(), value: z.string() })
@@ -87,3 +99,13 @@ export const PluginMessage = z.discriminatedUnion('type', [
   z.object({ type: z.literal('prompt'), id: z.string(), prompt: LoginPrompt }),
   z.object({ type: z.literal('notify'), notice: LoginNotice })
 ])
+
+// One page's files as core hands them to the desktop, which serves them to the frame: core may run
+// on another machine. version names the installed plugin they came from.
+export const MAX_PLUGIN_PAGE_BYTES = 8 * 1024 * 1024
+export const PluginPageFiles = z.object({
+  version: PluginVersion,
+  entry: z.string().min(1).max(240),
+  files: z.array(z.object({ path: z.string().min(1).max(240), base64: z.string().max(Math.ceil(MAX_PLUGIN_PAGE_BYTES / 3) * 4) })).max(256)
+})
+export type PluginPageFiles = z.infer<typeof PluginPageFiles>
