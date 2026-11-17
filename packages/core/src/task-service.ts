@@ -35,6 +35,7 @@ import {
   type RpcParsedParams,
   type SourceSnapshot,
   type Task,
+  type TaskChannelSource,
   type TaskLaunchOptions,
   type TaskImage,
   type TaskRepo,
@@ -176,6 +177,16 @@ export class TaskService {
     }
     const hasFields = Object.values(patch).some((value) => value !== undefined)
     return this.named(this.changed(hasFields ? this.store.update(task.id, patch) : task))
+  }
+
+  // Synchronous and atomic: retries of a platform message keep the first task, even after restart.
+  createChannelTask({ title, details, repos, source }: { title: string; details: string; repos: string[]; source: TaskChannelSource }): Task {
+    const existing = this.store.channelTask(source)
+    if (existing) return existing
+    const paths = [...new Set(repos.map(normalizeRepoPath))]
+    const task = this.store.create(title, { details, repos: withKnownWorktrees([], paths), channelSource: source })
+    this.projects.remember(paths)
+    return this.named(this.changed(task))
   }
 
   // A task made from an issue: the issue's text stays in its snapshot and the details start empty,

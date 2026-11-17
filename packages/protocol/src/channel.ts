@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { MAX_TASK_REPOS } from './task'
+import { MAX_TASK_REPOS } from './task-limits'
 
 // An agent on a chat platform (docs/CHANNELS.md): colleagues ask it questions there, and it answers
 // from the projects it is given, locked down. What core and the desktop share about it, zod only.
@@ -32,6 +32,8 @@ export const ChannelFields = z.object({
   allowedPlaces: z.array(PlatformId).max(200).default([]),
   // Whether an allowed user may also ask it in a direct message.
   allowDirect: z.boolean().default(false),
+  // Only collecting work; never permission to start it.
+  allowTaskCreation: z.boolean().optional(),
   dailyPerUser: z.number().int().min(1).max(500).default(CHANNEL_DEFAULTS.dailyPerUser),
   dailyTotal: z.number().int().min(1).max(10_000).default(CHANNEL_DEFAULTS.dailyTotal),
   maxConcurrent: z.number().int().min(1).max(5).default(CHANNEL_DEFAULTS.maxConcurrent),
@@ -96,15 +98,30 @@ export const ChannelRequest = z.object({
 })
 export type ChannelRequest = z.infer<typeof ChannelRequest>
 
-// One read its agent made for a question: every one goes through core, so the list is whole.
 // Whether this computer can answer from a chat platform at all: a daemon from before the clean
 // start it needs fails every question until it is restarted. pid is that daemon's, to end it by.
 export const ChannelReadiness = z.object({ daemon: z.enum(['ready', 'outdated', 'unavailable']), pid: z.number().int().nullable() })
 export type ChannelReadiness = z.infer<typeof ChannelReadiness>
 
+// Every tool call goes through core, including task collection and refused calls.
 export const ChannelToolCall = z.object({ tool: z.string(), target: z.string(), bytes: z.number().int().nonnegative(), at: z.number() })
 export type ChannelToolCall = z.infer<typeof ChannelToolCall>
 
 // On a conversation opened for a platform's asker: it is locked down, and only core speaks in it.
 export const ConversationChannel = z.object({ channelId: z.string().uuid(), platform: ChannelPlatform, asker: z.string(), place: z.string() })
 export type ConversationChannel = z.infer<typeof ConversationChannel>
+
+// Captured by core, independently of the agent's summary and the editable task details.
+export const TaskChannelSource = z.object({
+  channelId: z.string().uuid(),
+  requestId: z.string().uuid(),
+  conversationId: z.string().uuid(),
+  platform: ChannelPlatform,
+  tenant: z.string(),
+  asker: z.string(),
+  place: z.string(),
+  messageId: z.string(),
+  text: z.string(),
+  createdAt: z.number()
+})
+export type TaskChannelSource = z.infer<typeof TaskChannelSource>

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite'
 import { z } from 'zod'
-import { SourceSnapshot, Task, TaskAttempt, TaskImage, TaskLaunchOptions, TaskPlan, TaskSource, TaskStart, type TaskStatus } from '@antumi/protocol'
+import { SourceSnapshot, Task, TaskAttempt, TaskChannelSource, TaskImage, TaskLaunchOptions, TaskPlan, TaskSource, TaskStart, type TaskStatus } from '@antumi/protocol'
 
 const TASK_AUTO_RUN_MIGRATION = 'ALTER TABLE tasks ADD COLUMN auto_run INTEGER NOT NULL DEFAULT 0;'
 
@@ -443,12 +443,15 @@ export const MIGRATIONS = [
   `ALTER TABLE channel_requests ADD COLUMN error TEXT;`,
   `ALTER TABLE channel_requests ADD COLUMN error_reason TEXT;`,
   // The model provider each group-chat member's conversation runs on; null uses its own account.
-  `ALTER TABLE discussion_members ADD COLUMN model_provider TEXT;`
+  `ALTER TABLE discussion_members ADD COLUMN model_provider TEXT;`,
+  // Keep the origin and deduplication with the task, beyond the channel record's retention.
+  `ALTER TABLE tasks ADD COLUMN channel_source TEXT;
+   CREATE UNIQUE INDEX tasks_channel_message ON tasks(json_extract(channel_source, '$.channelId'), json_extract(channel_source, '$.tenant'), json_extract(channel_source, '$.place'), json_extract(channel_source, '$.messageId')) WHERE channel_source IS NOT NULL;`
 ]
 
 
 const SELECT = `SELECT id, title, slug, details, status, agent, squad_id AS squadId,
-  derived_from AS derivedFrom, abandon_reason AS abandonReason, source, source_snapshot AS sourceSnapshot, images,
+  derived_from AS derivedFrom, abandon_reason AS abandonReason, source, source_snapshot AS sourceSnapshot, channel_source AS channelSource, images,
   awaiting_input AS awaitingInput, auto_run AS autoRun, plan, launch, attempts,
   (SELECT id FROM conversations WHERE task_id = tasks.id ORDER BY created_at DESC LIMIT 1) AS conversationId,
   created_at AS createdAt, updated_at AS updatedAt FROM tasks`
@@ -459,6 +462,7 @@ const TaskRow = Task.omit({
   dependsOn: true,
   source: true,
   sourceSnapshot: true,
+  channelSource: true,
   images: true,
   awaitingInput: true,
   autoRun: true,
@@ -468,6 +472,7 @@ const TaskRow = Task.omit({
 }).extend({
   source: z.string().nullable(),
   sourceSnapshot: z.string().nullable(),
+  channelSource: z.string().nullable(),
   images: z.string().nullable(),
   awaitingInput: z.number(),
   autoRun: z.number(),
@@ -524,6 +529,7 @@ export type TaskPatch = Partial<
     | 'abandonReason'
     | 'source'
     | 'sourceSnapshot'
+    | 'channelSource'
     | 'images'
     | 'awaitingInput'
     | 'plan'
@@ -639,6 +645,7 @@ export class TaskStore {
       ...row,
       source: parseColumn(TaskSource, row.source, `source of task ${row.id}`),
       sourceSnapshot: parseColumn(SourceSnapshot, row.sourceSnapshot, `source snapshot of task ${row.id}`),
+      channelSource: parseColumn(TaskChannelSource, row.channelSource, `channel source of task ${row.id}`),
       images: parseColumn(TaskImages, row.images, `images of task ${row.id}`) ?? [],
       awaitingInput: row.awaitingInput !== 0,
       autoRun: row.autoRun !== 0,
@@ -703,15 +710,21 @@ export class TaskStore {
     this.db.prepare('DELETE FROM dismissed_issues WHERE provider = ? AND instance = ? AND key = ?').run(provider, instance, key)
   }
 
-  create(title: string): Task {
+  channelTask(source: TaskChannelSource): Task | null {
+    return this.many(`${SELECT} WHERE json_extract(channel_source, '$.channelId') = ? AND json_extract(channel_source, '$.tenant') = ? AND json_extract(channel_source, '$.place') = ? AND json_extract(channel_source, '$.messageId') = ?`, source.channelId, source.tenant, source.place, source.messageId)[0] ?? null
+  }
+
+  create(title: string, initial: Pick<TaskPatch, 'details' | 'repos' | 'channelSource'> = {}): Task {
     const id = randomUUID()
     const at = this.now()
-    this.db
-      .prepare(
-        `INSERT INTO tasks (id, title, details, status, created_at, updated_at)
-         VALUES (?, ?, '', 'pending', ?, ?)`
-      )
-      .run(id, title, at, at)
+    this.transaction(() => {
+      this.db.prepare(`INSERT INTO tasks (id, title, details, channel_source, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'pending', ?, ?)`).run(id, title, initial.details ?? '', initial.channelSource ? JSON.stringify(initial.channelSource) : null, at, at)
+      for (const [position, repo] of (initial.repos ?? []).entries()) {
+        this.db.prepare('INSERT INTO task_repos (task_id, position, path, worktree_path, branch, start_ref) VALUES (?, ?, ?, ?, ?, ?)')
+          .run(id, position, repo.path, repo.worktreePath, repo.branch, repo.startRef)
+      }
+    })
     return this.require(id)
   }
 
@@ -737,6 +750,10 @@ export class TaskStore {
       if (patch.sourceSnapshot !== undefined) {
         sets.push('source_snapshot = ?')
         values.push(patch.sourceSnapshot === null ? null : JSON.stringify(patch.sourceSnapshot))
+      }
+      if (patch.channelSource !== undefined) {
+        sets.push('channel_source = ?')
+        values.push(patch.channelSource === null ? null : JSON.stringify(patch.channelSource))
       }
       if (patch.awaitingInput !== undefined) {
         sets.push('awaiting_input = ?')

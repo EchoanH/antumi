@@ -2,7 +2,7 @@
 
 > Slack、飞书和钉钉都已实现。飞书用真实的应用联调过，Slack 和钉钉还没有。实现状态见文末。
 
-给智能体接上聊天平台：同事在 Slack、飞书或钉钉里 @ 它，它读指定的项目来答疑、查问题，不改代码，也碰不到这台电脑上别的东西。
+给智能体接上聊天平台：同事在 Slack、飞书或钉钉里 @ 它，它读指定的项目来答疑、查问题；接入开启「允许创建任务」后，也能按工作指令把明确需求收进任务。它不改代码，也碰不到这台电脑上别的东西。
 
 不引入新的实体。智能体提供「是谁」（名称、工作指令、模型）；接入（代码里叫 channel）提供「在哪、谁能问、能看什么」。
 
@@ -39,7 +39,7 @@ Slack / 飞书  ⇄(出站长连接)⇄  channel-gateway（core 的子进程）
 
 1. **网关只走 IPC，不连 core 的 RPC。** 手机网关要把手机的 RPC 转给 core，所以持有 core 地址和 token；这个网关不需要，它只把平台事件交给 core、把 core 要发的消息发出去。解析不受信网络输入的进程里只有机器人 token，没有 core token，也就不需要方法白名单。
 2. **规则全在 core。** 去重、身份、白名单、额度、会话归属、输出过滤都在 `ChannelService`；网关不做判断。
-3. **Agent 碰不到宿主机。** 外部会话的 Claude 没有任何内置工具，只有 core 提供的三个项目读取工具。
+3. **Agent 碰不到宿主机。** 外部会话没有任何内置工具，只有 core 提供的项目读取和受限任务收集工具。
 
 ## 协议（`protocol/src/channel.ts`、`channel-platforms.ts`）
 
@@ -333,7 +333,21 @@ claude -p --verbose --output-format stream-json --input-format stream-json --inc
   ```
   IPC 消息里的 `place`、`thread`、`eventKey` 对 core 都是不透明字符串，各平台自己定义含义。
 - **输出格式器**（`core/src/channel-output.ts`）：打码、路径改写、分段是共用的；只有最后一步「Markdown → 平台格式」按平台登记（`FORMATTERS satisfies Record<ChannelPlatform, …>`）。
-- **工具登记表**（`core/src/channel-tools/index.ts` 的 `CHANNEL_TOOLS`）：每个工具用 `channelTool({ name, description, inputSchema, params, run(scope, args) })` 定义，`scope` 里只有这个接入的项目根。MCP 侧按登记表注册，`lockdown.tools` 也从它生成，所以加工具不用碰适配器。接入配置里以后可以加「启用哪些工具」。
+- **工具登记表**（`core/src/channel-tools/index.ts` 的 `CHANNEL_TOOLS`）：每个工具用 `channelTool({ name, description, inputSchema, params, run(scope, args) })` 定义，`scope` 里只有接入的项目根和 core 按权限提供的任务收集回调。MCP 侧按登记表注册，`lockdown.tools` 也从它生成，所以加工具不用碰适配器。文件仍然只能读，创建任务由接入的开关单独授权。
+
+## 从消息创建任务
+
+接入的 `allowTaskCreation` 是可选字段，默认关闭；保存旧客户端没带这个字段的配置时保留已有值。core 用 `channel-tasks` 功能标记告诉桌面端是否支持这个开关。它授权的是收集需求，不是启动任务或执行代码。
+
+`task_create` 登记在同一个工具表，MCP 标记它为非只读。工具参数只接受 `title`、`details` 和 `projects`（`project_list` 的项目名，至少一个），拒绝额外字段。工具可见不代表获准创建：每次调用都由 core 校验开关、接入启用状态、当前运行中的提问、组织、提问人及聊天的授权，以及当下的项目范围；任务来源和执行设置不能由模型传入。现有每天提问限额同样限制能产生任务的消息数。
+
+每条消息最多创建一个任务，多项相关需求合并到说明中。`TaskService.createChannelTask` 复用任务存储和通知，创建为 `pending`，不指定执行智能体、不启用自动运行，不创建工作树或启动会话。SQLite 在同一事务中保存任务、项目和来源，以接入、组织、聊天和原消息 ID 的唯一索引去重；重试返回已有任务的当前标题和状态，不覆盖主人编辑过的内容。
+
+任务的可选 `channelSource` 保存提问人、原文、平台、原消息 ID 和来源对话地址所需的信息，由 core 从正在处理的提问中取得。它与任务一起保留，不受接入记录的 90 天清理影响。任务详情可展开原文并打开 Antumi 内的来源对话；这是本地对话入口，不依赖聊天平台提供永久链接，原对话被删除后仍可看捕获的原文。开始规划或执行时，原文作为不受信的参考资料传给执行智能体。
+
+创建条件仍由主人在智能体的「工作指令」里定义，例如：
+
+> 收到明确的开发、修复或调查请求时，结合项目内容判断是否属于项目范围、目标是否清楚、是否具备推进条件。满足条件就创建任务，写明需求、已知背景和验收标准，并回复任务编号。普通咨询直接回答；关键信息缺失时先追问。
 
 ## 借鉴与避开
 

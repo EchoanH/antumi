@@ -121,7 +121,14 @@ function imageSection(images: readonly PromptImage[]): string | null {
 }
 
 // Where an imported task came from, and the issue's own text and images fenced off as untrusted.
-function sourceSection(task: Pick<Task, 'source' | 'sourceSnapshot'>, images: PromptImages): string | null {
+function sourceSection(task: Pick<Task, 'source' | 'sourceSnapshot' | 'channelSource'>, images: PromptImages): string | null {
+  if (task.channelSource) {
+    const origin = task.channelSource
+    return untrustedSource({ provider: 'channel', instance: 'default', name: origin.platform, key: origin.requestId, url: `antumi://conversation/${origin.conversationId}` }, {
+      markdown: JSON.stringify({ asker: origin.asker, place: origin.place, messageId: origin.messageId, text: origin.text }),
+      fetchedAt: origin.createdAt, images: []
+    })
+  }
   return task.source ? untrustedSource(task.source, task.sourceSnapshot, images.source) : null
 }
 
@@ -183,7 +190,7 @@ function dependencyDetailsSection(workspace: RefineWorkspace, dependencies: read
 // The user's title and details, plus what the agent cannot see for itself:
 // which folder is which repo, and where the work it builds on lives.
 export function agentPrompt(
-  task: Pick<Task, 'title' | 'details' | 'source' | 'sourceSnapshot'>,
+  task: Pick<Task, 'title' | 'details' | 'source' | 'sourceSnapshot' | 'channelSource'>,
   workspace: Workspace,
   dependencies: readonly Pick<Task, 'id' | 'title' | 'repos'>[],
   previous: PreviousAttempt | null = null,
@@ -233,7 +240,7 @@ export const UNATTENDED_NOTE = '这是我预约的无人值守运行，现在没
 // The opening request follows the selected mode; a saved plan comes along to be checked against
 // the current code. Only scheduled runs get the unattended instruction.
 export function chatStartPrompt(
-  task: Pick<Task, 'title' | 'details' | 'source' | 'sourceSnapshot'>,
+  task: Pick<Task, 'title' | 'details' | 'source' | 'sourceSnapshot' | 'channelSource'>,
   workspace: Workspace,
   dependencies: readonly Pick<Task, 'id' | 'title' | 'repos'>[],
   previous: PreviousAttempt | null = null,
@@ -261,7 +268,7 @@ export function chatStartPrompt(
 // A squad's leader starting on the task: the task and its folders as any agent gets them, the plan
 // the user approved as what it hands out, then its brief (squadLeaderPrompt). It implements nothing.
 export function leaderStartPrompt(
-  task: Pick<Task, 'title' | 'details' | 'source' | 'sourceSnapshot'>,
+  task: Pick<Task, 'title' | 'details' | 'source' | 'sourceSnapshot' | 'channelSource'>,
   workspace: Workspace,
   dependencies: readonly Pick<Task, 'id' | 'title' | 'repos'>[],
   previous: PreviousAttempt | null,
@@ -283,7 +290,7 @@ export function leaderStartPrompt(
 export type PlanBrief = { opening: string; settle: string }
 
 export function chatPlanPrompt(
-  task: Pick<Task, 'title' | 'details' | 'source' | 'sourceSnapshot'>,
+  task: Pick<Task, 'title' | 'details' | 'source' | 'sourceSnapshot' | 'channelSource'>,
   workspace: RefineWorkspace,
   dependencies: readonly Dependency[],
   previous: PreviousAttempt | null = null,

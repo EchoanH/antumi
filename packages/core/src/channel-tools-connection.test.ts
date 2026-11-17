@@ -40,6 +40,8 @@ describe('a channel-tools connection', () => {
     await expect(rpc.call('channelTools.call', { conversationId: OTHER, tool: 'project_read' })).rejects.toMatchObject({ reason: 'channel-tools-only' })
     await expect(rpc.call('conversations.list', {})).rejects.toMatchObject({ reason: 'channel-tools-only' })
     await expect(rpc.call('files.read', { path: '/etc/passwd' })).rejects.toMatchObject({ reason: 'channel-tools-only' })
+    await expect(rpc.call('tasks.create', { title: 'arbitrary task', repos: ['/private'] })).rejects.toMatchObject({ reason: 'channel-tools-only' })
+    await expect(rpc.call('tasks.start', { id: 'arbitrary' })).rejects.toMatchObject({ reason: 'channel-tools-only' })
     // Saying hello again does not give back what the first one gave up.
     await expect(rpc.call('system.hello', { protocolVersion: PROTOCOL_VERSION })).rejects.toMatchObject({ reason: 'channel-tools-only' })
     expect(called).toEqual([`project_read for ${OWN}`])
@@ -67,10 +69,10 @@ describe('a channel-tools connection', () => {
 describe('the MCP server of a locked-down conversation', () => {
   const ask = async (handle: ReturnType<typeof channelMcpHandler>, method: string, params?: unknown) => (await handle(JSON.stringify({ jsonrpc: '2.0', id: 1, method, params })))?.result ?? null
 
-  it('lists the project tools and no other', async () => {
+  it('lists only registered tools, including task collection', async () => {
     const handle = channelMcpHandler(async () => ({ text: '', isError: false }))
     const listed = await ask(handle, 'tools/list')
-    expect((listed as { tools: { name: string }[] }).tools.map((tool) => tool.name)).toEqual(['project_list', 'project_search', 'project_read'])
+    expect((listed as { tools: { name: string }[] }).tools.map((tool) => tool.name)).toEqual(['project_list', 'project_search', 'project_read', 'task_create'])
   })
 
   it('hands a call to core and its answer back, and calls nothing it does not list', async () => {
@@ -83,6 +85,6 @@ describe('the MCP server of a locked-down conversation', () => {
 
   it('answers a failed call as the tool rather than dying', async () => {
     const handle = channelMcpHandler(async () => { throw new Error('core is down') })
-    expect(await ask(handle, 'tools/call', { name: 'project_list' })).toEqual({ content: [{ type: 'text', text: '读取失败' }], isError: true })
+    expect(await ask(handle, 'tools/call', { name: 'project_list' })).toEqual({ content: [{ type: 'text', text: '工具调用失败' }], isError: true })
   })
 })

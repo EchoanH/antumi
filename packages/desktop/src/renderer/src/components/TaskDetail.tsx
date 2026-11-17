@@ -8,6 +8,7 @@ import { saveTaskText, unsavedTaskText, useTaskSaveState, type SaveState } from 
 import { MarkdownEditor } from './MarkdownEditor'
 import { SourceLink } from './SourceLink'
 import { SourceSnapshotCard } from './SourceSnapshotCard'
+import { TaskChannelSourceCard } from './TaskChannelSourceCard'
 import { BoardCrumb } from './TaskBoard'
 import { TaskAlerts } from './TaskAlerts'
 import { TaskPlanCard } from './TaskPlanCard'
@@ -157,6 +158,7 @@ function TaskDetailBody({ task }: { task: Task }) {
 
         <div className="task-detail-main">
           <SourceSnapshotCard task={task} />
+          <TaskChannelSourceCard source={task.channelSource} />
           {task.source && <SourceUpdatesPanel target={{ kind: 'task', id: task.id }} />}
           <TaskPlanCard task={task} />
 

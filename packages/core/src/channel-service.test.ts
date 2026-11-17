@@ -16,6 +16,8 @@ import { pngBytes } from './image-fixtures'
 import { ProjectRegistry } from './project-registry'
 import { Rejection } from './rejection'
 import { TaskStore } from './task-store'
+import { TaskService } from './task-service'
+import { CHANNEL_TOOL_NAMES } from './channel-tools'
 
 // The whole of core's side: a real conversation service on a fake agent, a real store, and a
 // gateway that is only the messages core sends it and the ones the test hands back.
@@ -94,7 +96,7 @@ describe('ChannelService', () => {
       if (change.type === 'deleted') channels.conversationEnded(change.id)
       if (change.type === 'chatItems') channels.conversationItems(change.conversationId, change.items)
     }, projects, attachments, null)
-    conversations.setChannelTools({ mcp: (id) => ({ command: 'node', args: ['mcp.mjs', '--conversation', id, '--tool-set', 'channel'] }), tools: ['project_list', 'project_search', 'project_read'] })
+    conversations.setChannelTools({ mcp: (id) => ({ command: 'node', args: ['mcp.mjs', '--conversation', id, '--tool-set', 'channel'] }), tools: CHANNEL_TOOL_NAMES })
     daemon.deliver = (delivered) => {
       if (delivered.event === 'data') conversations.handleData(delivered)
       else if (delivered.event === 'exit') conversations.handleExit(delivered.sessionId, delivered.exitCode)
@@ -108,6 +110,7 @@ describe('ChannelService', () => {
     announced = []
     channels = new ChannelService(store, {
       conversations, credentials,
+      tasks: new TaskService(tasks, projects, path.join(root, 'worktrees'), () => {}, attachments, conversations),
       profile: (id) => profiles.find((each) => each.id === id) ?? null,
       recentProjects: () => projects.recent(),
       isRepo: async (dir) => dir === repo,
@@ -388,6 +391,74 @@ describe('ChannelService', () => {
     ])
     const own = await conversations.create('claude', [])
     await expect(channels.callTool(own.id, 'project_read', { path: 'app/src/auth.ts' })).rejects.toMatchObject({ reason: 'channel-not-found' })
+  })
+
+  it('collects one pending task per message with a trusted origin and no extra agent run', async () => {
+    channel = await channels.save({ ...channel, allowTaskCreation: true })
+    daemon.reply = () => {}
+    const asked = await ask({ text: '修复登录失败，并增加回归测试。' })
+    const [request] = channels.requests(channel.id, null, 1).items
+    const before = daemon.spawns.length
+    const input = { title: '修复登录失败', details: '登录失败时显示正确提示；验收：增加回归测试。', projects: ['app'] }
+    const [first, retry] = await Promise.all([
+      channels.callTool(request!.conversationId!, 'task_create', input),
+      channels.callTool(request!.conversationId!, 'task_create', { ...input, title: '不同标题的重试' })
+    ])
+    expect(first.isError).toBe(false)
+    expect(retry).toEqual(first)
+    expect(tasks.list()).toHaveLength(1)
+    expect(tasks.list()[0]).toMatchObject({
+      title: input.title, details: input.details, status: 'pending', autoRun: false, agent: null, conversationId: null,
+      repos: [{ path: repo, worktreePath: null, branch: null }],
+      channelSource: { channelId: channel.id, requestId: request!.id, conversationId: request!.conversationId, platform: 'slack', asker: 'U1', place: 'C1', messageId: asked.messageId, text: asked.text }
+    })
+    expect(daemon.spawns).toHaveLength(before)
+    expect(channels.toolCalls(request!.id).filter((call) => call.tool === 'task_create')).toHaveLength(2)
+
+    // A duplicate platform delivery with a different event key is still the same message.
+    daemon.emit(conversations.get(request!.conversationId!).sessionId!, { type: 'result', subtype: 'success', is_error: false, result: '已记录', terminal_reason: 'completed', duration_ms: 5 })
+    await settle()
+    now += 1
+    await ask({ eventKey: 'different-delivery', messageId: asked.messageId })
+    const newer = channels.requests(channel.id, null, 1).items[0]!
+    expect((await channels.callTool(newer.conversationId!, 'task_create', input)).isError).toBe(false)
+    expect(tasks.list()).toHaveLength(1)
+  })
+
+  it('refuses task collection unless enabled, scoped to projects and owned by an active allowed request', async () => {
+    daemon.reply = () => {}
+    await ask()
+    const [request] = channels.requests(channel.id, null, 1).items
+    const input = { title: '修复登录', details: '修复项目登录失败。', projects: ['app'] }
+    const call = (args: unknown = input) => channels.callTool(request!.conversationId!, 'task_create', args)
+    expect(await call()).toMatchObject({ isError: true })
+    channel = await channels.save({ ...channel, allowTaskCreation: true })
+    for (const projects of [['/etc'], ['app/..'], ['other'], []]) expect(await call({ ...input, projects })).toMatchObject({ isError: true })
+    for (const extra of [{ autoRun: true }, { agent: 'claude' }, { source: { asker: 'owner' } }]) expect(await call({ ...input, ...extra })).toMatchObject({ isError: true })
+    channel = await channels.save({ ...channel, allowedUsers: ['U2'] })
+    expect(await call()).toMatchObject({ isError: true })
+    channel = await channels.save({ ...channel, allowedUsers: ['U1'], allowedPlaces: [] })
+    expect(await call()).toMatchObject({ isError: true })
+    channel = await channels.save({ ...channel, allowedPlaces: ['C1'], enabled: false })
+    expect(await call()).toMatchObject({ isError: true })
+    channel = await channels.save({ ...channel, enabled: true, allowTaskCreation: false })
+    expect(await call()).toMatchObject({ isError: true })
+    channel = await channels.save({ ...channel, allowTaskCreation: true })
+    store.updateRequest(request!.id, { state: 'answered' })
+    expect(await call()).toMatchObject({ isError: true })
+    expect(tasks.list()).toEqual([])
+  })
+
+  it('keeps task permission on saves from older clients, and denies a direct chat once revoked', async () => {
+    channel = await channels.save({ ...channel, allowTaskCreation: true })
+    const { allowTaskCreation: _permission, ...older } = channel
+    expect((await channels.save(older)).allowTaskCreation).toBe(true)
+    daemon.reply = () => {}
+    await ask({ kind: 'direct', place: 'D1' })
+    const [request] = channels.requests(channel.id, null, 1).items
+    channel = await channels.save({ ...channel, allowDirect: false })
+    expect(await channels.callTool(request!.conversationId!, 'task_create', { title: 'Fix', details: 'Fix login', projects: ['app'] })).toMatchObject({ isError: true })
+    expect(tasks.list()).toEqual([])
   })
 
   it('tries a failed post again, in order, and gives up after a few', async () => {

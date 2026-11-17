@@ -10,6 +10,8 @@ describe('a channel', () => {
   it('lets nobody ask until someone is named', () => {
     const fields = ChannelFields.parse({ profileId: PROFILE, platform: 'slack' })
     expect(fields).toMatchObject({ enabled: true, projectPaths: [], allowedUsers: [], allowedPlaces: [], allowDirect: false, dailyPerUser: 20 })
+    expect(fields.allowTaskCreation).toBeUndefined()
+    expect(ChannelInput.parse({ profileId: PROFILE, platform: 'slack', allowTaskCreation: true }).allowTaskCreation).toBe(true)
   })
 
   it('never carries a credential to a client, only which are stored', () => {

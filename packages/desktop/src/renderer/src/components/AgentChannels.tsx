@@ -3,7 +3,7 @@ import {
   CHANNEL_DEFAULTS, CHANNEL_PLATFORMS, ChannelInput, agentDescriptor, channelPlatform,
   type AgentKind, type Channel, type ChannelCredentialKey, type ChannelPlatform, type ChannelRequest
 } from '@antumi/protocol'
-import { setChannels, useChannelReadiness, useChannels, useChannelsSupported } from '../channels'
+import { setChannels, useChannelReadiness, useChannels, useChannelsSupported, useChannelTasksSupported } from '../channels'
 import { askConfirm } from '../confirm-dialog'
 import { timeAgo } from '../conversation-state'
 import { perform, useCore } from '../core-store'
@@ -47,8 +47,8 @@ export function AgentChannels({ profileId, agent, hasProvider }: { profileId: st
     setOpen(null)
   }
   const toggle = async (channel: Channel, enabled: boolean) => {
-    const { id, profileId: owner, platform, projectPaths, allowedUsers, allowedPlaces, allowDirect, dailyPerUser, dailyTotal, maxConcurrent, turnTimeoutSec } = channel
-    const saved = await perform((rpc) => rpc.call('channels.save', { id, profileId: owner, platform, enabled, projectPaths, allowedUsers, allowedPlaces, allowDirect, dailyPerUser, dailyTotal, maxConcurrent, turnTimeoutSec }))
+    const { id, profileId: owner, platform, projectPaths, allowedUsers, allowedPlaces, allowDirect, allowTaskCreation, dailyPerUser, dailyTotal, maxConcurrent, turnTimeoutSec } = channel
+    const saved = await perform((rpc) => rpc.call('channels.save', { id, profileId: owner, platform, enabled, projectPaths, allowedUsers, allowedPlaces, allowDirect, allowTaskCreation, dailyPerUser, dailyTotal, maxConcurrent, turnTimeoutSec }))
     if (saved) setChannels(all.map((each) => (each.id === saved.id ? saved : each)))
   }
   const missing = CHANNEL_PLATFORMS.filter((platform) => !channels.some((each) => each.platform === platform))
@@ -87,7 +87,8 @@ function ChannelRow({ channel, requestsOpen, onToggle, onRequests, onEdit, onRem
   const chips = [
     t('AgentChannels.scopeProjects', { count: channel.projectPaths.length }),
     t('AgentChannels.scopeAskers', { count: channel.allowedUsers.length }),
-    t('AgentChannels.scopeDaily', { count: channel.dailyPerUser })
+    t('AgentChannels.scopeDaily', { count: channel.dailyPerUser }),
+    ...(channel.allowTaskCreation ? [t('AgentChannels.allowTaskCreation')] : [])
   ]
   return <div className="agent-channel-row">
     <span className="agent-channel-logo" aria-hidden="true"><ChannelPlatformIcon platform={channel.platform} /></span>
@@ -107,7 +108,7 @@ function ChannelRow({ channel, requestsOpen, onToggle, onRequests, onEdit, onRem
 
 type Draft = {
   credentials: Partial<Record<ChannelCredentialKey, string>>
-  projectPaths: string[]; users: string; places: string; allowDirect: boolean
+  projectPaths: string[]; users: string; places: string; allowDirect: boolean; allowTaskCreation: boolean
   dailyPerUser: string; dailyTotal: string; maxConcurrent: string; turnTimeoutSec: string
 }
 
@@ -125,11 +126,12 @@ function ChannelDialog({ profileId, platform, channel, agent, hasProvider, onClo
   const descriptor = channelPlatform(platform)
   const all = useChannels()
   const [projects, setProjects] = useState<string[]>([])
+  const taskCreationSupported = useChannelTasksSupported()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [draft, setDraft] = useState<Draft>(() => ({
     credentials: {},
-    projectPaths: channel?.projectPaths ?? [], users: (channel?.allowedUsers ?? []).join('\n'), places: (channel?.allowedPlaces ?? []).join('\n'), allowDirect: channel?.allowDirect ?? false,
+    projectPaths: channel?.projectPaths ?? [], users: (channel?.allowedUsers ?? []).join('\n'), places: (channel?.allowedPlaces ?? []).join('\n'), allowDirect: channel?.allowDirect ?? false, allowTaskCreation: channel?.allowTaskCreation ?? false,
     dailyPerUser: String(channel?.dailyPerUser ?? CHANNEL_DEFAULTS.dailyPerUser), dailyTotal: String(channel?.dailyTotal ?? CHANNEL_DEFAULTS.dailyTotal),
     maxConcurrent: String(channel?.maxConcurrent ?? CHANNEL_DEFAULTS.maxConcurrent), turnTimeoutSec: String(channel?.turnTimeoutSec ?? CHANNEL_DEFAULTS.turnTimeoutSec)
   }))
@@ -146,7 +148,7 @@ function ChannelDialog({ profileId, platform, channel, agent, hasProvider, onClo
     const credentials = Object.fromEntries(descriptor.credentials.flatMap(({ key }) => (draft.credentials[key]?.trim() ? [[key, draft.credentials[key].trim()]] : [])))
     const parsed = ChannelInput.safeParse({
       ...(channel ? { id: channel.id } : {}), profileId, platform, enabled: channel?.enabled ?? true, credentials,
-      projectPaths: draft.projectPaths, allowedUsers: lines(draft.users), allowedPlaces: lines(draft.places), allowDirect: draft.allowDirect,
+      projectPaths: draft.projectPaths, allowedUsers: lines(draft.users), allowedPlaces: lines(draft.places), allowDirect: draft.allowDirect, allowTaskCreation: draft.allowTaskCreation,
       dailyPerUser: Number(draft.dailyPerUser), dailyTotal: Number(draft.dailyTotal), maxConcurrent: Number(draft.maxConcurrent), turnTimeoutSec: Number(draft.turnTimeoutSec)
     })
     if (!parsed.success) { setError(t('AgentChannels.invalid', { field: parsed.error.issues[0]?.path.join('.') ?? '' })); return }
@@ -202,6 +204,10 @@ function ChannelDialog({ profileId, platform, channel, agent, hasProvider, onClo
         </label>)}
         {shown.length === 0 && <p className="squad-block-hint muted">{t('AgentChannels.noMatch')}</p>}
       </div>}
+      {taskCreationSupported && <>
+        <label className="agent-profile-check"><input type="checkbox" checked={draft.allowTaskCreation} onChange={(event) => setDraft({ ...draft, allowTaskCreation: event.target.checked })} />{t('AgentChannels.allowTaskCreation')}</label>
+        <p className="squad-block-hint muted">{t('AgentChannels.taskCreationHint')}</p>
+      </>}
     </div>
     <div className="agent-channel-step">
       <h4><span className="agent-channel-step-number" aria-hidden="true">4</span>{t('AgentChannels.step4')}</h4>

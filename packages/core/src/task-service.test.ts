@@ -91,6 +91,21 @@ describe('TaskService', () => {
     expect(events.at(-1)).toMatchObject({ type: 'changed', sourceOnly: true })
   })
 
+  it('keeps the first channel task and its edited state on retries, without starting work', () => {
+    const source = {
+      channelId: randomUUID(), requestId: randomUUID(), conversationId: randomUUID(), platform: 'slack' as const,
+      tenant: 'T1', place: 'C1', messageId: '1.000001', asker: 'U1', text: 'Fix login', createdAt: 1
+    }
+    const input = { title: 'Fix login', details: 'Show a useful error', repos: ['/code/app'], source }
+    const task = service.createChannelTask(input)
+    service.update({ id: task.id, title: 'Edited by owner', details: 'Owner requirements' })
+    const retry = service.createChannelTask({ ...input, source: { ...source, requestId: randomUUID() } })
+    expect(retry).toMatchObject({ id: task.id, title: 'Edited by owner', details: 'Owner requirements', status: 'pending', autoRun: false, channelSource: source })
+    expect(service.list()).toHaveLength(1)
+    expect(daemon.spawns).toHaveLength(0)
+    expect(service.createChannelTask({ ...input, source: { ...source, place: 'C2' } }).id).not.toBe(task.id)
+  })
+
   afterEach(async () => {
     if (schedules) {
       await schedules.tick()

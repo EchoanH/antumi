@@ -1,9 +1,14 @@
 import type { z } from 'zod'
+import type { TaskStatus } from '@antumi/protocol'
 
-// What a tool may reach: the projects its channel was given, and nothing else of the machine.
-export type ChannelToolScope = { roots: readonly string[] }
+// Only the projects and task collection capability core grants this call.
+export type ChannelTaskInput = { title: string; details: string; projects: string[] }
+export type ChannelToolScope = {
+  roots: readonly string[]
+  createTask?: (input: ChannelTaskInput) => Promise<{ id: string; title: string; status: TaskStatus }>
+}
 
-// target: what it read, as the record of the question shows it. bytes: how much it handed back.
+// target: what it read or created, as the question's record shows it. bytes: how much it returned.
 export type ChannelToolResult = { text: string; target: string; bytes: number }
 
 // One tool an agent locked down for a chat platform may call (docs/CHANNELS.md, 扩展点). The MCP
@@ -13,6 +18,7 @@ export type ChannelTool = {
   description: string
   // As MCP lists it.
   inputSchema: Record<string, unknown>
+  readOnly?: boolean
   // args: as the agent sent them, checked here.
   call(scope: ChannelToolScope, args: unknown): Promise<ChannelToolResult>
 }

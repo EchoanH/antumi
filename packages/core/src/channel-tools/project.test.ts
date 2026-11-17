@@ -42,7 +42,7 @@ describe('project tools', () => {
   afterAll(() => rmSync(base, { recursive: true, force: true }))
 
   it('names the tools an agent is allowed', () => {
-    expect(CHANNEL_TOOL_NAMES).toEqual(['project_list', 'project_search', 'project_read'])
+    expect(CHANNEL_TOOL_NAMES).toEqual(['project_list', 'project_search', 'project_read', 'task_create'])
   })
 
   it('lists projects, then a folder a level at a time, without what git ignores or what holds secrets', async () => {

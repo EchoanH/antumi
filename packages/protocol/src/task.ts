@@ -3,6 +3,7 @@ import { AgentKind } from './agent'
 import { TaskImage } from './attachments'
 import { TaskLaunchOptions, type ChatTurnActivity } from './chat'
 import { SourceSnapshot, TaskSource } from './source'
+import { TaskChannelSource } from './channel'
 
 // pending: not handed to an agent yet · running: an agent works on it in the task's chat
 // review: handed in, and the user has not judged the result · done: the user accepted it,
@@ -14,7 +15,7 @@ export type TaskStatus = z.infer<typeof TaskStatus>
 
 export { AGENT_KINDS, AgentKind, isAgentKind } from './agent'
 
-export const MAX_TASK_REPOS = 10
+export { MAX_TASK_REPOS } from './task-limits'
 export const MAX_DETAILS_LENGTH = 100_000
 
 // A plan the agent proposed in the task's chat and the user kept: approved to carry out, or saved
@@ -119,6 +120,7 @@ export const Task = z.object({
   // The issue a task was imported from, and that issue's text as fetched.
   source: TaskSource.nullable().default(null),
   sourceSnapshot: SourceSnapshot.nullable().default(null),
+  channelSource: TaskChannelSource.nullable().optional(),
   // Images the user attached, in order; kept out of the details so those stay plain text.
   images: z.array(TaskImage).default([]),
   // The agent has finished its turn and waits for the user.

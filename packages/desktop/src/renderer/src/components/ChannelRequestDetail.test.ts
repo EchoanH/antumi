@@ -15,7 +15,7 @@ describe('channel question details', () => {
     const html = renderToStaticMarkup(createElement(ChannelRequestDetailContent, { request, detail: { answer: '', reads: [] }, error: null }))
     expect(html).toContain('你能读什么项目？')
     expect(html).toContain('智能体未能启动，没有生成回答。')
-    expect(html).toContain('没有读取任何文件。')
+    expect(html).toContain('没有调用任何工具。')
   })
 
   it('shows the saved startup diagnostic independently of conversation loading', () => {

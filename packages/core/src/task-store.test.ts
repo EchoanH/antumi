@@ -59,6 +59,23 @@ describe('TaskStore migrations', () => {
     store.close()
   })
 
+  it('persists channel origins and atomically rejects duplicate messages after reopening', () => {
+    const source = {
+      channelId: '11111111-1111-4111-8111-111111111111', requestId: '22222222-2222-4222-8222-222222222222',
+      conversationId: '33333333-3333-4333-8333-333333333333', platform: 'feishu' as const,
+      tenant: 'T1', asker: 'U1', place: 'C1', messageId: 'm1', text: 'Fix login', createdAt: 123
+    }
+    const original = new TaskStore(file)
+    const task = original.create('Login', { details: 'Fix the error', channelSource: source })
+    original.close()
+    const reopened = new TaskStore(file)
+    expect(reopened.channelTask(source)).toMatchObject({ id: task.id, channelSource: source, details: 'Fix the error' })
+    expect(() => reopened.create('Duplicate', { channelSource: source })).toThrow()
+    expect(reopened.list()).toHaveLength(1)
+    expect(reopened.create('Unrelated').channelSource).toBeNull()
+    reopened.close()
+  })
+
   it('defaults auto-run off and persists the flag across restarts', () => {
     const store = new TaskStore(file)
     const task = store.create('Later')

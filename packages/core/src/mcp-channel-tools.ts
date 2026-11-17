@@ -17,7 +17,7 @@ const FALLBACK_PROTOCOL_VERSION = '2024-11-05'
 type Reply = { jsonrpc: '2.0'; id: string | number | null; result?: unknown; error?: { code: number; message: string } }
 
 export function channelMcpHandler(call: (tool: string, args: unknown) => Promise<{ text: string; isError: boolean }>, onList?: () => Promise<void>) {
-  const specs = CHANNEL_TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema, annotations: { readOnlyHint: true } }))
+  const specs = CHANNEL_TOOLS.map(({ name, description, inputSchema, readOnly }) => ({ name, description, inputSchema, annotations: { readOnlyHint: readOnly !== false } }))
   return async (line: string): Promise<Reply | null> => {
     let raw: unknown
     try { raw = JSON.parse(line) } catch { return { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse error' } } }
@@ -39,7 +39,7 @@ export function channelMcpHandler(call: (tool: string, args: unknown) => Promise
       case 'tools/call': {
         const asked = CallParams.safeParse(params)
         if (!asked.success || !specs.some((spec) => spec.name === asked.data.name)) return { jsonrpc: '2.0', id, error: { code: -32602, message: 'unknown tool' } }
-        const result = await call(asked.data.name, asked.data.arguments).catch(() => ({ text: '读取失败', isError: true }))
+        const result = await call(asked.data.name, asked.data.arguments).catch(() => ({ text: '工具调用失败', isError: true }))
         return reply({ content: [{ type: 'text', text: result.text }], isError: result.isError })
       }
       default:

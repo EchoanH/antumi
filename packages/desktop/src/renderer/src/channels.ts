@@ -11,6 +11,10 @@ export function useChannelsSupported(): boolean {
   return useCore((state) => state.rpc?.features.includes('channels') ?? false)
 }
 
+export function useChannelTasksSupported(): boolean {
+  return useCore((state) => state.rpc?.features.includes('channel-tasks') ?? false)
+}
+
 export function setChannels(channels: Channel[]): void {
   useChannelStore.setState({ channels, loaded: true })
 }

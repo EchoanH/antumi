@@ -23,7 +23,8 @@ import {
 import { ChannelGatewayToCore, type ChannelEvent, type CoreToChannelGateway } from './channel-gateway-ipc'
 import { channelMessages, channelNotice, redact } from './channel-output'
 import type { ChannelStore, ChannelThread, StoredChannel, StoredRequest } from './channel-store'
-import { runChannelTool } from './channel-tools'
+import { ChannelToolError, runChannelTool } from './channel-tools'
+import type { TaskService } from './task-service'
 import { projectsOf } from './channel-tools/project'
 import type { ConversationService } from './conversation-service'
 import type { CredentialStore } from './credential-store'
@@ -95,6 +96,7 @@ export type ChannelServiceOptions = {
   isRepo: (dir: string) => Promise<boolean>
   // Keeps a picture's bytes, refusing what is not one; its id is what a message is sent with.
   keepImage: (bytes: Uint8Array) => Promise<{ id: string }>
+  tasks?: Pick<TaskService, 'createChannelTask'>
   changed: (channels: Channel[]) => void
   // The account an agent runs on, by its email: never to be said in an answer.
   identity?: (agent: AgentKind) => Promise<string | null>
@@ -208,7 +210,8 @@ export class ChannelService {
     const reconnects = !existing || descriptor.credentials.some(({ key }) => payload[key] !== kept[key])
     const next: StoredChannel = {
       enabled: fields.enabled ?? true, projectPaths, allowedUsers: [...new Set(fields.allowedUsers ?? [])], allowedPlaces: [...new Set(fields.allowedPlaces ?? [])],
-      allowDirect: fields.allowDirect ?? false, dailyPerUser: fields.dailyPerUser ?? 20, dailyTotal: fields.dailyTotal ?? 200, maxConcurrent: fields.maxConcurrent ?? 2,
+      allowDirect: fields.allowDirect ?? false, allowTaskCreation: fields.allowTaskCreation ?? existing?.allowTaskCreation ?? false,
+      dailyPerUser: fields.dailyPerUser ?? 20, dailyTotal: fields.dailyTotal ?? 200, maxConcurrent: fields.maxConcurrent ?? 2,
       turnTimeoutSec: fields.turnTimeoutSec ?? 300,
       tenant: reconnects ? null : existing.tenant, tenantName: reconnects ? null : existing.tenantName, botUserId: reconnects ? null : existing.botUserId,
       id: existing?.id ?? randomUUID(), profileId: fields.profileId, platform: fields.platform, createdAt: existing?.createdAt ?? now, updatedAt: now
@@ -250,8 +253,31 @@ export class ChannelService {
     const conversation = this.options.conversations.get(conversationId)
     const channel = conversation.channel ? this.store.channel(conversation.channel.channelId) : null
     if (!channel) throw new Rejection('channel-not-found', 'this conversation answers no channel')
-    const result = await runChannelTool({ roots: channel.projectPaths }, tool, args)
     const request = this.store.runningIn(conversationId)
+    const tasks = this.options.tasks
+    const result = await runChannelTool({
+      roots: channel.projectPaths,
+      ...(channel.allowTaskCreation && tasks ? {
+        createTask: async ({ title, details, projects }) => {
+          // Recheck at the write: settings or the running question may have changed meanwhile.
+          const current = this.store.channel(channel.id)
+          const active = this.store.runningIn(conversationId)
+          if (!current?.enabled || !current.allowTaskCreation) throw new ChannelToolError('这个接入当前不允许创建任务。')
+          if (!request || active?.id !== request.id) throw new ChannelToolError('只能在处理当前提问时创建任务。')
+          if (request.tenant !== current.tenant || !current.allowedUsers.includes(request.asker) || (request.direct ? !current.allowDirect : !current.allowedPlaces.includes(request.place))) {
+            throw new ChannelToolError('提问人或聊天已不在接入的授权范围内。')
+          }
+          const allowed = projectsOf({ roots: current.projectPaths })
+          const repos = projects.map((name) => allowed.find((project) => project.name === name)?.root)
+          if (repos.some((repo) => repo === undefined)) throw new ChannelToolError('只能为当前授权项目创建任务。')
+          const task = tasks.createChannelTask({ title, details, repos: repos.filter((repo) => repo !== undefined), source: {
+            channelId: channel.id, requestId: request.id, conversationId, platform: channel.platform,
+            tenant: request.tenant, asker: request.asker, place: request.place, messageId: request.messageId, text: request.text, createdAt: request.createdAt
+          } })
+          return { id: task.id, title: task.title, status: task.status }
+        }
+      } : {})
+    }, tool, args)
     if (request) this.store.addToolCall(request.id, { tool, target: result.isError ? `${result.target || JSON.stringify(args ?? {}).slice(0, 200)} ✗` : result.target, bytes: result.bytes, at: this.now() })
     return { text: result.text, isError: result.isError }
   }

@@ -546,6 +546,7 @@ const accounts = new AgentAccountStore(paths.agentAccounts, paths.agentAccountHo
 })
 channels = new ChannelService(channelStore, {
   conversations,
+  tasks: service,
   profile: (id) => profiles.list().find((profile) => profile.id === id) ?? null,
   credentials,
   recentProjects: () => projects.recent(),
