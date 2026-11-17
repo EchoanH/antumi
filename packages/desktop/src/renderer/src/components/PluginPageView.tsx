@@ -1,30 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { MAX_PLUGIN_PAGE_PARAMS, PLUGIN_PAGE_SCHEME, PluginPageFrameMessage, pluginPageState, type PluginPageFiles, type PluginPageHostMessage, type RpcConnection } from '@antumi/protocol'
+import { MAX_PLUGIN_PAGE_PARAMS, PLUGIN_PAGE_SCHEME, PluginPageFrameMessage, pluginPageState, type PluginPageHostMessage } from '@antumi/protocol'
 import { leavePluginPage, useCore } from '../core-store'
 import { getLocale, t, useLocale } from '../i18n'
 import { usePreferences } from '../preferences'
 import { useChatTypeface } from '../chat-typeface'
 import { findPluginPage, pluginPageLabel, pluginPageStateKey, type PluginPageRef } from '../plugin-pages'
+import { pluginPageFiles } from '../plugin-page-files'
 import { snapshotPluginPageTheme } from '../plugin-page-theme'
 import { openWebPage } from '../browser-state'
 import { runShortcutChord } from '../panel-shortcuts'
 import './plugin-page.css'
 
-// A page's files for the session, by the plugin version they came from: coming back to the page
-// (from settings, say) frames it again without asking core.
-const bundles = new Map<string, Promise<PluginPageFiles>>()
-function pageFiles(rpc: RpcConnection, ref: PluginPageRef, version: string): Promise<PluginPageFiles> {
-  const page = `${ref.plugin}/${ref.page}@`
-  const key = page + version
-  const cached = bundles.get(key)
-  if (cached) return cached
-  // An older version's files are not asked for again.
-  for (const other of bundles.keys()) if (other.startsWith(page)) bundles.delete(other)
-  const loading = rpc.call('plugins.pageFiles', { id: ref.plugin, page: ref.page })
-  bundles.set(key, loading)
-  loading.catch(() => { if (bundles.get(key) === loading) bundles.delete(key) })
-  return loading
-}
+// The frame's script alone decides how often it asks: a page gone wrong must not open a tab or
+// run a shortcut on every message. Human clicks and key presses are never this close together.
+const OPEN_SPACING_MS = 300
+const KEY_SPACING_MS = 150
 
 function webAddress(url: string): boolean {
   try { return ['http:', 'https:'].includes(new URL(url).protocol) } catch { return false }
@@ -66,8 +56,10 @@ export function PluginPageView({ plugin, page }: PluginPageRef) {
     let canceled = false
     let ready = false
     let pageUrl: string | null = null
+    let opened = 0
+    let keyed = 0
     setSrc(null); setError(null)
-    void pageFiles(rpc, ref, version).then(async (files) => {
+    void pluginPageFiles(rpc, ref, version).then(async (files) => {
       if (canceled) return
       const url = await window.antumi?.pluginPageCreate?.(files)
       if (typeof url !== 'string' || !url.startsWith(`${PLUGIN_PAGE_SCHEME}://`)) throw new Error('Plugin page host unavailable')
@@ -103,12 +95,18 @@ export function PluginPageView({ plugin, page }: PluginPageRef) {
           (failure: unknown) => { if (!canceled) post({ kind: 'response', id: message.id, error: reason(failure) }) }
         )
       } else if (message.kind === 'open') {
-        if (webAddress(message.url)) void openWebPage(message.url)
+        const now = Date.now()
+        if (!webAddress(message.url) || now - opened < OPEN_SPACING_MS) return
+        opened = now
+        void openWebPage(message.url)
       } else if (message.kind === 'state') {
         const state = pluginPageState(message.value)
         if (message.value !== null && state === null) return
         try { localStorage.setItem(stateKey, JSON.stringify(state)) } catch { /* full storage: the page starts afresh next time */ }
       } else if (message.kind === 'key') {
+        const now = Date.now()
+        if (now - keyed < KEY_SPACING_MS) return
+        keyed = now
         runShortcutChord({ key: message.key, code: message.code, metaKey: message.meta, ctrlKey: message.ctrl, altKey: message.alt, shiftKey: message.shift })
       } else if (message.kind === 'leave') {
         leavePluginPage()

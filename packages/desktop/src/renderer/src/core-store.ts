@@ -49,6 +49,7 @@ import {
   type PluginInfo
 } from '@antumi/protocol'
 import { findPluginPage, type PluginPageRef } from './plugin-pages'
+import { forgetPluginPageFiles } from './plugin-page-files'
 import { receiveChatDelta, receiveChatItems } from './chat-state'
 import { forgetDiscussionPosts, receiveDiscussionPosts } from './discussions'
 import { fileScopeKey, forgetFileTabs, type FileScope } from './file-tabs'
@@ -913,6 +914,7 @@ export function leavePluginPage(): void {
 // The plugins as core says they are now; a page whose plugin was disabled or removed, or no longer
 // ships it, closes.
 export function receivePlugins(plugins: PluginInfo[]): void {
+  forgetPluginPageFiles()
   useCore.setState({ plugins })
   const { pluginPage } = useCore.getState()
   if (pluginPage && !findPluginPage(plugins, pluginPage)) leavePluginPage()
