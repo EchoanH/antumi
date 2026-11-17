@@ -217,11 +217,14 @@ export class TerminalService {
     }
   }
 
-  // Stops an agent's command, as Ctrl-C would; the tab stays, saying how it ended.
-  async stop(conversationId: string, id: string): Promise<void> {
+  // Closing is scoped too: an agent cannot remove another conversation's tab, even once it ended.
+  async stop(conversationId: string, id: string, close = false): Promise<void> {
     const row = this.agentTerminal(conversationId, id)
-    if (row.exited === 1) return
-    await this.daemon.request('kill', { sessionId: row.sessionId })
+    if (row.exited !== 1) await this.daemon.request('kill', { sessionId: row.sessionId })
+    if (close) {
+      this.remove(row.sessionId)
+      await this.daemon.request('release', { sessionId: row.sessionId }).catch(() => {})
+    }
   }
 
   async stopForConversation(conversationId: string): Promise<void> {

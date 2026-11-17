@@ -46,4 +46,22 @@ describe('terminal tools', () => {
     expect(describeOutput({ ...output, running: false, exitCode: 1, truncated: true })).toBe('命令：pnpm dev\n状态：已结束，退出码 1\n（只保留了最后一部分输出）\n\nready')
     expect(describeOutput({ ...output, output: '' })).toContain('（还没有输出）')
   })
+
+  it('asks core to stop and close the conversation\'s terminal in one scoped call', async () => {
+    const core = fakeCore({ 'terminals.stop': { ok: true, closed: true } })
+    const result = await terminalToolsOverCore(core.withCore, 'conv').call('stop', { id: ID })
+    expect(core.calls).toEqual([['terminals.stop', { conversationId: 'conv', id: ID, close: true }]])
+    expect(result).toEqual({ text: '命令已停止，终端标签已关闭。' })
+  })
+
+  it('reports a retained tab accurately when connected to an older core', async () => {
+    const core = fakeCore({ 'terminals.stop': { ok: true } })
+    expect(await terminalToolsOverCore(core.withCore, 'conv').call('stop', { id: ID })).toEqual({ text: '命令已停止；当前后台版本会保留终端标签。' })
+  })
+
+  it('does not claim a tab was closed after a refused stop', async () => {
+    const core = fakeCore({ 'terminals.stop': new RpcError('not owned', 0, 'terminal-not-found') })
+    expect(await terminalToolsOverCore(core.withCore, 'conv').call('stop', { id: ID })).toMatchObject({ isError: true, text: expect.stringContaining('没有这个终端') })
+    expect(core.calls).toHaveLength(1)
+  })
 })

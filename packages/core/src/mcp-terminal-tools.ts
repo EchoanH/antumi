@@ -27,7 +27,7 @@ export const TERMINAL_TOOL_SPECS = [
       '在 Antumi 的终端面板里为这条会话新开一个标签，用用户的登录 shell 运行一条命令；用户能实时看到输出，也能停掉它。' +
       '用来跑要一直运行、用户也想看的进程：开发服务器、watch、测试的 watch 模式、日志 tail。' +
       '一次性的命令（构建、测试、git、查看文件）继续用你自己的 shell 工具，不要用这个。' +
-      '返回标签 id 和刚启动时的输出；之后用 terminal_read 读，用 terminal_stop 停。' +
+      '返回标签 id 和刚启动时的输出；之后用 terminal_read 读，用 terminal_stop 停止并关闭标签。' +
       '可能要用户先在对话里确认：返回「等待用户确认」时先停下，等用户同意后再用同样的命令调用一次。',
     inputSchema: {
       type: 'object',
@@ -59,8 +59,8 @@ export const TERMINAL_TOOL_SPECS = [
   {
     kind: 'stop' as const,
     name: terminalToolName('stop'),
-    title: '停下终端里的命令',
-    description: '停掉 terminal_run 开的某个终端里还在运行的命令。标签会留着，写明命令怎么结束的，用户关掉它才消失。',
+    title: '停止并关闭终端',
+    description: '停止 terminal_run 开的命令，并关闭对应的终端标签页；命令已经结束时也会关闭标签。只能关闭这条会话自己开的终端。关闭后不能再读取输出，需要日志时先用 terminal_read 读取。',
     inputSchema: {
       type: 'object',
       properties: { id: { type: 'string', description: 'terminal_run 返回的标签 id' } },
@@ -107,15 +107,15 @@ export function terminalToolsOverCore(withCore: WithCore, conversationId: string
         const first = await withCore((rpc) => rpc.call('terminals.read', { conversationId, id: run.terminal.id }))
         return {
           text: `已在终端面板里为这条会话开了一个标签运行它，用户能看到。\n标签 id：${run.terminal.id}\n工作目录：${run.terminal.cwd}\n` +
-            `用 terminal_read 读之后的输出，用 terminal_stop 停下。\n\n${describeOutput(first)}`
+            `用 terminal_read 读之后的输出，用 terminal_stop 停止并关闭标签。\n\n${describeOutput(first)}`
         }
       }
       const { id, tail } = z.object({ id: z.string(), tail: z.number().optional() }).parse(args)
       if (kind === 'read') {
         return { text: describeOutput(await withCore((rpc) => rpc.call('terminals.read', { conversationId, id, ...(tail ? { tail } : {}) }))) }
       }
-      await withCore((rpc) => rpc.call('terminals.stop', { conversationId, id }))
-      return { text: '已经让它停下。用 terminal_read 可以看它最后的输出和退出码。' }
+      const stopped = await withCore((rpc) => rpc.call('terminals.stop', { conversationId, id, close: true }))
+      return { text: stopped.closed ? '命令已停止，终端标签已关闭。' : '命令已停止；当前后台版本会保留终端标签。' }
     })
   }
 }

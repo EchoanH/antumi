@@ -9,7 +9,7 @@ export const Terminal = z.object({
   title: z.string(),
   createdAt: z.number(),
   // A terminal an agent opened to run a command: the conversation it belongs to, the command, and
-  // once the command ends, its exit code; it stays until the user closes it. User-started CLI
+  // once the command ends, its exit code; it stays until explicitly closed. User-started CLI
   // installers have a command without a conversation. Interactive shells have neither.
   conversationId: z.string().nullable().optional(),
   command: z.string().nullable().optional(),

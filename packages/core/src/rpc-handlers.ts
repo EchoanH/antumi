@@ -712,9 +712,9 @@ export function createRpcHandlers(
       return agentTerminals.run(conversationId, command, cwd)
     },
     'terminals.read': ({ conversationId, id, tail }) => terminals.read(conversationId, id, tail),
-    'terminals.stop': async ({ conversationId, id }) => {
-      await terminals.stop(conversationId, id)
-      return OK
+    'terminals.stop': async ({ conversationId, id, close }) => {
+      await terminals.stop(conversationId, id, close)
+      return { ...OK, closed: close ?? false }
     },
     'terminals.close': async ({ id }) => {
       await terminals.kill(id)

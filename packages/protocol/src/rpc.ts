@@ -682,7 +682,8 @@ export const rpcMethods = {
     params: z.object({ conversationId: z.string().uuid(), id: z.string().uuid(), tail: z.number().int().min(200).max(50_000).optional() }),
     result: TerminalOutput
   },
-  'terminals.stop': { params: z.object({ conversationId: z.string().uuid(), id: z.string().uuid() }), result: Ok },
+  // close: agent tools stop and remove their tab together; omitted by older clients that keep logs.
+  'terminals.stop': { params: z.object({ conversationId: z.string().uuid(), id: z.string().uuid(), close: z.boolean().optional() }), result: Ok.extend({ closed: z.boolean().optional() }) },
   // Commands kept for the terminal panel, oldest first. Saving without an id adds one.
   'terminalCommands.list': { params: z.object({}), result: z.array(TerminalCommand) },
   'terminalCommands.save': { params: TerminalCommandFields.extend({ id: z.string().uuid().optional() }), result: TerminalCommand },

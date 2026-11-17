@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Terminal } from '@antumi/protocol'
 import type { DaemonMethod, DaemonParams, DaemonResult } from '@antumi/protocol/node'
 import type { SessionHost } from './daemon-client'
@@ -149,6 +149,38 @@ describe('TerminalService', () => {
     await expect(service.stop('conv-1', shell.id)).rejects.toMatchObject({ reason: 'terminal-not-found' })
     await service.stop('conv-1', mine.id)
     expect(daemon.killed).toEqual([mine.sessionId])
+    expect(service.list().map((terminal) => terminal.id)).toContain(mine.id)
+  })
+
+  it('stops and closes only the requesting conversation\'s tab', async () => {
+    const mine = await service.run('conv-1', root, 'pnpm dev')
+    const other = await service.run('conv-2', root, 'pnpm dev')
+    const shell = await service.open(root)
+    await expect(service.stop('conv-1', other.id, true)).rejects.toMatchObject({ reason: 'terminal-not-found' })
+    await expect(service.stop('conv-1', shell.id, true)).rejects.toMatchObject({ reason: 'terminal-not-found' })
+    await service.stop('conv-1', mine.id, true)
+    expect(daemon.killed).toEqual([mine.sessionId])
+    expect(service.list().map((terminal) => terminal.id)).toEqual([other.id, shell.id])
+    expect(emitted.at(-1)?.map((terminal) => terminal.id)).toEqual([other.id, shell.id])
+    await expect(service.read('conv-1', mine.id)).rejects.toMatchObject({ reason: 'terminal-not-found' })
+  })
+
+  it('closes an already finished agent tab and releases its output without killing again', async () => {
+    const mine = await service.run('conv-1', root, 'pnpm dev')
+    service.handleExit(mine.sessionId, 1)
+    await service.stop('conv-1', mine.id, true)
+    expect(daemon.killed).toEqual([])
+    expect(daemon.released).toEqual([mine.sessionId])
+    expect(service.list()).toEqual([])
+    expect(emitted.at(-1)).toEqual([])
+  })
+
+  it('keeps the tab when stopping its process fails', async () => {
+    const mine = await service.run('conv-1', root, 'pnpm dev')
+    vi.spyOn(daemon, 'request').mockRejectedValueOnce(new Error('daemon unavailable'))
+    await expect(service.stop('conv-1', mine.id, true)).rejects.toThrow('daemon unavailable')
+    expect(service.list().map((terminal) => terminal.id)).toEqual([mine.id])
+    expect(daemon.released).toEqual([])
   })
 
   it('keeps an agent\'s finished command while the daemon still holds it', async () => {
