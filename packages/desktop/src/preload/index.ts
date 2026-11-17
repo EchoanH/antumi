@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('antumi', {
   appVersion: (): Promise<unknown> => ipcRenderer.invoke('antumi:app-version'),
   visualizationCreate: (document: string): Promise<unknown> => ipcRenderer.invoke('antumi:visualization-create', document),
   visualizationRemove: (url: string): Promise<unknown> => ipcRenderer.invoke('antumi:visualization-remove', url),
+  pluginPageCreate: (files: unknown): Promise<unknown> => ipcRenderer.invoke('antumi:plugin-page-create', files),
+  pluginPageRemove: (url: string): Promise<unknown> => ipcRenderer.invoke('antumi:plugin-page-remove', url),
   pickPlugin: (kind: 'directory' | 'zip'): Promise<unknown> => ipcRenderer.invoke('antumi:pick-plugin', kind),
   pickFolder: (defaultPath?: string, title?: string): Promise<unknown> => ipcRenderer.invoke('antumi:pick-folder', defaultPath, title),
   setLanguage: (locale: string): Promise<unknown> => ipcRenderer.invoke('antumi:set-language', locale),

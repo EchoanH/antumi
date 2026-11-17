@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process'
 import { dirname, extname, isAbsolute, join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, Notification, protocol, screen, session, shell, type OpenDialogOptions, type WebContents } from 'electron'
 import { z } from 'zod'
-import { resolveUiLocale, UiLocale } from '@antumi/protocol'
+import { PLUGIN_PAGE_SCHEME, PluginPageFiles, resolveUiLocale, UiLocale } from '@antumi/protocol'
 import { applicationMenu } from './application-menu'
 import { ShortcutAction, ShortcutSettings } from '../shared/keyboard-shortcuts'
 import { antumiPaths, readCoreEndpoint } from '@antumi/protocol/node'
@@ -23,6 +23,7 @@ import { AppUpdater, InstallBlocked } from './app-update'
 import { bundleOf, leftovers, stageFromDmg, swapBlocked, swapInto } from './app-bundle-swap'
 import { appImageBlocked, replaceAppImage } from './app-image-swap'
 import { VisualizationPages } from './visualization-pages'
+import { PluginPageBundles } from './plugin-page-bundles'
 import { VISUALIZATION_SCHEME } from '../shared/visualization-policy'
 import { previewHtml } from './preview-html'
 
@@ -40,9 +41,11 @@ const PRELOAD = join(__dirname, '../preload/index.js')
 const PREVIEW_SCHEME = 'antumi-preview'
 protocol.registerSchemesAsPrivileged([
   { scheme: PREVIEW_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
-  { scheme: VISUALIZATION_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } }
+  { scheme: VISUALIZATION_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  { scheme: PLUGIN_PAGE_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } }
 ])
 const visualizationPages = new VisualizationPages()
+const pluginPages = new PluginPageBundles()
 
 const PREVIEW_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8', '.htm': 'text/html; charset=utf-8', '.svg': 'image/svg+xml', '.css': 'text/css; charset=utf-8',
@@ -137,12 +140,16 @@ function createWindow(): void {
 
 function loadRenderer(win: BrowserWindow, hash?: string): void {
   const owner = win.webContents.id
-  // A visualization may run scripts, but cannot replace its sandbox with a remote page.
+  // A visualization or a plugin page may run scripts, but cannot replace its sandbox with a remote
+  // page, nor with another of its kind: only the renderer points a frame at one.
+  const framed = [PREVIEW_SCHEME, VISUALIZATION_SCHEME, PLUGIN_PAGE_SCHEME].map((scheme) => `${scheme}:`)
   win.webContents.on('will-frame-navigate', (event) => {
-    if (!event.isMainFrame && (event.frame?.url.startsWith(`${VISUALIZATION_SCHEME}:`) || !event.url.startsWith(`${PREVIEW_SCHEME}:`) && !event.url.startsWith(`${VISUALIZATION_SCHEME}:`) && event.url !== 'about:blank')) event.preventDefault()
+    const from = event.frame?.url ?? ''
+    if (!event.isMainFrame && (from.startsWith(`${VISUALIZATION_SCHEME}:`) || from.startsWith(`${PLUGIN_PAGE_SCHEME}:`) || !framed.some((scheme) => event.url.startsWith(scheme)) && event.url !== 'about:blank')) event.preventDefault()
   })
-  win.webContents.on('destroyed', () => visualizationPages.remove(owner))
-  win.webContents.on('did-start-navigation', (_event, _url, _inPlace, isMainFrame) => { if (isMainFrame) visualizationPages.remove(owner) })
+  const release = () => { visualizationPages.remove(owner); pluginPages.removeOwner(owner) }
+  win.webContents.on('destroyed', release)
+  win.webContents.on('did-start-navigation', (_event, _url, _inPlace, isMainFrame) => { if (isMainFrame) release() })
   // A file dropped outside a drop target would otherwise replace the app with that file.
   win.webContents.on('will-navigate', (event, url) => {
     if (url !== win.webContents.getURL()) {
@@ -336,6 +343,14 @@ ipcMain.handle('antumi:visualization-create', (event, document: unknown) => {
 })
 ipcMain.handle('antumi:visualization-remove', (event, url: unknown) => {
   if (event.senderFrame === event.sender.mainFrame && typeof url === 'string') visualizationPages.remove(event.sender.id, url)
+})
+ipcMain.handle('antumi:plugin-page-create', (event, files: unknown) => {
+  if (event.senderFrame !== event.sender.mainFrame) throw new Error('Invalid plugin page owner')
+  return pluginPages.create(event.sender.id, PluginPageFiles.parse(files))
+})
+ipcMain.handle('antumi:plugin-page-remove', (event, url: unknown) => {
+  if (event.senderFrame !== event.sender.mainFrame) throw new Error('Invalid plugin page owner')
+  if (typeof url === 'string') pluginPages.remove(event.sender.id, url)
 })
 
 // Re-read on every call: core rewrites the file with a new port/token on restart.
@@ -644,6 +659,7 @@ void app.whenReady().then(async () => {
   if (!primary) return
   protocol.handle(PREVIEW_SCHEME, servePreview)
   protocol.handle(VISUALIZATION_SCHEME, (request) => visualizationPages.serve(request))
+  protocol.handle(PLUGIN_PAGE_SCHEME, (request) => pluginPages.serve(request))
   // Windows names a notification's sender by this id, the installer's shortcut carries the same.
   if (process.platform === 'win32') app.setAppUserModelId('dev.antumi.desktop')
   uiLocale = resolveUiLocale('system', app.getPreferredSystemLanguages())
