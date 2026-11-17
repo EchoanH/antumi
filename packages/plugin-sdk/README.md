@@ -32,7 +32,7 @@ runSourcePlugin({ manifest, sources: [source] })
 
 ## 错误和日志
 
-预期错误使用 `SourceError`，支持的 `SourceFailure` 类型由 SDK 导出。错误消息会显示给用户，不能包含 Token、密码或完整响应正文。非预期错误统一显示通用消息。
+预期错误使用 `SourceError`，支持的 `SourceFailure` 类型由 SDK 导出。错误消息会显示给用户，不能包含 Token、密码或完整响应正文。来源的非预期错误统一显示通用消息；页面处理器的 Error 消息会传给页面。
 
 stdout 专供协议使用；日志使用 stderr（例如 `console.error`），同样不得输出凭据。每个进程只执行握手及其后的一个操作，登录的所有问答共享这个进程；不要依赖跨操作的内存状态。
 
@@ -50,7 +50,7 @@ stdout 专供协议使用；日志使用 stderr（例如 `console.error`），�
 
 ```sh
 pnpm --filter @antumi/plugin-sdk build
-pnpm --filter @antumi/plugin-sdk pack --out /absolute/path/antumi-plugin-sdk-0.1.1.tgz
+pnpm --filter @antumi/plugin-sdk pack --out /absolute/path/antumi-plugin-sdk-0.2.0.tgz
 pnpm verify:plugin-sdk
 ```
 
@@ -58,7 +58,7 @@ pnpm verify:plugin-sdk
 
 `verify:plugin-sdk` 把 SDK 打成 tgz，在仓库之外安装到模板项目，验证 NodeNext 类型（包含声明文件检查）、测试、构建和实际进程通信；运行需要访问依赖仓库。外置插件 ZIP 可用 `pnpm exec tsx scripts/verify-source-plugin.ts /path/plugin.zip` 验证解压、版本兼容和宿主加载，不访问用户数据或平台账号。
 
-初次发布前，可将生成的 tgz 放进插件仓库 `vendor/`，以 `file:vendor/antumi-plugin-sdk-0.1.1.tgz` 依赖它；无需 npm 发布权限即可独立安装、构建。npm 正式发布后，把依赖改为正式版本并更新锁文件。SDK 维护者发布前需确认 npm 包名的所有权，执行全仓库检查和独立包验证；发布是单独操作。
+初次发布前，可将生成的 tgz 放进插件仓库 `vendor/`，以 `file:vendor/antumi-plugin-sdk-0.2.0.tgz` 依赖它；无需 npm 发布权限即可独立安装、构建。npm 正式发布后，把依赖改为正式版本并更新锁文件。SDK 维护者发布前需确认 npm 包名的所有权，执行全仓库检查和独立包验证；发布是单独操作。
 
 SDK API 遵循语义化版本。只重构 SDK 不改变插件协议；更改协议时必须同步宿主支持和 `PLUGIN_PROTOCOL_VERSION`，不得让已经发布的 v1 插件失效。
 
@@ -79,3 +79,69 @@ return commentPage(nativeComments, options)
 ```
 
 Only complete checkpoints may advance after every page succeeds. Callers may repeat operations; keep stable identities so they can deduplicate. New comments are synchronized as external reference data and never wake an Agent automatically. Comment edits and deletions do not have a complete audit guarantee in this version.
+
+## Pages (SDK 0.2.0)
+
+Plugins may ship pages alongside sources, or pages alone. Declare each page in the manifest:
+
+```json
+{
+  "id": "example.dashboard",
+  "version": "1.0.0",
+  "engines": { "antumi": ">=0.21.8 <1.0.0" },
+  "contributes": {
+    "pages": [{ "id": "dashboard", "label": "Dashboard", "entry": "page/index.html" }]
+  },
+  "entry": { "runtime": "node", "main": "main.mjs" }
+}
+```
+
+The HTML entry must live in a subdirectory of the package. Antumi serves that directory recursively, including its JS, CSS and image assets. Page IDs and source IDs must match their registrations exactly. `runPlugin` accepts optional `sources` and `pages`; `runSourcePlugin` remains available with its existing signature.
+
+```ts
+import { runPlugin, SourceError } from '@antumi/plugin-sdk'
+import manifest from '../manifest.json' with { type: 'json' }
+
+runPlugin({
+  manifest,
+  pages: {
+    dashboard: {
+      async summary(params, { signal }) {
+        const response = await fetch('https://example.com/api/summary', { signal })
+        if (!response.ok) throw new SourceError('request-failed', 'Could not load the summary')
+        return response.json()
+      }
+    }
+  }
+})
+```
+
+Handlers have type `PluginPageHandler`; the registrations have type `PluginPages`. A handler receives unknown JSON params and `{ signal: AbortSignal }`, and returns a value or promise. Each call starts a fresh backend process: there is no memory between calls. Use the signal for I/O. Both `SourceError` and ordinary `Error` messages from page handlers reach the page; keep credentials out of them.
+
+The browser entry is dependency-free. Bundle it into a classic IIFE script, referenced by an external `<script src="./main.js"></script>` in the page. ES modules and inline scripts are not supported.
+
+```ts
+import { connect } from '@antumi/plugin-sdk/page'
+
+async function start() {
+  const host = await connect()
+  const summary = await host.call<{ count: number }>('summary', { days: 7 })
+  console.log(summary.count, host.locale, host.state, host.theme)
+  const unsubscribe = host.onTheme((theme) => console.log(theme.scheme))
+  host.setState({ days: 7 })
+  host.open('https://example.com')
+  // host.leave() returns to conversations; unsubscribe() removes the theme listener.
+}
+void start()
+```
+
+`connect(): Promise<PageHost>` waits up to 10 seconds for the host. `PageHost` exposes:
+
+- `call<T = unknown>(method: string, params?: unknown): Promise<T>`: calls this page's backend, rejecting with the host's error message or after 60 seconds.
+- Readonly `theme: PageTheme`, `locale: 'zh-CN' | 'en'`, and `state: unknown`: current theme, language and last saved state (`null` initially). `PageTheme` is `{ scheme: 'light' | 'dark'; variables: Record<string, string> }`.
+- `setState(value: unknown): void`: replaces the saved JSON state, up to 32 KiB.
+- `onTheme(listener: (theme: PageTheme) => void): () => void`: subscribes to changes and returns an unsubscribe function. The bridge applies CSS variables, `color-scheme` and `data-scheme` to the document before notifying listeners.
+- `open(url: string): void`: opens an http/https URL in the app's browser.
+- `leave(): void`: returns to conversations.
+
+The sandbox blocks network requests (`connect-src 'none'`); fetch remote data in the Node handler. Remote images must use HTTPS; local packaged images are supported. Fonts are not accepted. Page files total at most 8 MiB and 256 files. Backend calls last at most 30 seconds, output at most 8 MiB, and accept at most 64 KiB of JSON params; at most four calls may run at once per plugin. Saved JSON state is limited to 32 KiB. The bridge forwards modifier chords and F1–F12 so app shortcuts work while the frame has focus.

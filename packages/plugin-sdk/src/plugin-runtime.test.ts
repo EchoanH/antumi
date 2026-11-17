@@ -1,7 +1,7 @@
 import { PassThrough } from 'node:stream'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PluginManifest, PluginMessage } from '../../protocol/src/plugin'
-import { runSourcePlugin } from './source-runtime'
+import { runPlugin, runSourcePlugin, type PluginPages } from './plugin-runtime'
 import { SourceError } from './source-error'
 import type { SourcePlugin } from './source-plugin'
 
@@ -23,7 +23,7 @@ const source: SourcePlugin = {
 }
 
 const cleanup: (() => void)[] = []
-afterEach(() => { for (const close of cleanup.splice(0)) close() })
+afterEach(() => { vi.restoreAllMocks(); for (const close of cleanup.splice(0)) close() })
 
 function harness(overrides: Partial<SourcePlugin> = {}) {
   const input = new PassThrough()
@@ -149,5 +149,66 @@ describe('source SDK protocol runtime', () => {
 
   it('rejects duplicate source registrations', () => {
     expect(() => runSourcePlugin({ manifest, sources: [source, source] })).toThrow('match the manifest')
+  })
+})
+
+const pageManifest = PluginManifest.parse({ ...manifest, contributes: { pages: [{ id: 'dashboard', label: 'Dashboard', entry: 'page/index.html' }] } })
+function pageHarness(pages: PluginPages) {
+  const input = new PassThrough()
+  const output = new PassThrough()
+  const messages: (typeof PluginMessage._output)[] = []
+  output.on('data', (chunk: Buffer) => messages.push(PluginMessage.parse(JSON.parse(chunk.toString()))))
+  const runtime = runPlugin({ manifest: pageManifest, pages, input, output })
+  cleanup.push(() => { runtime.close(); input.destroy(); output.destroy() })
+  const call = (method: string, params: unknown) => input.write(`${JSON.stringify({ type: 'call', id: method, method, params })}\n`)
+  const tick = () => new Promise<void>((resolve) => setImmediate(resolve))
+  return { runtime, call, tick, messages, async hello() { call('handshake', { protocolVersion: 1 }); await tick() } }
+}
+
+describe('plugin SDK pages', () => {
+  it('handshakes pages alone and permits just one operation', async () => {
+    const h = pageHarness({ dashboard: { echo: (params) => params } })
+    await h.hello()
+    expect(h.messages[0]).toMatchObject({ result: { sources: [], pages: ['dashboard'] } })
+    h.call('page', { page: 'dashboard', method: 'echo', params: { ok: true } })
+    await h.tick()
+    expect(h.messages[1]).toEqual({ type: 'result', id: 'page', result: { result: { ok: true } } })
+    h.call('page', { page: 'dashboard', method: 'echo', params: null })
+    await h.tick()
+    expect(h.messages[2]).toMatchObject({ type: 'error' })
+  })
+
+  it.each([['missing', 'echo'], ['dashboard', 'missing'], ['dashboard', 'constructor'], ['dashboard', 'toString'], ['constructor', 'echo']])('refuses unknown or inherited handlers %s.%s', async (page, method) => {
+    const h = pageHarness({ dashboard: { echo: (params) => params } })
+    await h.hello()
+    h.call('page', { page, method, params: null })
+    await h.tick()
+    expect(h.messages[1]).toMatchObject({ type: 'error', error: { code: 'not-found' } })
+  })
+
+  it.each([new Error('Readable page failure'), new SourceError('not-found', 'Readable page failure')])('passes page errors through', async (error) => {
+    const h = pageHarness({ dashboard: { fail: () => { throw error } } })
+    await h.hello()
+    h.call('page', { page: 'dashboard', method: 'fail', params: null })
+    await h.tick()
+    expect(h.messages[1]).toMatchObject({ type: 'error', error: { message: 'Readable page failure' } })
+  })
+
+  it('requires exact page registrations', () => {
+    expect(() => runPlugin({ manifest: pageManifest })).toThrow('pages must match')
+    expect(() => runPlugin({ manifest: pageManifest, pages: { other: {} } })).toThrow('pages must match')
+    expect(() => runPlugin({ manifest: pageManifest, pages: { dashboard: {}, extra: {} } })).toThrow('pages must match')
+  })
+
+  it('aborts a page after 30 seconds and when the host stops', async () => {
+    let signal: AbortSignal | undefined
+    const timeout = vi.spyOn(AbortSignal, 'timeout')
+    const h = pageHarness({ dashboard: { wait: (_params, context) => { signal = context.signal; return new Promise(() => {}) } } })
+    await h.hello()
+    h.call('page', { page: 'dashboard', method: 'wait', params: null })
+    await h.tick()
+    expect(timeout).toHaveBeenCalledWith(30_000)
+    h.runtime.close()
+    expect(signal?.aborted).toBe(true)
   })
 })

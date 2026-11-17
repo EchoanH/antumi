@@ -5,7 +5,10 @@ import { LoginNotice, LoginPrompt } from '../../protocol/src/source.js'
 import { SourceError, sourceProblem } from './source-error.js'
 import type { LoginSession, SourcePlugin } from './source-plugin.js'
 
-type Options = {
+export type PluginPageHandler = (params: unknown, context: { signal: AbortSignal }) => unknown | Promise<unknown>
+export type PluginPages = Record<string, Record<string, PluginPageHandler>>
+
+type SourceOptions = {
   manifest: unknown
   sources: readonly SourcePlugin[]
   input?: Readable
@@ -13,11 +16,15 @@ type Options = {
   env?: Readonly<Record<string, string | undefined>>
 }
 
-export function runSourcePlugin(options: Options): { close(): void } {
+export function runPlugin(options: Omit<SourceOptions, 'sources'> & { sources?: readonly SourcePlugin[]; pages?: PluginPages }): { close(): void } {
   const manifest = PluginManifest.parse(options.manifest)
-  const sources = new Map(options.sources.map((source) => [source.id, source]))
+  const registered = options.sources ?? []
+  const pages = options.pages ?? {}
+  const expectedPages = manifest.contributes.pages.map((page) => page.id)
+  if (new Set(expectedPages).size !== expectedPages.length || Object.keys(pages).length !== expectedPages.length || expectedPages.some((id) => !Object.hasOwn(pages, id))) throw new Error('Plugin pages must match the manifest exactly')
+  const sources = new Map(registered.map((source) => [source.id, source]))
   const expected = manifest.contributes.sources.map((source) => source.id)
-  if (sources.size !== options.sources.length || new Set(expected).size !== expected.length || sources.size !== expected.length || expected.some((id) => !sources.has(id))) {
+  if (sources.size !== registered.length || new Set(expected).size !== expected.length || sources.size !== expected.length || expected.some((id) => !sources.has(id))) {
     throw new Error('Plugin sources must match the manifest exactly')
   }
   if (manifest.contributes.sources.some((entry) => entry.commentSync === 1 && !sources.get(entry.id)?.comments)) throw new Error('Comment sync capability requires a comments implementation')
@@ -62,12 +69,23 @@ export function runSourcePlugin(options: Options): { close(): void } {
       const { protocolVersion } = pluginSchemas.handshake.params.parse(request.params)
       if (handshaken || protocolVersion !== PLUGIN_PROTOCOL_VERSION) throw new SourceError('request-failed', '不支持的插件协议版本')
       handshaken = true
-      return pluginSchemas.handshake.result.parse({ protocolVersion: PLUGIN_PROTOCOL_VERSION, id: manifest.id, version: manifest.version, sources: expected })
+      return pluginSchemas.handshake.result.parse({ protocolVersion: PLUGIN_PROTOCOL_VERSION, id: manifest.id, version: manifest.version, sources: expected, pages: expectedPages })
     }
     if (!handshaken || called) throw new SourceError('request-failed', '每个插件进程必须先握手，再执行一个操作')
     called = true
     const method = request.method
-    if (method === 'page') throw new SourceError('not-found', '插件未声明这个页面')
+    if (method === 'page') {
+      const { page, method: name, params } = pluginSchemas.page.params.parse(request.params)
+      const handlers = Object.hasOwn(pages, page) ? pages[page] : undefined
+      const handler = handlers && Object.hasOwn(handlers, name) ? handlers[name] : undefined
+      if (typeof handler !== 'function') throw new SourceError('not-found', '插件未声明这个页面或方法')
+      const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)])
+      try { return { result: await handler(params, { signal }) } }
+      catch (error) {
+        if (error instanceof Error && !(error instanceof SourceError)) throw new SourceError('request-failed', error.message)
+        throw error
+      }
+    }
     const params = pluginSchemas[method].params.parse(request.params)
     const source = sources.get(params.source)
     if (!source) throw new SourceError('not-found', '插件未声明这个任务来源')
@@ -154,3 +172,5 @@ export function runSourcePlugin(options: Options): { close(): void } {
   })
   return { close }
 }
+
+export const runSourcePlugin: (options: SourceOptions) => { close(): void } = runPlugin
