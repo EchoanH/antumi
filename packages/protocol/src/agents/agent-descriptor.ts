@@ -83,6 +83,9 @@ export type AgentDescriptor = {
   // The models it is cheapest on, for a small one-off job such as translating a reply: preferred
   // first, each matched against its catalog in the catalog's order (newest first). See quickModel.
   quickModels?: readonly RegExp[]
+  // The files it keeps its memory across conversations in. Saving to them after its answer is
+  // bookkeeping, so a finished turn folds that away rather than its answer.
+  memoryFiles?: RegExp
   prices?: readonly ModelPrice[]
   // Folders under %LOCALAPPDATA% its Windows installer puts the CLI in, which PATH may lack.
   windowsPathDirs?: readonly string[]

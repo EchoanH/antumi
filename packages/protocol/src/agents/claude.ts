@@ -39,5 +39,7 @@ export const claude: AgentDescriptor = {
   usageWhere: '在 claude.ai 网页版或 Claude Desktop 的 设置 → Usage 里使用',
   resetTracker: 'claude',
   quickModels: [/^haiku$/],
+  // <config dir>/projects/<project>/memory/*.md, whichever account's config dir it runs in.
+  memoryFiles: /[\\/]projects[\\/][^\\/]+[\\/]memory[\\/][^\\/]+\.md$/,
   prices: CLAUDE_PRICES
 }

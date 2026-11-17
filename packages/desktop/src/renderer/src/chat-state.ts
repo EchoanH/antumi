@@ -5,7 +5,7 @@ import { isCompaction } from './chat-notices'
 import { diffCounts, isSubagent } from './chat-tools'
 import { isBackgroundCommand, keepsInView } from './background-work'
 import { browserOperation } from './browser-activity'
-import { appendChatText, chatItemKey, mergeChatItems, prependChatItems, replaceChatStage, parseHandoffMessage, withoutBranchSwitchNote, type AgentCall, type AgentKind, type ChatDiff, type ChatItem, type ChatQuestion, type ChatTodo, type ConversationStage, browserToolKind, isPlanApproval, isPreviewTool, previewRequest, toolImagePath, CODEX_IMAGE_GENERATION, terminalToolKind, todoToolKind } from '@antumi/protocol'
+import { agentDescriptor, appendChatText, chatItemKey, mergeChatItems, prependChatItems, replaceChatStage, parseHandoffMessage, withoutBranchSwitchNote, type AgentCall, type AgentKind, type ChatDiff, type ChatItem, type ChatQuestion, type ChatTodo, type ConversationStage, browserToolKind, isPlanApproval, isPreviewTool, previewRequest, toolImagePath, CODEX_IMAGE_GENERATION, terminalToolKind, todoToolKind } from '@antumi/protocol'
 
 // A conversation's chat items as this window holds them, in the order core first saw them;
 // `before` pages further back, null when nothing older is left.
@@ -351,8 +351,8 @@ function foldable(block: ChatBlock): boolean {
   }
 }
 
-function turnReply(body: readonly ChatBlock[], turn: TurnItem): TurnReply | null {
-  const last = body.at(-1)
+function turnReply(shown: readonly ChatBlock[], turn: TurnItem): TurnReply | null {
+  const last = shown.at(-1)
   const item = last ? itemOf(last) : null
   return turn.state === 'completed' && last && item?.kind === 'assistant' && item.text
     ? { key: last.key, text: item.text }
@@ -366,29 +366,40 @@ function notesTodos(block: ChatBlock | undefined): boolean {
   return block?.kind !== 'fold' && tools.length > 0 && tools.every((tool) => todoToolKind(tool.name) !== null)
 }
 
-function foldTurn(body: ChatBlock[], turn: TurnItem, end: ChatBlock): ChatBlock[] {
-  // The answer is the replies it ends with, after the last of its work; to-dos noted between them
-  // stay with the answer rather than fold it away. It starts at a reply.
+// Saving to the agent's own memory once it has answered: work after the answer that does not end
+// it either, but folded away with the rest of the work.
+function savesMemory(block: ChatBlock | undefined, agent: AgentKind | null): boolean {
+  const memory = agent ? agentDescriptor(agent).memoryFiles : undefined
+  const tools = block && memory ? toolsOf(block) : []
+  return block?.kind !== 'fold' && tools.length > 0 && tools.every((tool) => tool.diffs.length > 0 && tool.diffs.every((diff) => memory?.test(diff.path)))
+}
+
+function foldTurn(body: ChatBlock[], turn: TurnItem, end: ChatBlock, agent: AgentKind | null): ChatBlock[] {
+  // The answer is the replies it ends with, after the last of its work; to-dos noted and memory
+  // saved between them stay with the answer rather than fold it away. It starts at a reply.
   const isReply = (block: ChatBlock | undefined) => block !== undefined && itemOf(block)?.kind === 'assistant'
+  const remembers = (block: ChatBlock | undefined) => savesMemory(block, agent)
   let answer = body.length
-  while (answer > 0 && (isReply(body[answer - 1]) || notesTodos(body[answer - 1]))) answer--
+  while (answer > 0 && (isReply(body[answer - 1]) || notesTodos(body[answer - 1]) || remembers(body[answer - 1]))) answer--
   while (answer < body.length && !isReply(body[answer])) answer++
   const work = body.slice(0, answer)
-  const folded = work.filter(foldable)
+  const after = body.slice(answer)
+  const folded = [...work, ...after.filter(remembers)].filter(foldable)
   if (folded.length === 0) return [...body, end]
+  const shown = after.filter((block) => !remembers(block))
   const key = `fold:${end.key}`
   const files = turnFiles(folded)
-  const reply = turnReply(body, turn)
+  const reply = turnReply(shown, turn)
   const steps = folded.flatMap(toolsOf).length
   // The work ran from its first call to the answer, or to the end of a turn without one.
-  const began = Math.min(...folded.map(startOf).filter((at): at is number => at !== null))
-  const until = body.slice(answer).map(startOf).find((at): at is number => at !== null) ?? turn.at
+  const began = Math.min(...work.filter(foldable).map(startOf).filter((at): at is number => at !== null))
+  const until = after.map(startOf).find((at): at is number => at !== null) ?? turn.at
   const workMs = Number.isFinite(began) && until > began ? until - began : null
   // With files, the summary of them carries the outcome; otherwise the turn's own line does.
   return [
     { kind: 'fold', key, turn, blocks: folded, steps, workMs },
     ...work.filter((block) => !foldable(block)),
-    ...body.slice(answer),
+    ...shown,
     ...(files.length > 0 ? [{ kind: 'changes' as const, key: `changes:${end.key}`, fold: key, files, turn, reply, collapsible: true }] : [end])
   ]
 }
@@ -447,14 +458,16 @@ export function chatBlocks(entries: readonly TimelineEntry[], { foldTurns = true
   // Each turn runs from the user's message, or a new stage, to the item that says how it ended.
   const blocks: ChatBlock[] = []
   let body: ChatBlock[] = []
+  let agent: AgentKind | null = null
   for (const block of runs) {
     const item = itemOf(block)
+    if (block.kind === 'entry' && block.entry.kind === 'stage') agent = block.entry.stage.agent
     const boundary = block.kind === 'entry' && (block.entry.kind !== 'item' || item?.kind === 'user')
     if (boundary) {
       blocks.push(...body, block)
       body = []
     } else if (item?.kind === 'turn') {
-      blocks.push(...(foldTurns ? foldTurn(body, item, block) : unfoldedTurn(body, block)))
+      blocks.push(...(foldTurns ? foldTurn(body, item, block, agent) : unfoldedTurn(body, block)))
       body = []
     } else {
       body.push(block)

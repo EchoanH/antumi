@@ -321,6 +321,21 @@ describe('chatBlocks', () => {
       .toEqual(['u', { fold: ['tools:a+todo'] }, 'noted', 'end'])
   })
 
+  it('keeps an answer in view when the agent saves to its memory after it', () => {
+    const memory = (id: string, path: string) => tool(id, 'Edit', [{ path, change: 'update', patch: '+x' }])
+    const saved = memory('m', '/Users/me/.claude/projects/-Users-me-app/memory/MEMORY.md')
+    const items = [user('u'), tool('a', 'Bash'), reply('summary'), tool('todo', 'mcp__antumi__user_todo_add'), saved, reply('saved'), turn('end')]
+    const ofAgent = (agent: ConversationStage['agent']) => chatBlocks([{ kind: 'stage', stage: { ...stage('chat-stage', 0), agent } }, ...items.map((item) => ({ kind: 'item' as const, item }))])
+    expect(shape(ofAgent('claude')).slice(1)).toEqual(['u', { fold: ['tools:a', 'm'] }, 'summary', 'tools:todo', 'saved', { changes: [expect.objectContaining({ path: saved.diffs[0]?.path })] }])
+    expect(ofAgent('claude').find((block) => block.kind === 'changes')).toMatchObject({ reply: { text: 'saved' } })
+    // Memory is the agent's own: the same edit by another agent is work.
+    expect(shape(ofAgent('codex')).slice(1)).toEqual(['u', { fold: ['tools:a', 'summary', 'tools:todo', 'm'] }, 'saved', expect.anything()])
+    // A project file edited after the answer is still work.
+    const project = [user('u'), tool('a', 'Bash'), reply('summary'), memory('e', '/repo/src/memory/notes.md'), reply('done'), turn('end')]
+    expect(shape(chatBlocks([{ kind: 'stage', stage: stage('chat-stage', 0) }, ...project.map((item) => ({ kind: 'item' as const, item }))])).slice(1, 4))
+      .toEqual(['u', { fold: ['tools:a', 'summary', 'e'] }, 'done'])
+  })
+
   it('measures the fold\'s work from its first call to the answer', () => {
     const at = (item: ChatItem, ms: number): ChatItem => ({ ...item, at: ms })
     const blocks = blocksOf([at(user('u'), 0), at(tool('a'), 1_000), at(tool('b'), 5_000), at(reply('answer'), 99_000), at(turn('end'), 100_000)])
