@@ -13,8 +13,9 @@
 .app[data-framed] .sidebar-conversations { background: var(--bg); border-right: 1px solid var(--border); border-radius: var(--radius-lg) 0 0 var(--radius-lg); }
 /* The list's header paints its own background; the list is not clipped, or its edge's grip would be. */
 .app[data-framed] .sidebar-conversations .task-list-header { border-top-left-radius: var(--radius-lg); }
-:root .app[data-framed] .workspace > :not(.sidebar, .side-panel-separator) { margin: 0; border-radius: 0; background: var(--bg); }
-:where(.app[data-framed] .workspace > :not(.sidebar, .side-panel-separator)) { overflow: hidden; }
+:root .app[data-framed] .workspace > :not(.sidebar, .side-panel-separator) { margin: 0; border-radius: 0; }
+/* Without a specificity of their own, so a pane's own background (a chat's surface) and scrolling win. */
+:where(.app[data-framed] .workspace > :not(.sidebar, .side-panel-separator)) { overflow: hidden; background: var(--bg); }
 :root .app[data-framed] .workspace > .sidebar[data-list-hidden='true'] + * { border-top-left-radius: var(--radius-lg); border-bottom-left-radius: var(--radius-lg); }
 :root .app[data-framed] .workspace > :last-child { border-top-right-radius: var(--radius-lg); border-bottom-right-radius: var(--radius-lg); }
 :root .app[data-framed] .workspace > .side-panel-separator { margin-top: 0; }
@@ -89,3 +90,8 @@
 .title-bar-activity:hover { border-color: var(--border-2); }
 .title-bar-activity .working-stack > svg { background: var(--bg); box-shadow: 0 0 0 1.5px var(--bg); }
 .title-bar-activity-divider { width: 1px; height: 14px; background: var(--border-2); }
+
+/* A panel's count rides on its icon's corner, so the switches keep one width and one spacing. */
+.title-bar .tool-button { position: relative; }
+.title-bar .tool-button > .count { position: absolute; top: -1px; right: -3px; min-width: 14px; padding: 0 3px; border-radius: 7px; background: var(--fill-2); color: var(--text-muted); font-size: 10px; line-height: 14px; text-align: center; }
+.title-bar .tool-button[data-active='true'] svg { color: var(--status-running); }
