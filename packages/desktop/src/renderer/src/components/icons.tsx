@@ -334,6 +334,30 @@ export function SidebarIcon() {
   )
 }
 
+// The sidebar's switch: the window with its menu marked off, and an arrow the way a click moves its
+// edge, in to collapse it to icons or out to expand it.
+export function MenuLayoutIcon({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg {...stroked}>
+      <rect x="2.5" y="3.5" width="15" height="13" rx="2.5" />
+      <path d="M8 3.5v13" />
+      <path d={collapsed ? 'M11.5 7.5 14 10l-2.5 2.5' : 'M14 7.5 11.5 10l2.5 2.5'} />
+    </svg>
+  )
+}
+
+// Beside the icons, the conversation list's switch: the list's rows in the left column, and an
+// arrow the way a click moves its edge.
+export function ConversationListIcon({ shown }: { shown: boolean }) {
+  return (
+    <svg {...stroked}>
+      <rect x="2.5" y="3.5" width="15" height="13" rx="2.5" />
+      <path d="M8 3.5v13M4.8 7.5h1M4.8 10h1M4.8 12.5h1" />
+      <path d={shown ? 'M14 7.5 11.5 10l2.5 2.5' : 'M11.5 7.5 14 10l-2.5 2.5'} />
+    </svg>
+  )
+}
+
 export function TerminalIcon() {
   return (
     <svg {...stroked}>

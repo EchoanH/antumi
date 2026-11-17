@@ -15,6 +15,9 @@ import { SidebarTasks } from './components/SidebarTasks'
 import { TaskChat } from './components/TaskChat'
 import { ConversationList } from './components/ConversationList'
 import { Sidebar } from './components/Sidebar'
+import { TitleBar } from './components/TitleBar'
+import { compactTitleBar } from './desktop-bridge'
+import { COLLAPSED_NAVIGATION_WIDTH } from './sidebar-width'
 import { ConversationView } from './components/ConversationView'
 import { ConversationSplit } from './components/ConversationSplit'
 import { ConversationDraft } from './components/ConversationDraft'
@@ -91,8 +94,6 @@ export function App() {
   const search = useCore((s) => s.search)
   const utilityPanelOrder = useCore((s) => s.utilityPanelOrder)
   const menuCollapsed = usePreferences((s) => s.sidebarMenuCollapsed)
-  // Only the narrow menu's list can be put away; the menu itself stays.
-  const sidebarHidden = usePreferences((s) => s.sidebarHidden) && menuCollapsed
   const maximizedUtility = browserPanelOpen && browserMaximized
     ? 'browser'
     : terminalPanelOpen && terminalMaximized
@@ -104,6 +105,11 @@ export function App() {
           : gitPanelOpen && gitMaximized
             ? 'git'
             : undefined
+
+  // With the menu collapsed to icons, the title bar, the icons and the status bar frame the pages,
+  // which sit on a card below the title bar.
+  const framed = menuCollapsed && !settingsOpen && !maximizedUtility
+  useEffect(() => { compactTitleBar(framed) }, [framed])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -134,7 +140,7 @@ export function App() {
   }, [])
 
   return (
-    <div className="app" data-sidebar-hidden={(sidebarHidden && !settingsOpen) || undefined}>
+    <div className="app" data-framed={framed || undefined} style={{ '--sidebar-navigation-width': `${menuCollapsed ? COLLAPSED_NAVIGATION_WIDTH : 0}px` }}>
       <main className="workspace" data-utility-maximized={maximizedUtility}>
         {settingsOpen ? (
           <SettingsPage />
@@ -190,8 +196,9 @@ export function App() {
       <SetupGuide />
       {/* After the workspace: where drag regions overlap, the later one wins, and the sidebar and
           pane headers under it are drag regions. */}
+      {framed && <TitleBar />}
       {!settingsOpen && !maximizedUtility && <WindowBrand />}
-      <StatusBar />
+      <StatusBar panelsInTitleBar={framed} />
       {search && <SearchPalette initial={search} />}
       {newTaskOpen && <NewTaskDialog />}
       {taskLaunchId && <TaskLaunchDialog key={taskLaunchId} taskId={taskLaunchId} />}

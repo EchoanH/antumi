@@ -8357,6 +8357,10 @@ export const MESSAGES = {
   "Sidebar.mainMenu": { "zh": "主菜单", "en": "Main menu" },
   "Sidebar.showConversations": { "zh": "显示会话列表", "en": "Show conversation list" },
   "Sidebar.hideConversations": { "zh": "隐藏会话列表", "en": "Hide conversation list" },
+  "TitleBar.running": { "zh": "{count} 个在工作", "en": "{count} working" },
+  "TitleBar.waiting": { "zh": "{count} 个等你", "en": "{count} waiting on you" },
+  "TitleBar.openOverview": { "zh": "打开总览", "en": "Open overview" },
+  "TitleBar.new": { "zh": "新建", "en": "New" },
   "Sidebar.dragToResizeDoubleClickToReset": {
     "zh": "拖动调整宽度，双击恢复默认",
     "en": "Drag to resize; double-click to reset"

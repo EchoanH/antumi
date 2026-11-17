@@ -1,6 +1,6 @@
 /* The menu collapsed to icons, beside the conversation list. The entries are the sidebar's own,
    shown here by their icon, with names on hover. */
-.sidebar-navigation { width: var(--sidebar-navigation-width); flex: 0 0 auto; min-height: 0; display: flex; flex-direction: column; border-right: 1px solid var(--border); padding: 8px 0; }
+.sidebar-navigation { width: var(--sidebar-navigation-width); flex: 0 0 auto; min-height: 0; display: flex; flex-direction: column; padding: 8px 0; }
 .sidebar-navigation-items { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 4px 0; }
 .sidebar-navigation-footer { flex-shrink: 0; padding-top: 8px; }
 .sidebar-navigation-separator { height: 1px; margin: 12px; background: var(--border); }

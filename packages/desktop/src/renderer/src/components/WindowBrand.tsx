@@ -1,7 +1,7 @@
 import { t } from '../i18n'
 import { setPreference, usePreferences } from '../preferences'
 import { useShortcutLabel } from '../keyboard-shortcuts'
-import { SidebarIcon } from './icons'
+import { MenuLayoutIcon } from './icons'
 
 export function toggleSidebar(): void {
   setPreference('sidebarMenuCollapsed', !usePreferences.getState().sidebarMenuCollapsed)
@@ -28,7 +28,7 @@ export function WindowBrand() {
         data-tooltip-align="start"
         onClick={toggleSidebar}
       >
-        <SidebarIcon />
+        <MenuLayoutIcon collapsed={hidden} />
       </button>
     </div>
   )

@@ -122,7 +122,7 @@ function FeedbackButton() {
 
 // The browser panel, on a core that hosts one; keep the latest known tab count visible while the
 // panel is closed, as terminals do.
-function BrowserButton() {
+function BrowserButton({ side }: { side?: TooltipSide }) {
   const shortcut = usePanelShortcut('toggle-browser')
   const supported = useBrowserSupported()
   const open = useCore((s) => s.browserPanelOpen || s.panelWindows.includes('browser'))
@@ -136,7 +136,7 @@ function BrowserButton() {
       aria-pressed={open}
       data-active={count > 0}
       data-tooltip={[open ? t('BrowserSidePanel.hideBrowser') : t('BrowserSidePanel.browser'), shortcut].filter(Boolean).join(' ')}
-      data-tooltip-side="top-end"
+      data-tooltip-side={side}
       onClick={toggleBrowserPanel}
     >
       <GlobeIcon />
@@ -163,7 +163,7 @@ function useUncommittedFiles(): number {
   return changes?.reduce((sum, folder) => sum + folder.files.length, 0) ?? 0
 }
 
-function FilesButton() {
+function FilesButton({ side }: { side?: TooltipSide }) {
   const shortcut = usePanelShortcut('toggle-files')
   const open = useCore((s) => s.filesPanelOpen || s.panelWindows.includes('files'))
   const count = useUncommittedFiles()
@@ -175,7 +175,7 @@ function FilesButton() {
       aria-pressed={open}
       data-active={open || count > 0}
       data-tooltip={[open ? t('FilesPanel.hideFiles') : t('FilesPanel.files'), count > 0 && `· ${t('StatusBar.uncommittedFiles', { count })}`, shortcut].filter(Boolean).join(' ')}
-      data-tooltip-side="top-end"
+      data-tooltip-side={side}
       onClick={toggleFilesPanel}
     >
       <FilesIcon />
@@ -186,7 +186,7 @@ function FilesButton() {
 }
 
 // Git shares the dock and separate windows with the other tools.
-function GitButton() {
+function GitButton({ side }: { side?: TooltipSide }) {
   const shortcut = useShortcutLabel('toggle-git')
   const supported = useCore((s) => s.rpc?.features.includes('git-projects') ?? false)
   const open = useCore((s) => s.gitPanelOpen || s.panelWindows.includes('git'))
@@ -199,7 +199,7 @@ function GitButton() {
       aria-pressed={open}
       data-active={open}
       data-tooltip={[open ? t('GitPage.close') : 'Git', shortcut].filter(Boolean).join(' ')}
-      data-tooltip-side="top-end"
+      data-tooltip-side={side}
       onClick={toggleGitPanel}
     >
       <GitIcon />
@@ -208,7 +208,7 @@ function GitButton() {
   )
 }
 
-function TerminalButton() {
+function TerminalButton({ side }: { side?: TooltipSide }) {
   const shortcut = usePanelShortcut('toggle-terminal')
   const open = useCore((s) => s.terminalPanelOpen || s.panelWindows.includes('terminal'))
   const count = useCore((s) => s.terminals.length)
@@ -221,7 +221,7 @@ function TerminalButton() {
       aria-pressed={open}
       data-active={running}
       data-tooltip={[open ? t('TerminalPanel.hideTerminal') : t('SettingsPage.terminal'), shortcut].filter(Boolean).join(' ')}
-      data-tooltip-side="top-end"
+      data-tooltip-side={side}
       onClick={() => void toggleTerminalPanel()}
     >
       <TerminalIcon />
@@ -230,12 +230,29 @@ function TerminalButton() {
   )
 }
 
-function PortsButton() {
+function PortsButton({ side }: { side?: TooltipSide }) {
   const supported = useCore((s) => s.rpc?.features.includes('ports') ?? false)
   const open = useCore((s) => s.portsPanelOpen)
   const count = usePorts((s) => s.list.ports.length)
   if (!supported) return null
-  return <button type="button" className="tool-button statusbar-ports" aria-label={t('PortsPanel.ports')} aria-pressed={open} data-active={count > 0} data-tooltip={open ? t('PortsPanel.hidePorts') : t('StatusBar.manageDevelopmentServicePorts')} data-tooltip-side="top-end" onClick={togglePortsPanel}><PortsIcon />{count > 0 && <span className="count">{count}</span>}</button>
+  return <button type="button" className="tool-button statusbar-ports" aria-label={t('PortsPanel.ports')} aria-pressed={open} data-active={count > 0} data-tooltip={open ? t('PortsPanel.hidePorts') : t('StatusBar.manageDevelopmentServicePorts')} data-tooltip-side={side} onClick={togglePortsPanel}><PortsIcon />{count > 0 && <span className="count">{count}</span>}</button>
+}
+
+// Over the status bar a tooltip opens upward; elsewhere, below.
+type TooltipSide = 'top-end' | undefined
+
+// The dock's panels, one switch each. Beside the menu collapsed to icons they sit in the title bar
+// instead, under it rather than over the status bar.
+export function UtilityPanelButtons({ side }: { side?: TooltipSide }) {
+  return (
+    <>
+      <FilesButton side={side} />
+      <GitButton side={side} />
+      <BrowserButton side={side} />
+      <TerminalButton side={side} />
+      <PortsButton side={side} />
+    </>
+  )
 }
 
 const AWAKE_LABEL = localized(() => ({ on: t('SettingsPage.always'), auto: t('SettingsPage.whileAgentsWorkOrSchedulesArePending'), off: t('BackdropPicker.close') } as const))
@@ -338,7 +355,7 @@ function ScheduleButton() {
   )
 }
 
-export function StatusBar() {
+export function StatusBar({ panelsInTitleBar }: { panelsInTitleBar: boolean }) {
   const bar = useRef<HTMLElement>(null)
   useLayoutEffect(() => {
     const element = bar.current
@@ -376,11 +393,7 @@ export function StatusBar() {
       <UsageBar />
       <ScheduleButton />
       <WorktreeButton />
-      <FilesButton />
-      <GitButton />
-      <BrowserButton />
-      <TerminalButton />
-      <PortsButton />
+      {!panelsInTitleBar && <UtilityPanelButtons side="top-end" />}
       <AwakeButton />
       <FeedbackButton />
     </footer>

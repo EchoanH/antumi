@@ -83,6 +83,11 @@ async function servePreview(request: Request): Promise<Response> {
 // Main stays thin: tasks, git and PTYs live in core/daemon, so the window
 // can close or crash without touching running agents. Browser tabs are the one exception, and
 // they are kept apart from the window for the same reason.
+// The lights sit in the middle of the title bar's row: the pane headers' height, or the lower title
+// bar of its own the renderer shows with the menu collapsed to icons (styles.css, window-frame.css).
+const TRAFFIC_LIGHTS = { x: 20, y: 19 }
+const COMPACT_TRAFFIC_LIGHTS = { x: 20, y: 13 }
+
 function createWindow(): void {
   // On macOS the sidebar and pane headers take the title bar's place; the renderer
   // mirrors this check (desktop-bridge applyTitleBar) to lay out around the lights.
@@ -94,7 +99,7 @@ function createWindow(): void {
     minHeight: 600,
     title: 'Antumi',
     titleBarStyle: insetTitleBar ? 'hidden' : 'default',
-    trafficLightPosition: insetTitleBar ? { x: 20, y: 19 } : undefined,
+    trafficLightPosition: insetTitleBar ? TRAFFIC_LIGHTS : undefined,
     // Elsewhere the frame stays the system's, without Electron's stock menu bar: Antumi has no menu
     // of its own, and Alt still shows that one.
     autoHideMenuBar: !insetTitleBar,
@@ -221,6 +226,11 @@ function fromMain(sender: WebContents): boolean {
 // The browser panel's say over the tab on show: which one, where it sits, whether something is
 // over it. Bounds arrive as the renderer's CSS pixels; the window's zoom turns them into points.
 const Bounds = z.object({ x: z.number().finite(), y: z.number().finite(), width: z.number().finite().min(0), height: z.number().finite().min(0) })
+ipcMain.on('antumi:compact-title-bar', (event, compact: unknown) => {
+  const owner = BrowserWindow.fromWebContents(event.sender)
+  if (!owner || process.platform !== 'darwin' || typeof compact !== 'boolean') return
+  owner.setWindowButtonPosition(compact ? COMPACT_TRAFFIC_LIGHTS : TRAFFIC_LIGHTS)
+})
 ipcMain.on('antumi:panel-shortcuts', (event, settings: unknown) => {
   if (event.sender !== mainWindow?.webContents) return
   const parsed = ShortcutSettings.safeParse(settings)

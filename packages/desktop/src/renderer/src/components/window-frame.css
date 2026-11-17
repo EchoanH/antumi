@@ -1,0 +1,91 @@
+/* Lower than the pane headers' row it otherwise is: main moves the traffic lights to its middle. */
+.app[data-framed] { --window-brand-height: 40px; }
+
+/* With the menu collapsed to icons, the title bar, the icons and the status bar are one frame around a
+   card that holds the conversation list and the pages, below the title bar: no page shares its row
+   with the traffic lights. A backdrop is the frame's own surface; otherwise a shade under the canvas. */
+:root:not([data-backdrop]) .app[data-framed] { background: linear-gradient(var(--fill-2), var(--fill-2)), var(--bg); }
+:root:not([data-backdrop]) .app[data-framed] .statusbar { background: transparent; border-top-color: transparent; }
+:root .app[data-framed] .workspace { --side-panel-separator-size: 0px; padding: var(--window-brand-height) 8px 0 0; }
+.app[data-framed] .sidebar { padding-top: 0; border-right: 0; }
+
+/* The card, in pieces: the list and each pane beside it, rounded where they meet the frame. */
+.app[data-framed] .sidebar-conversations { background: var(--bg); border-right: 1px solid var(--border); border-radius: var(--radius-lg) 0 0 var(--radius-lg); }
+/* The list's header paints its own background; the list is not clipped, or its edge's grip would be. */
+.app[data-framed] .sidebar-conversations .task-list-header { border-top-left-radius: var(--radius-lg); }
+:root .app[data-framed] .workspace > :not(.sidebar, .side-panel-separator) { margin: 0; border-radius: 0; background: var(--bg); }
+:where(.app[data-framed] .workspace > :not(.sidebar, .side-panel-separator)) { overflow: hidden; }
+:root .app[data-framed] .workspace > .sidebar[data-list-hidden='true'] + * { border-top-left-radius: var(--radius-lg); border-bottom-left-radius: var(--radius-lg); }
+:root .app[data-framed] .workspace > :last-child { border-top-right-radius: var(--radius-lg); border-bottom-right-radius: var(--radius-lg); }
+:root .app[data-framed] .workspace > .side-panel-separator { margin-top: 0; }
+
+/* On a backdrop the sidebar takes the frame's ink; the list is on the card, in the window's own. */
+:root[data-backdrop] .app[data-framed] .sidebar-conversations {
+  color-scheme: var(--root-scheme);
+  color: var(--text);
+  --bg: var(--root-bg);
+  --surface: var(--root-surface);
+  --border: var(--root-border);
+  --border-2: var(--root-border-2);
+  --shadow: var(--root-shadow);
+}
+
+/* The title bar: the brand keeps its corner, the search fills the middle, the rest goes to the end. */
+.title-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  height: var(--window-brand-height);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px 0 calc(var(--window-brand-end) + 8px);
+  -webkit-app-region: drag;
+}
+.title-bar :is(button, a) { -webkit-app-region: no-drag; }
+
+.title-bar-search {
+  flex: 0 1 380px;
+  min-width: 32px;
+  height: 30px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  overflow: hidden;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text-3);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.title-bar-search:hover { border-color: var(--text-3); }
+.title-bar-search > svg { flex-shrink: 0; width: 15px; height: 15px; }
+.title-bar-search-label { flex: 1; min-width: 0; overflow: hidden; text-align: left; white-space: nowrap; text-overflow: ellipsis; }
+.title-bar-search kbd { flex-shrink: 0; padding: 0 5px; border-radius: 4px; background: var(--fill-2); color: var(--text-3); font: inherit; font-size: 12px; }
+
+.title-bar-end { flex-shrink: 0; display: flex; align-items: center; gap: 2px; }
+.title-bar-divider { width: 1px; height: 16px; margin: 0 6px; background: var(--border-2); }
+.title-bar .statusbar-label { display: none; }
+
+.title-bar-activity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 28px;
+  margin-right: 6px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg);
+  font: inherit;
+  cursor: pointer;
+}
+.title-bar-activity:hover { border-color: var(--border-2); }
+.title-bar-activity .working-stack > svg { background: var(--bg); box-shadow: 0 0 0 1.5px var(--bg); }
+.title-bar-activity-divider { width: 1px; height: 14px; background: var(--border-2); }

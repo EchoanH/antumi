@@ -634,7 +634,6 @@ body.stacked-panel-resizing * {
   flex-direction: column;
 }
 .sidebar-conversations[hidden] { display: none; }
-.sidebar[data-list-hidden='true'] .sidebar-navigation { border-right: 0; }
 
 /* The sidebar's right edge, a few pixels either side of its border to grab. The border lights up
    while the edge is hovered, focused or dragged, as a side panel's separator does. */
@@ -1460,31 +1459,6 @@ button.task-tag:hover {
   padding-top: var(--window-brand-height);
 }
 
-.sidebar[hidden] {
-  display: none;
-}
-
-/* With the sidebar away, a rule keeps the switch apart from the pane's title beside it. */
-.app[data-sidebar-hidden] .window-brand::after {
-  content: '';
-  width: 1px;
-  height: 16px;
-  margin-left: 4px;
-  background: var(--border-2);
-}
-
-.app[data-sidebar-hidden] .detail-header {
-  padding-left: var(--window-brand-end);
-}
-
-.app[data-sidebar-hidden] .worktrees-page {
-  padding-top: var(--window-brand-height);
-}
-
-.app[data-sidebar-hidden] .detail-empty {
-  padding-top: var(--window-brand-height);
-}
-
 [data-titlebar='inset'] .detail {
   padding-top: 0;
 }
@@ -1523,7 +1497,7 @@ button.task-tag:hover {
 /* A fullscreen window does not move, and macOS takes a drag region at its top for its title bar:
    hovering one slides the bar down over the header. So fullscreen has none, and the bar comes only
    from the screen's top edge, with the menu bar, as in any app. */
-[data-titlebar='inset'][data-fullscreen] :is(.sidebar, .settings-nav, .detail-header, .detail-empty, .titlebar-drag, .window-brand) {
+[data-titlebar='inset'][data-fullscreen] :is(.sidebar, .settings-nav, .detail-header, .detail-empty, .titlebar-drag, .window-brand, .title-bar) {
   -webkit-app-region: no-drag;
 }
 
@@ -1531,7 +1505,7 @@ button.task-tag:hover {
    clicks on its backdrop move the window. Only the regions themselves are named: a :has() on the
    root over every element (*) had Chromium restyle the whole page at each DOM change, seconds on a
    long chat whenever a terminal mounted. */
-[data-titlebar='inset']:has(dialog[open]) :is(.sidebar, .settings-nav, .detail-header, .detail-empty, .titlebar-drag, .window-brand) {
+[data-titlebar='inset']:has(dialog[open]) :is(.sidebar, .settings-nav, .detail-header, .detail-empty, .titlebar-drag, .window-brand, .title-bar) {
   -webkit-app-region: no-drag;
 }
 
@@ -5183,8 +5157,8 @@ div.inspector-empty > p { margin: 0 0 8px; }
 /* The frame on a backdrop. The sidebar, status bar and the brand over the sidebar take the
    frame's ink and see-through surfaces; the pane beside the sidebar becomes a solid card. */
 :root[data-backdrop] .app { background: var(--backdrop); }
-:root[data-backdrop] :is(.sidebar, .statusbar),
-:root[data-backdrop] .app:not([data-sidebar-hidden]) > .window-brand {
+:root[data-backdrop] :is(.sidebar, .statusbar, .title-bar),
+:root[data-backdrop] .app > .window-brand {
   color-scheme: var(--frame-scheme);
   /* Declared here, or the frame inherits the body's colour, already resolved in the window's scheme. */
   color: var(--text);
@@ -5194,8 +5168,8 @@ div.inspector-empty > p { margin: 0 0 8px; }
   --border-2: light-dark(rgb(0 0 0 / 14%), rgb(255 255 255 / 20%));
   --shadow: none;
 }
-:root[data-backdrop] :is(.sidebar, .statusbar, .window-brand) :is(.menu, [role='menu'], [role='dialog'], [role='listbox']),
-:root[data-backdrop] :is(.sidebar, .statusbar, .window-brand) [data-tooltip]::after {
+:root[data-backdrop] :is(.sidebar, .statusbar, .window-brand, .title-bar) :is(.menu, [role='menu'], [role='dialog'], [role='listbox']),
+:root[data-backdrop] :is(.sidebar, .statusbar, .window-brand, .title-bar) [data-tooltip]::after {
   color-scheme: var(--root-scheme);
   color: var(--text);
   --bg: var(--root-bg);
@@ -5205,7 +5179,7 @@ div.inspector-empty > p { margin: 0 0 8px; }
   --shadow: var(--root-shadow);
 }
 /* A tooltip is inverted (text on --bg over --text): the colour above would match its background. */
-:root[data-backdrop] :is(.sidebar, .statusbar, .window-brand) [data-tooltip]::after { color: var(--bg); }
+:root[data-backdrop] :is(.sidebar, .statusbar, .window-brand, .title-bar) [data-tooltip]::after { color: var(--bg); }
 :root[data-backdrop] .sidebar { border-right-color: transparent; }
 :root[data-backdrop] .statusbar { background: transparent; border-top-color: transparent; }
 :root[data-backdrop] .workspace > :not(.sidebar, .utility-panel-dock, .side-panel-separator) {
@@ -5225,8 +5199,7 @@ div.inspector-empty > p { margin: 0 0 8px; }
 :root[data-backdrop] .workspace > .side-panel-separator { margin-top: 8px; }
 :root[data-backdrop] .workspace > .side-panel-separator::before { content: ''; position: absolute; inset: 0 -4px; }
 :root[data-backdrop] .workspace > .side-panel-separator:not(:hover, :focus-visible, [data-dragging='true'])::after { background: transparent; }
-:root[data-backdrop] .workspace > :first-child:not(.sidebar),
-:root[data-backdrop] .workspace > .sidebar[hidden] + * { margin-left: 8px; }
+:root[data-backdrop] .workspace > :first-child:not(.sidebar) { margin-left: 8px; }
 /* In line with the panes, which keep a margin above and beside them here. */
 :root[data-backdrop] .utility-panel-dock { margin: 8px 8px 0 0; }
 
@@ -10331,7 +10304,6 @@ summary.agent-group-head:focus-visible { outline: 2px solid var(--focus); outlin
 .task-board-header { display: flex; align-items: center; gap: 8px; padding: 16px 20px 12px; flex-wrap: wrap; }
 .task-board-header h2 { margin: 0 8px 0 0; font-size: 18px; }
 /* With the sidebar away the header shares the window's corner with the app's name and switch. */
-.app[data-sidebar-hidden] .task-board-header { padding-left: max(20px, var(--window-brand-end)); }
 .task-board-search { flex: 0 1 220px; min-width: 120px; width: auto; height: 28px; padding: 0 10px; font-size: 12px; }
 .task-board-spacer { flex: 1; }
 .task-board-chip { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px; border: 1px solid var(--border-2); border-radius: var(--radius); background: transparent; color: var(--text-muted); font: inherit; font-size: 12px; white-space: nowrap; cursor: pointer; }

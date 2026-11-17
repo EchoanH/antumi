@@ -47,6 +47,8 @@ declare global {
       browserBounds?(bounds: { x: number; y: number; width: number; height: number }): void
       browserOccluded?(occluded: boolean): Promise<unknown>
       syncPanelShortcuts?(settings: ShortcutSettings): void
+      // Moves the traffic lights to the lower title bar; absent from a main older than the renderer.
+      compactTitleBar?(compact: boolean): void
       // Bookmarks to import, read by main; absent from a main older than the renderer.
       bookmarkSources?(): Promise<unknown>
       readBookmarks?(id: string): Promise<unknown>
@@ -320,6 +322,10 @@ const Shortcut = z.object({ kind: z.union([ShortcutAction, z.literal('settings')
 
 export function syncPanelShortcuts(settings: ShortcutSettings): void {
   window.antumi?.syncPanelShortcuts?.(settings)
+}
+
+export function compactTitleBar(compact: boolean): void {
+  window.antumi?.compactTitleBar?.(compact)
 }
 
 // An app shortcut pressed while a page had the keyboard; main caught it and passes it on.
