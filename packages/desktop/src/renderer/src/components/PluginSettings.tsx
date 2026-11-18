@@ -33,7 +33,8 @@ export function PluginSettings() {
   const [asset, setAsset] = useState('')
   const [trusted, setTrusted] = useState(false)
   const [remove, setRemove] = useState<string | null>(null)
-  const [status, setStatus] = useState('')
+  // Install's result shows by its button: the top of the page is scrolled out of view there.
+  const [status, setStatus] = useState<{ text: string, at: 'top' | 'install' } | null>(null)
 
   useEffect(() => {
     setRecommended([])
@@ -45,14 +46,15 @@ export function PluginSettings() {
     return () => { active = false }
   }, [rpc])
 
-  const run = async (action: Parameters<typeof perform>[0], message: string) => {
+  const run = async (action: Parameters<typeof perform>[0], message: string, at: 'top' | 'install' = 'top', done?: () => void) => {
     if (busy) return
     setBusy(true)
-    setStatus('')
+    setStatus(null)
     try {
       const result = await perform(action)
       if (result !== null) {
-        setStatus(message)
+        setStatus({ text: message, at })
+        done?.()
         const updated = await perform((connection) => connection.call('plugins.list', {}))
         if (updated) receivePlugins(updated)
       }
@@ -63,13 +65,15 @@ export function PluginSettings() {
     const source: PluginInstallSource = kind === 'local'
       ? { kind, path: location.trim() }
       : { kind, repository: location.trim(), ...(tag.trim() ? { tag: tag.trim() } : {}), ...(asset.trim() ? { asset: asset.trim() } : {}) }
-    void run((connection) => connection.call('plugins.install', { source }), t('PluginSettings.pluginInstalled'))
+    void run((connection) => connection.call('plugins.install', { source }), t('PluginSettings.pluginInstalled'), 'install', () => {
+      setLocation(''); setTag(''); setAsset(''); setTrusted(false)
+    })
   }
 
   return (
     <div className="plugin-settings">
       <p className="settings-note">{t('PluginSettings.notAgentPlugins')}</p>
-      {status && <p className="settings-status" role="status">{status}</p>}
+      {status?.at === 'top' && <p className="settings-status" role="status" data-ok>{status.text}</p>}
       {recommended.length > 0 && <SettingsGroup title={t('PluginSettings.recommended')} icon={<StarIcon />}>
         {recommended.map((entry) => {
           const installed = plugins?.find((plugin) => plugin.id === entry.id)
@@ -144,7 +148,10 @@ export function PluginSettings() {
           </>}
           <p className="settings-note">{t('PluginSettings.pluginsRunLocalCodeAndReceiveCredentialsFor')}</p>
           <label className="plugin-trust">{tr('PluginSettings.iTrustThisPluginAndItsSource', { value1: <input type="checkbox" checked={trusted} disabled={busy} onChange={(event) => setTrusted(event.target.checked)} /> })}</label>
-          <button className="button primary" type="submit" disabled={busy || !location.trim() || !trusted}>{busy ? t('PluginSettings.processing') : t('PluginSettings.installPlugin')}</button>
+          <div className="plugin-actions">
+            <button className="button primary" type="submit" disabled={busy || !location.trim() || !trusted}>{busy ? t('PluginSettings.processing') : t('PluginSettings.installPlugin')}</button>
+            {status?.at === 'install' && <p className="settings-status" role="status" data-ok>{status.text}</p>}
+          </div>
         </form>
       </SettingsGroup>
     </div>
