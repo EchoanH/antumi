@@ -1476,6 +1476,11 @@ button.task-tag:hover {
   background: var(--surface);
 }
 
+/* A conversation's header is a little shorter than the other panes' title bars. */
+[data-titlebar='inset'] .conversation-header {
+  min-height: 44px;
+}
+
 [data-titlebar='inset'] .titlebar-drag {
   display: block;
   position: sticky;
