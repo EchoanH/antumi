@@ -211,7 +211,7 @@ claude -p --verbose --output-format stream-json --input-format stream-json --inc
 
 **环境变量**：daemon 多了一个方法 `spawnPipeClean`，只带 `CLEAN_ENV_KEYS`（`PATH`、`HOME`、语言、临时目录、Windows 启动进程要的几个、代理和 CA）和 core 显式给的变量。是单独的方法而不是 `spawnPipe` 的参数：旧 daemon 会忽略不认识的参数、把整个环境传下去，单独的方法它只会报不认识，core 就不启动这类会话。
 
-旧 daemon 只在它什么都不跑时才被 App 换掉（`replaceOldDaemon`），所以升级后一直开着 Agent 的电脑，每个提问都会以 `daemon-outdated` 失败。daemon 的 `info.features` 里有 `clean-pipe` 才算支持；`channels.readiness` 据此回答，桌面端在「聊天平台」区块里提前提示，并给出这个 daemon 的 PID，好让用户退出 App 后结束它。失败的提问在 `channel_requests.error_reason` 里记下拒绝的原因代码（`ChannelRequest.errorReason`），提问记录按它显示本地化的说明，没有代码的才显示原始诊断。
+旧 daemon 只在它什么都不跑时才被 App 换掉（`replaceOldDaemon`），所以升级后一直开着 Agent 的电脑，若 daemon 还不认识 `spawnPipeClean`，每个提问都会以 `daemon-outdated` 失败。core 先看 `info.features` 的 `clean-pipe`；早期 daemon 已实现方法但未声明标记时，用 `params: null` 探测该方法：不认识会报 `unknown-method`，认识则在参数校验处拒绝，不会启动进程。`channels.readiness` 只在确认不支持时回答 `outdated`，桌面端在「聊天平台」区块里提前提示，并给出这个 daemon 的 PID，好让用户退出 App 后结束它。失败的提问在 `channel_requests.error_reason` 里记下拒绝的原因代码（`ChannelRequest.errorReason`），提问记录按它显示本地化的说明，没有代码的才显示原始诊断。
 
 **Codex 的锁死运行**（`codex-lockdown.ts`、`codex-app-server.ts`）：
 
