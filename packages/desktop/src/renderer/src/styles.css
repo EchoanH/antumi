@@ -642,7 +642,8 @@ body.stacked-panel-resizing * {
   top: 0;
   right: -5px;
   bottom: 0;
-  z-index: 2;
+  /* Above the sticky headers beside it (2), which would otherwise hide half of the line. */
+  z-index: 3;
   width: 9px;
   cursor: col-resize;
   touch-action: none;
