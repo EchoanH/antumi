@@ -82,7 +82,7 @@ You can also hand a conversation to another agent partway through. Each task get
 
 You need at least one agent CLI installed and signed in. ZCode uses the desktop app or `zcode-app-cli`. Antigravity is downloaded under Settings → External agents. The first launch checks whether each agent is installed and usable. The installer itself does not need Node.
 
-1. **Install.** Download from [Releases](https://github.com/flyhero/antumi/releases): macOS Apple Silicon, Windows x64, Linux x64. The macOS app is ad-hoc signed only. After dragging it to Applications, clear the quarantine attribute, then open it:
+1. **Install.** Download from [Releases](https://github.com/flyhero/antumi/releases): macOS Apple Silicon / Intel, Windows x64, Linux x64. The macOS app is ad-hoc signed only. After dragging it to Applications, clear the quarantine attribute, then open it:
 
    ```bash
    xattr -dr com.apple.quarantine /Applications/Antumi.app
@@ -123,7 +123,7 @@ For a hands-on try, use a separate home so your real data stays untouched:
 ANTUMI_HOME=~/.antumi-demo pnpm dev
 ```
 
-Packaging: `pnpm dist:mac` (Apple Silicon), `pnpm dist:win` (x64, can be built on macOS), `pnpm dist:linux` (x64, Linux only, needs `build-essential` and `python3`). Output is in `packages/desktop/dist/`. Steps are in [Releasing](docs/RELEASING.md).
+Packaging: `pnpm dist:mac` (Apple Silicon and Intel), `pnpm dist:win` (x64, can be built on macOS), `pnpm dist:linux` (x64, Linux only, needs `build-essential` and `python3`). Output is in `packages/desktop/dist/`. Steps are in [Releasing](docs/RELEASING.md).
 
 </details>
 

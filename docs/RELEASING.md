@@ -32,7 +32,7 @@ node -p 'require("./package.json").version'
 
 ```bash
 pnpm install
-pnpm dist:mac    # → packages/desktop/dist/Antumi-<版本>-macos-arm64.dmg（Apple 芯片）
+pnpm dist:mac    # → packages/desktop/dist/Antumi-<版本>-macos-arm64.dmg（Apple 芯片）和 -macos-x64.dmg（Intel）
 pnpm dist:win    # → packages/desktop/dist/Antumi-<版本>-windows-x64.exe（macOS 上也能打）
 pnpm dist:linux  # → packages/desktop/dist/Antumi-<版本>-linux-x86_64.AppImage 和 -linux-amd64.deb（只能在 Linux 上打，要有 C++ 编译器和 python3）
 ```
@@ -46,7 +46,7 @@ cd packages/desktop
 pnpm exec electron-vite build
 node scripts/bundle-backend.mjs --platform darwin
 pnpm exec electron-builder --mac --publish never -c.extraMetadata.version=<下一版>-beta.1
-# → packages/desktop/dist/Antumi-<下一版>-beta.1-macos-arm64.dmg
+# → packages/desktop/dist/Antumi-<下一版>-beta.1-macos-arm64.dmg 和 -macos-x64.dmg
 ```
 
 打完检查（mac）：

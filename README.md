@@ -82,7 +82,7 @@ GitHub、Jira、Linear、禅道的新 issue 一同步进来，Antumi 就自动�
 
 需要至少装好并登录一个 Agent CLI。ZCode 用桌面版或 `zcode-app-cli`；Antigravity 在设置 → 外部智能体里下载。第一次打开会检查 Agent 装没装、能不能用。安装包本身不需要 Node。
 
-1. **安装。** 到 [Releases](https://github.com/flyhero/antumi/releases) 下载：macOS Apple Silicon、Windows x64、Linux x64。macOS 只有 ad-hoc 签名，拖进「应用程序」后先去掉隔离属性，再打开：
+1. **安装。** 到 [Releases](https://github.com/flyhero/antumi/releases) 下载：macOS Apple Silicon / Intel、Windows x64、Linux x64。macOS 只有 ad-hoc 签名，拖进「应用程序」后先去掉隔离属性，再打开：
 
    ```bash
    xattr -dr com.apple.quarantine /Applications/Antumi.app
@@ -123,7 +123,7 @@ pnpm dev
 ANTUMI_HOME=~/.antumi-demo pnpm dev
 ```
 
-打包：`pnpm dist:mac`（Apple Silicon）、`pnpm dist:win`（x64，在 macOS 上也能打）、`pnpm dist:linux`（x64，只能在 Linux 上打，需要 `build-essential` 和 `python3`）。产物在 `packages/desktop/dist/`。步骤见[发版与打包](docs/RELEASING.md)。
+打包：`pnpm dist:mac`（Apple Silicon 和 Intel）、`pnpm dist:win`（x64，在 macOS 上也能打）、`pnpm dist:linux`（x64，只能在 Linux 上打，需要 `build-essential` 和 `python3`）。产物在 `packages/desktop/dist/`。步骤见[发版与打包](docs/RELEASING.md)。
 
 </details>
 

@@ -751,11 +751,11 @@ Windows 的 PowerShell 里这样设：`$env:ANTUMI_HOME = "$HOME\.antumi-demo"; 
 ## 8. 打包与安装
 
 
-macOS（Apple Silicon）可以打包成 dmg：
+macOS 可以打包成 dmg，Apple 芯片和 Intel 各一个：
 
 ```bash
 pnpm install
-pnpm dist:mac     # 产物在 packages/desktop/dist/Antumi-<版本>-macos-arm64.dmg
+pnpm dist:mac     # 产物在 packages/desktop/dist/Antumi-<版本>-macos-arm64.dmg 和 -macos-x64.dmg
 ```
 
 `dist:mac` 依次执行 electron-vite 构建、`bundle-backend`（esbuild 把 core、daemon 和 MCP 服务各打成一个 JS，附上 node-pty 的 macOS 预编译）和 electron-builder。打包的 App 由 Electron 自带的 Node 运行这些文件（`ELECTRON_RUN_AS_NODE`），所以**装了 App 的机器不需要 Node 和 pnpm**，只需要 `claude` / `codex` CLI 本身。
