@@ -256,7 +256,7 @@ function SlackMark() {
 }
 
 // Feishu's mark, the three paths of the open platform's own favicon (lf-package-cn.feishucdn.com,
-// lark/open/website/favicon-logo.svg) without its white tile; the logo is ByteDance's trademark.
+// lark/open/website/favicon-logo.svg) without its white tile, Lark's too; the logo is ByteDance's trademark.
 function FeishuMark() {
   return (
     <svg className="channel-mark" viewBox="1.05 0.75 14.5 14.5" aria-hidden="true">
@@ -277,7 +277,7 @@ function DingtalkMark() {
   )
 }
 
-const CHANNEL_MARKS = { slack: SlackMark, feishu: FeishuMark, dingtalk: DingtalkMark } satisfies Record<ChannelPlatform, () => ReactElement>
+const CHANNEL_MARKS = { slack: SlackMark, feishu: FeishuMark, lark: FeishuMark, dingtalk: DingtalkMark } satisfies Record<ChannelPlatform, () => ReactElement>
 
 // A chat platform an agent answers on, by its own logo.
 export function ChannelPlatformIcon({ platform }: { platform: ChannelPlatform }) {

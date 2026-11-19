@@ -56,7 +56,7 @@ The inbox shows the status and investigation record of every issue. You can also
 
 ### An agent answers for you in team chat
 
-Put an agent on Slack, Feishu or DingTalk and it stands in for you there. Colleagues mention it to ask where a feature lives or what an error means, with a screenshot if they like. It reads the code to answer, in a reply under their message, and you are not interrupted.
+Put an agent on Slack, Feishu, Lark or DingTalk and it stands in for you there. Colleagues mention it to ask where a feature lives or what an error means, with a screenshot if they like. It reads the code to answer, in a reply under their message, and you are not interrupted.
 
 It reads and never changes anything, sees only the projects you picked, and is never given files such as keys. Who asked what, which files it read and what it answered are all on record.
 

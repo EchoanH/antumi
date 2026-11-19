@@ -147,6 +147,8 @@ The steps are the same; click **Add 飞书**. What differs is making the app and
 - Feishu shows member IDs and group IDs nowhere. Add the bot to the group and have the colleague mention it once: anyone not yet allowed gets a reply with their ID (starting `ou_`) and the group's (starting `oc_`) to put on the allow list.
 - In a group it answers as a topic; mention it again inside the topic to go on.
 
+On Lark, Feishu's international edition, click **Add Lark**: the steps are the same as Feishu's, with the app made in the Lark developer console (open.larksuite.com).
+
 ### On DingTalk
 
 The steps are the same; click **Add 钉钉**. What differs:
