@@ -11,6 +11,7 @@ import {
 import { Rejection } from './rejection'
 
 export type SessionHost = {
+  assertConnected?(): void
   request<M extends DaemonMethod>(method: M, params: DaemonParams<M>): Promise<DaemonResult<M>>
   onEvent(listener: (event: DaemonEvent) => void): () => void
 }
@@ -53,6 +54,10 @@ export class DaemonClient implements SessionHost {
 
   async request<M extends DaemonMethod>(method: M, params: DaemonParams<M>): Promise<DaemonResult<M>> {
     return daemonSchemas[method].result.parse(await this.requestRaw(method, params))
+  }
+
+  assertConnected(): void {
+    if (!this.socket) throw new Rejection('daemon-unavailable', 'PTY daemon is not running (pnpm dev:daemon)')
   }
 
   // Early daemons implemented methods before advertising them in info.features. Null fails

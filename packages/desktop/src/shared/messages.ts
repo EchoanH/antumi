@@ -1,5 +1,9 @@
 // Application-owned text. Values and external content are passed separately.
 export const MESSAGES = {
+  "ChatDelivery.sending": { zh: "发送中…", en: "Sending…" },
+  "ChatDelivery.failed": { zh: "发送失败：{reason}", en: "Send failed: {reason}" },
+  "ChatDelivery.notSent": { zh: "消息未发送，请重试", en: "Message not sent. Try again." },
+  "ChatDelivery.requiresNewerCore": { zh: "当前后台版本不支持安全重试，请更新后台", en: "Update the backend to retry this message safely." },
   "AutoInvestigation.title": {"zh": "新问题自动排查", "en": "Automatically investigate new issues"},
   "AutoInvestigation.hint": {"zh": "首次启用只记录当前问题，之后新发现的问题才会自动排查。排查会消耗所选 Agent 的额度。", "en": "Enabling records existing issues first. Only newly discovered issues are investigated automatically, using the selected Agent’s quota."},
   "AutoInvestigation.projects": {"zh": "排查项目（必填）", "en": "Projects (required)"},
