@@ -158,7 +158,12 @@ describe('stdio tunnel', () => {
   it('closes the accepted socket when the dial is refused or the target unknown', async () => {
     const { a } = await pair({ a: { offers: [{ target: 'x' }, { target: 'nowhere' }] }, b: { dials: { x: await closedPort() } } })
     for (const target of ['x', 'nowhere']) {
-      const socket = await connect(port(a, target))
+      // On Linux the reset can land before the client's own connect has returned: closed all the same.
+      const socket = await connect(port(a, target)).catch((error: unknown) => {
+        if (error instanceof Error && 'code' in error && error.code === 'ECONNRESET') return null
+        throw error
+      })
+      if (!socket) continue
       socket.on('error', () => {})
       socket.write('anyone?')
       await closeOf(socket)
