@@ -3,6 +3,7 @@ import { SourceCommentOptions, SourceCommentPage, SourceCommentState } from './s
 import { MAX_ATTACHMENT_BYTES, MAX_TASK_IMAGES } from './attachments'
 import { LoginNotice, LoginPrompt, SettingField, SourceId, SourceIssue, SourceProblem } from './source'
 import { TextTranslations } from './localization'
+import { PluginBrowserRequest, PluginBrowserResult, PluginBrowserSite } from './plugin-browser'
 
 export const PLUGIN_PROTOCOL_VERSION = 1
 export const PluginId = z.string().max(120).regex(/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/)
@@ -11,7 +12,11 @@ export const PluginSource = z.object({ id: SourceId, name: z.string().min(1).max
 // A page the plugin draws itself, which the desktop shows in a sandboxed frame. entry is its HTML,
 // in a directory of its own inside the package: everything in that directory is served to the frame.
 export const PluginPageId = z.string().regex(/^[a-z][a-z0-9-]{0,31}$/)
-export const PluginPage = z.object({ id: PluginPageId, label: z.string().min(1).max(64), translations: TextTranslations.optional(), entry: z.string().min(1).max(240) })
+export const PluginPage = z.object({
+  id: PluginPageId, label: z.string().min(1).max(64), translations: TextTranslations.optional(), entry: z.string().min(1).max(240),
+  // A stroke on the sidebar's 20px grid, never plugin-supplied SVG markup or a remote image.
+  icon: z.object({ path: z.string().min(1).max(1024).regex(/^[Mm][MmLlHhVvCcSsQqTtAaZz0-9eE+.,\s-]+$/) }).optional()
+})
 export type PluginPage = z.infer<typeof PluginPage>
 export const PluginManifest = z.object({
   id: PluginId,
@@ -21,6 +26,7 @@ export const PluginManifest = z.object({
   contributes: z.object({ sources: z.array(PluginSource).max(16).default([]), pages: z.array(PluginPage).max(4).default([]) })
     .refine((value) => value.sources.length + value.pages.length > 0),
   entry: z.object({ runtime: z.literal('node'), main: z.string().min(1).max(240) }),
+  browserSites: z.array(PluginBrowserSite).max(8).refine((sites) => new Set(sites.map((site) => site.id)).size === sites.length).optional(),
   env: z.array(z.string().regex(/^[A-Z_][A-Z0-9_]*$/)).max(32).default([])
 })
 
@@ -63,7 +69,7 @@ export type PluginCredential = z.infer<typeof PluginCredential>
 const Settings = z.record(z.string(), z.string())
 export const PluginPageMethod = z.string().min(1).max(64)
 export const pluginMethods = {
-  handshake: { params: z.object({ protocolVersion: z.number().int() }), result: z.object({ protocolVersion: z.literal(PLUGIN_PROTOCOL_VERSION), id: PluginId, version: PluginVersion, sources: z.array(SourceId), pages: z.array(PluginPageId).default([]) }) },
+  handshake: { params: z.object({ protocolVersion: z.number().int(), features: z.array(z.string()).optional() }), result: z.object({ protocolVersion: z.literal(PLUGIN_PROTOCOL_VERSION), id: PluginId, version: PluginVersion, sources: z.array(SourceId), pages: z.array(PluginPageId).default([]) }) },
   normalizeSettings: { params: z.object({ source: SourceId, settings: Settings }), result: Settings },
   normalizeKey: { params: z.object({ source: SourceId, key: z.string() }), result: z.string() },
   envCredential: { params: z.object({ source: SourceId }), result: PluginCredential.nullable() },
@@ -93,7 +99,9 @@ export const PluginCall = z.object({
   params: z.unknown()
 })
 export const PluginAnswer = z.object({ type: z.literal('answer'), id: z.string(), value: z.string() })
+export const PluginBrowserAnswer = z.object({ type: z.literal('browserResult'), id: z.string(), result: PluginBrowserResult.optional(), error: z.string().max(2000).optional() })
 export const PluginMessage = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('browser'), id: z.string().max(100), request: PluginBrowserRequest }),
   z.object({ type: z.literal('result'), id: z.string(), result: z.unknown() }),
   z.object({ type: z.literal('error'), id: z.string(), error: SourceProblem }),
   z.object({ type: z.literal('prompt'), id: z.string(), prompt: LoginPrompt }),

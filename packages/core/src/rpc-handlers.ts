@@ -316,7 +316,7 @@ export function createRpcHandlers(
     'plugins.rollback': ({ id, version }) => pluginService().rollback(id, version),
     'plugins.uninstall': async ({ id }) => { await pluginService().uninstall(id); return OK },
     'plugins.pageFiles': ({ id, page }) => pluginService().pageFiles(id, page),
-    'plugins.pageCall': ({ id, page, method, params }) => pluginService().pageCall(id, page, method, params),
+    'plugins.pageCall': ({ id, page, method, params }, connection) => pluginService().pageCall(id, page, method, params, (tabId) => connection.notify('browser.showTab', { tabId })),
     'agentProfiles.list': () => profileService().list(),
     'agentProfiles.save': ({ id, ...fields }) => profileService().save(fields, id),
     'agentProfiles.archive': ({ id, archived }) => profileService().archive(id, archived),

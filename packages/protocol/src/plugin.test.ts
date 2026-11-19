@@ -44,3 +44,13 @@ it('reads a handshake and a plugin record from before pages', () => {
   expect(pluginSchemas.page.params.safeParse({ page: 'reader', method: 'list', params: { channel: 'hot' } }).success).toBe(true)
   expect(PluginCall.safeParse({ type: 'call', id: 'call', method: 'page', params: {} }).success).toBe(true)
 })
+
+it('preserves optional sidebar icon paths and rejects markup or external resources', () => {
+  const icon = { path: 'M6 4v12h9' }
+  expect(PluginManifest.parse({ ...manifest, contributes: { pages: [{ ...page, icon }] } }).contributes.pages[0]?.icon).toEqual(icon)
+  const record = PluginInfo.parse({ ...manifest, enabled: true, sources: [], pages: [{ ...page, icon }], versions: ['1.0.0'], origin: { kind: 'bundled' }, problem: null })
+  expect(record.pages[0]?.icon).toEqual(icon)
+  for (const path of ['', 'M'.repeat(1025), '<svg onload="alert(1)">', 'https://example.com/logo.svg']) {
+    expect(PluginManifest.safeParse({ ...manifest, contributes: { pages: [{ ...page, icon: { path } }] } }).success).toBe(false)
+  }
+})

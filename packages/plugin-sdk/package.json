@@ -1,6 +1,6 @@
 {
   "name": "@antumi/plugin-sdk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Build standalone Antumi plugins with sources and pages",
   "type": "module",
   "license": "Apache-2.0",

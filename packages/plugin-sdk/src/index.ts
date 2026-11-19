@@ -1,5 +1,6 @@
 export { runPlugin, runSourcePlugin } from './plugin-runtime.js'
-export type { PluginPageHandler, PluginPages } from './plugin-runtime.js'
+export type { PluginPageHandler, PluginPageContext, PluginPages } from './plugin-runtime.js'
+export type { PluginBrowserRequest, PluginBrowserResult, PluginBrowserResponse } from '../../protocol/src/plugin-browser.js'
 export { SourceError } from './source-error.js'
 export type { SourcePlugin, SourceSettings, SourceCredential, SourceIssueDetail, SourceFetchOptions, LoginSession } from './source-plugin.js'
 export { PLUGIN_PROTOCOL_VERSION, PluginManifest } from '../../protocol/src/plugin.js'

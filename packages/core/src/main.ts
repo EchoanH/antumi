@@ -377,7 +377,7 @@ ${comments}` }, [], Infinity)
 
 
 const plugins = new PluginService(path.join(paths.home, 'plugins'), packageJson.version, sources, sourceConfig, [],
-  (plugins) => server?.broadcast('plugins.changed', { plugins }))
+  (plugins) => server?.broadcast('plugins.changed', { plugins }), browser)
 await plugins.load()
 const pets = new PetLibrary(path.join(paths.home, 'pets'), {
   developmentDirectory: process.env.ANTUMI_PET_DIRECTORY,

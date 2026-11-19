@@ -3,8 +3,7 @@ import { useLocale } from '../i18n'
 import { availablePluginPages, pluginPageLabel } from '../plugin-pages'
 import { PuzzleIcon } from './icons'
 
-// One entry per page of each enabled plugin, beside the routines and agents: plugins name their
-// pages, so they share one icon.
+// One entry per page of each enabled plugin, beside the routines and agents.
 export function PluginPageEntries() {
   const supported = usePluginPagesSupported()
   const plugins = useCore((s) => s.plugins)
@@ -14,7 +13,9 @@ export function PluginPageEntries() {
   return <>{availablePluginPages(plugins).map((entry) => {
     const label = pluginPageLabel(entry.info, locale)
     return <button key={`${entry.plugin}/${entry.page}`} type="button" className="inbox-entry sidebar-plugin-page" aria-current={open?.plugin === entry.plugin && open.page === entry.page} aria-label={label} title={label} onClick={() => openPluginPage(entry.plugin, entry.page)}>
-      <PuzzleIcon />
+      {entry.info.icon
+        ? <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={entry.info.icon.path} /></svg>
+        : <PuzzleIcon />}
       <span className="sidebar-navigation-label">{label}</span>
     </button>
   })}</>

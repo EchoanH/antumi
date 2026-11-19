@@ -14,6 +14,8 @@ import type { SourceProvider } from './source-provider'
 import type { SourceService } from './source-service'
 import type { SourceConfigStore } from './source-config'
 import recommended from './plugins-recommended.json' with { type: 'json' }
+import type { BrowserService } from './browser-service'
+import { pluginBrowserRequest } from './plugin-browser'
 
 const Installed = z.object({ manifest: PluginManifest, enabled: z.boolean(), versions: z.array(PluginVersion), origin: PluginInfo.shape.origin })
 type Installed = z.infer<typeof Installed>
@@ -38,7 +40,8 @@ export class PluginService {
     private readonly sources: SourceService,
     private readonly config: SourceConfigStore,
     private readonly builtins: readonly SourceProvider[],
-    private readonly changed: (plugins: PluginInfo[]) => void = () => {}
+    private readonly changed: (plugins: PluginInfo[]) => void = () => {},
+    private readonly browser?: Pick<BrowserService, 'pluginSession'>
   ) {}
 
   private save(registry: Registry): Promise<void> {
@@ -141,17 +144,24 @@ export class PluginService {
     }
   }
 
-  async pageCall(id: string, page: string, method: string, params: unknown): Promise<{ result: unknown }> {
+  async pageCall(id: string, page: string, method: string, params: unknown, showTab?: (tabId: string) => void): Promise<{ result: unknown }> {
     let counted = false
     try {
-      const { loaded } = this.page(id, page)
+      const { loaded, record } = this.page(id, page)
       const json = JSON.stringify(params)
       if (json === undefined || Buffer.byteLength(json) > MAX_PLUGIN_PAGE_PARAMS) throw new Error('插件页面参数必须是 JSON，且不超过 64 KiB')
       const calls = this.pageCalls.get(id) ?? 0
       if (calls >= 4) throw new Error('插件页面同时调用不能超过 4 个，请稍后重试')
       this.pageCalls.set(id, calls + 1)
       counted = true
-      return await loaded.process.call('page', { page, method, params })
+      const browser = this.browser
+      return await loaded.process.call('page', { page, method, params }, undefined, undefined, browser ? async (request, signal) => {
+        signal.throwIfAborted()
+        const resolved = pluginBrowserRequest(record.manifest, request, this.root)
+        const result = await browser.pluginSession(resolved)
+        if (!signal.aborted && result.tabId && request.action === 'open') showTab?.(result.tabId)
+        return result
+      } : undefined)
     } catch (error) { throw sourceRejection(error) }
     finally {
       if (counted) {

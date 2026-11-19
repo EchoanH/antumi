@@ -162,10 +162,28 @@ function pageHarness(pages: PluginPages) {
   cleanup.push(() => { runtime.close(); input.destroy(); output.destroy() })
   const call = (method: string, params: unknown) => input.write(`${JSON.stringify({ type: 'call', id: method, method, params })}\n`)
   const tick = () => new Promise<void>((resolve) => setImmediate(resolve))
-  return { runtime, call, tick, messages, async hello() { call('handshake', { protocolVersion: 1 }); await tick() } }
+  return { runtime, input, call, tick, messages, async hello(features?: string[]) { call('handshake', { protocolVersion: 1, features }); await tick() } }
 }
 
 describe('plugin SDK pages', () => {
+  it('round-trips a browser callback only when the host advertises support', async () => {
+    const pages: PluginPages = { dashboard: { status: (_params, context) => context.browser({ action: 'status', site: 'forum' }) } }
+    const old = pageHarness(pages)
+    await old.hello()
+    old.call('page', { page: 'dashboard', method: 'status', params: null })
+    await old.tick()
+    expect(old.messages.at(-1)).toMatchObject({ type: 'error', error: { message: expect.stringContaining('升级 Antumi') } })
+    const h = pageHarness(pages)
+    await h.hello(['browser-sessions'])
+    h.call('page', { page: 'dashboard', method: 'status', params: null })
+    await h.tick()
+    expect(h.messages.at(-1)).toMatchObject({ type: 'browser', request: { action: 'status', site: 'forum' } })
+    const callback = h.messages.at(-1)
+    if (callback?.type !== 'browser') throw new Error('missing browser callback')
+    h.input.write(`${JSON.stringify({ type: 'browserResult', id: callback.id, result: { connected: true } })}\n`)
+    await h.tick()
+    expect(h.messages.at(-1)).toMatchObject({ type: 'result', result: { result: { connected: true } } })
+  })
   it('handshakes pages alone and permits just one operation', async () => {
     const h = pageHarness({ dashboard: { echo: (params) => params } })
     await h.hello()

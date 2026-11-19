@@ -1634,6 +1634,7 @@ export function startCoreConnection(scope: 'app' | 'requests' = 'app'): void {
         rpc.on('conversations.chatItems', ({ conversationId, items, replaceStage }) => receiveChatItems(conversationId, items, replaceStage))
         rpc.on('conversations.chatDelta', ({ conversationId, stageId, itemId, append }) => receiveChatDelta(conversationId, stageId, itemId, append))
         rpc.on('browser.changed', ({ status }) => useCore.setState({ browser: status }))
+        rpc.on('browser.showTab', ({ tabId }) => showBrowserTab(tabId))
         rpc.on('system.awakeChanged', ({ status }) => useCore.setState({ awake: status }))
         rpc.on('system.chatSettingsChanged', ({ settings }) => useCore.setState({ chatSettings: settings }))
         rpc.on('system.agentCliChanged', ({ status }) => useCore.setState((s) => ({ agentCli: mergeCliStatuses(s.agentCli, [status]) })))
