@@ -20,7 +20,15 @@ contextBridge.exposeInMainWorld('antumi', {
   revealFile: (candidates: string[]): Promise<unknown> => ipcRenderer.invoke('antumi:reveal-file', candidates),
   openFile: (path: string): Promise<unknown> => ipcRenderer.invoke('antumi:open-file', path),
   // Where a file dropped on the window is on disk; empty for one that is not a file there.
-  pathForFile: (file: File): string => webUtils.getPathForFile(file),
+  // As core names it: a backend in a WSL distro reads this machine's files under /mnt, and main
+  // knows which backend this is.
+  pathForFile: (file: File): string => {
+    const path = webUtils.getPathForFile(file)
+    const named: unknown = path ? ipcRenderer.sendSync('antumi:backend-path', path) : path
+    return typeof named === 'string' ? named : ''
+  },
+  backendLocation: (): Promise<unknown> => ipcRenderer.invoke('antumi:backend-location'),
+  setBackendLocation: (location: unknown): Promise<unknown> => ipcRenderer.invoke('antumi:backend-location-set', location),
   openWithApps: (): Promise<unknown> => ipcRenderer.invoke('antumi:open-with-apps'),
   openWith: (path: string, app: string): Promise<unknown> => ipcRenderer.invoke('antumi:open-with', path, app),
   notify: (notice: unknown): Promise<unknown> => ipcRenderer.invoke('antumi:notify', notice),

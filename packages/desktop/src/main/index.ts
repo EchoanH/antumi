@@ -7,8 +7,9 @@ import { z } from 'zod'
 import { PLUGIN_PAGE_SCHEME, PluginPageFiles, resolveUiLocale, UiLocale } from '@antumi/protocol'
 import { applicationMenu } from './application-menu'
 import { ShortcutAction, ShortcutSettings } from '../shared/keyboard-shortcuts'
-import { antumiPaths, readCoreEndpoint } from '@antumi/protocol/node'
-import { ensureBackend, replaceOldDaemon, stopBackendForInstall } from './backend'
+import { ensureBackend, stopBackendForInstall } from './backend'
+import { AppBackend } from './app-backend'
+import { BackendLocation } from '../shared/backend-location'
 import { popupWindowOptions, RequestPopup } from './request-popup'
 import { defaultIslandMode, islandDisplay } from './popup-placement'
 import { PanelWindows, parseDockPayload, parseHandoff, parsePanelCommands, parsePanelKind } from './panel-windows'
@@ -33,6 +34,16 @@ const slot = new WindowSlot()
 let browserHost: BrowserHost | null = null
 let mainWindow: BrowserWindow | null = null
 let uiLocale: UiLocale = 'en'
+// Daemon and core, on this machine or in a WSL distro: asked here for where core is and how a
+// path of its reads on this machine.
+const backend = new AppBackend({
+  locationFile: join(app.getPath('userData'), 'backend.json'),
+  privateHostFile: join(app.getPath('userData'), 'wsl-browser-host.json'),
+  version: app.getVersion(),
+  packaged: app.isPackaged,
+  platform: process.platform,
+  resources: process.resourcesPath
+})
 const uiText = (en: string, zh: string): string => uiLocale === 'en' ? en : zh
 const PRELOAD = join(__dirname, '../preload/index.js')
 
@@ -67,8 +78,10 @@ async function servePreview(request: Request): Promise<Response> {
   const url = new URL(request.url)
   const named = decodeURIComponent(url.pathname)
   // A Windows path comes as /C:/x (see urlPath in the renderer).
-  const path = process.platform === 'win32' && /^\/[a-zA-Z]:\//.test(named) ? named.slice(1) : named
-  if (url.host !== 'file' || !isAbsolute(path)) return new Response('not found', { status: 404 })
+  const spelled = process.platform === 'win32' && /^\/[a-zA-Z]:\//.test(named) ? named.slice(1) : named
+  // A file of a backend in WSL is read where this machine reaches it.
+  const path = backend.fromBackendPath(spelled)
+  if (url.host !== 'file' || !path || !isAbsolute(path)) return new Response('not found', { status: 404 })
   try {
     // The path as it really is: a link may not lead the frame somewhere else under a page's name.
     const real = await realpath(path)
@@ -353,8 +366,35 @@ ipcMain.handle('antumi:plugin-page-remove', (event, url: unknown) => {
   if (typeof url === 'string') pluginPages.remove(event.sender.id, url)
 })
 
-// Re-read on every call: core rewrites the file with a new port/token on restart.
-ipcMain.handle('antumi:core-endpoint', () => readCoreEndpoint())
+ipcMain.handle('antumi:core-endpoint', () => backend.coreEndpoint())
+
+// Where the backend runs, and the choice of it for the next start: the app talks to one backend
+// for as long as it runs, so a new choice restarts it.
+ipcMain.handle('antumi:backend-location', () => backend.state())
+ipcMain.handle('antumi:backend-location-set', async (_event, location: unknown) => {
+  const parsed = BackendLocation.safeParse(location)
+  if (!parsed.success) return false
+  await backend.choose(parsed.data)
+  app.relaunch()
+  app.quit()
+  return true
+})
+// A file dropped on the window, named as core reads it. Synchronous, as the drop's handler is.
+ipcMain.on('antumi:backend-path', (event, path: unknown) => {
+  event.returnValue = typeof path === 'string' ? backend.toBackendPath(path) : null
+})
+
+// A folder or file the user picked, as core names it. One a backend in WSL cannot reach (another
+// distro's, a network share) is said so rather than handed over as a path that leads nowhere.
+function picked(window: BrowserWindow | null, path: string | undefined): string | null {
+  if (!path) return null
+  const named = backend.toBackendPath(path)
+  if (named) return named
+  const options = { type: 'warning' as const, message: uiText('This place cannot be reached from the WSL distro Antumi runs in', '运行 Antumi 的 WSL 发行版访问不到这个位置'), detail: path }
+  if (window && !window.isDestroyed()) dialog.showMessageBoxSync(window, options)
+  else dialog.showMessageBoxSync(options)
+  return null
+}
 
 // Drives prefers-color-scheme in every window and the native chrome with it.
 ipcMain.handle('antumi:set-theme', (_event, theme: unknown) => {
@@ -393,22 +433,30 @@ ipcMain.handle('antumi:pick-plugin', async (event, kind: unknown) => {
     : { title: uiText('Choose plugin ZIP', '选择插件 ZIP'), properties: ['openFile'], filters: [{ name: uiText('Plugin ZIP', '插件 ZIP'), extensions: ['zip'] }] }
   const window = BrowserWindow.fromWebContents(event.sender)
   const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
-  return result.canceled ? null : (result.filePaths[0] ?? null)
+  return result.canceled ? null : picked(window, result.filePaths[0])
 })
 
 ipcMain.handle('antumi:pick-folder', async (event, defaultPath: unknown, title: unknown) => {
   const options: OpenDialogOptions = {
     title: typeof title === 'string' && title ? title : uiText('Choose code repository', '选择代码仓库'),
     properties: ['openDirectory'],
-    defaultPath: typeof defaultPath === 'string' ? defaultPath : undefined
+    // The renderer names a place as core does.
+    defaultPath: (typeof defaultPath === 'string' ? backend.fromBackendPath(defaultPath) : null) ?? backend.dialogStart()
   }
   const window = BrowserWindow.fromWebContents(event.sender)
   const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
-  return result.canceled ? null : (result.filePaths[0] ?? null)
+  return result.canceled ? null : picked(window, result.filePaths[0])
 })
 
 // Bookmarks to bring into the built-in browser: from another browser's profile on this machine, or
 // from a page of them a browser exported. Read here, where the user's files are; core keeps them.
+// A path the renderer named, which is core's, as this machine opens it. `~` is core's home: a
+// backend in WSL has put the distro's there already, one on this machine has this machine's.
+function hereOf(path: string): string | null {
+  const here = backend.fromBackendPath(path)
+  return here !== null && (here === '~' || /^~[\\/]/.test(here)) ? join(homedir(), here.slice(1)) : here
+}
+
 const bookmarkPlaces = (): BookmarkPlaces => ({ platform: process.platform, home: homedir(), env: process.env })
 ipcMain.handle('antumi:browser-homepage', async () => {
   try { return await defaultBrowserHomepage(app.getApplicationNameForProtocol('https://'), bookmarkPlaces()) } catch { return null }
@@ -437,8 +485,8 @@ ipcMain.handle('antumi:reveal-file', async (_event, candidates: unknown) => {
   if (!Array.isArray(candidates)) return null
   for (const candidate of candidates.slice(0, 20)) {
     if (typeof candidate !== 'string') continue
-    const path = candidate === '~' || /^~[\\/]/.test(candidate) ? join(homedir(), candidate.slice(1)) : candidate
-    if (!isAbsolute(path)) continue
+    const path = hereOf(candidate)
+    if (!path || !isAbsolute(path)) continue
     try {
       await stat(path)
     } catch {
@@ -450,8 +498,9 @@ ipcMain.handle('antumi:reveal-file', async (_event, candidates: unknown) => {
   return null
 })
 
-ipcMain.handle('antumi:open-file', async (_event, file: unknown) => {
-  if (typeof file !== 'string' || !isAbsolute(file) || file.includes('\0')) return uiText('Invalid file path', '文件路径无效')
+ipcMain.handle('antumi:open-file', async (_event, named: unknown) => {
+  const file = typeof named === 'string' ? backend.fromBackendPath(named) : null
+  if (!file || !isAbsolute(file) || file.includes('\0')) return uiText('Invalid file path', '文件路径无效')
   try {
     const info = await stat(file)
     if (!info.isFile() && !info.isDirectory()) return uiText('This file cannot be opened', '不支持打开此文件')
@@ -475,8 +524,9 @@ ipcMain.handle('antumi:open-with-apps', async () => Promise.all((await foundApps
 })))
 
 // A file opened in one of those apps, named by its id: the renderer never names what runs.
-ipcMain.handle('antumi:open-with', async (_event, file: unknown, id: unknown) => {
-  if (typeof file !== 'string' || !isAbsolute(file) || file.includes('\0')) return uiText('Invalid file path', '文件路径无效')
+ipcMain.handle('antumi:open-with', async (_event, named: unknown, id: unknown) => {
+  const file = typeof named === 'string' ? backend.fromBackendPath(named) : null
+  if (!file || !isAbsolute(file) || file.includes('\0')) return uiText('Invalid file path', '文件路径无效')
   const chosen = (await foundApps()).find((entry) => entry.id === id)
   if (!chosen) return uiText('App not found', '找不到这个应用')
   try {
@@ -669,11 +719,14 @@ void app.whenReady().then(async () => {
   createWindow()
   void removeUpdateLeftovers()
   // After the backend: ensureBackend may move the home, and the host file belongs in the one core reads.
-  void ensureBackend().finally(() => startBrowserHost(slot, antumiPaths().browserHostFile, confirmLeavePage).then(
-    (host) => { browserHost = host },
+  void backend.start().finally(() => startBrowserHost(slot, backend.browserHostFile(), confirmLeavePage).then(
+    (host) => {
+      browserHost = host
+      backend.browserHostStarted(host.server)
+    },
     (error: unknown) => console.error('[antumi] the browser host did not start', error)
   ))
-  setInterval(() => void replaceOldDaemon(), OLD_DAEMON_CHECK_MS).unref()
+  setInterval(() => void backend.replaceOldDaemon(), OLD_DAEMON_CHECK_MS).unref()
   app.on('activate', () => {
     if (!mainWindow) {
       createWindow()
@@ -690,6 +743,7 @@ app.on('before-quit', (event) => {
   session.defaultSession.flushStorageData()
   panelWindows.beginQuit()
   updater?.stop()
+  backend.stop()
   if (quitting || !browserHost) return
   event.preventDefault()
   quitting = true

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { AgentKind, BookmarkFields, type PluginPageFiles } from '@antumi/protocol'
 import type { ActionableTarget, Notice } from './attention'
 import { ShortcutAction, type ShortcutSettings } from '../../shared/keyboard-shortcuts'
+import { BackendLocationState, type BackendLocation } from '../../shared/backend-location'
 import type { PanelBrowserContext, PanelCommand, PanelDockPayload, PanelHandoff, PanelKind } from '../../shared/panel-window'
 
 // What the Electron preload exposes; absent when the UI runs in a plain browser.
@@ -81,6 +82,10 @@ declare global {
       setUpdateAutomatic?(automatic: boolean): Promise<unknown>
       setUpdatePrerelease?(prerelease: boolean): Promise<unknown>
       onUpdate?(listener: (state: unknown) => void): () => void
+      // Where the backend runs (main's app-backend.ts); setting it restarts the app. Absent from a
+      // main older than the renderer.
+      backendLocation?(): Promise<unknown>
+      setBackendLocation?(location: unknown): Promise<unknown>
     }
   }
 }
@@ -105,6 +110,19 @@ export function applyTitleBar(): void {
 export async function appVersion(): Promise<string | null> {
   const version = await window.antumi?.appVersion?.().catch(() => null)
   return typeof version === 'string' && version ? version : null
+}
+
+// Where the backend runs and could run; null outside Electron or from an older main.
+export async function backendLocation(): Promise<BackendLocationState | null> {
+  const found = await window.antumi?.backendLocation?.().catch(() => null)
+  const parsed = BackendLocationState.safeParse(found)
+  return parsed.success ? parsed.data : null
+}
+
+// Saves the choice and restarts the app, so a true answer is seldom seen.
+export async function setBackendLocation(location: BackendLocation): Promise<boolean> {
+  const done = await window.antumi?.setBackendLocation?.(location).catch(() => false)
+  return done === true
 }
 
 export function canPickFolder(): boolean {

@@ -22,6 +22,7 @@ import { ConversationView } from './components/ConversationView'
 import { ConversationSplit } from './components/ConversationSplit'
 import { ConversationDraft } from './components/ConversationDraft'
 import { EnvironmentNotice } from './components/EnvironmentNotice'
+import { BackendLocationNotice } from './components/BackendLocationNotice'
 import { StatusBar } from './components/StatusBar'
 import { UtilityPanelDock } from './components/UtilityPanelDock'
 import { SearchPalette } from './components/SearchPalette'
@@ -43,6 +44,7 @@ import { TaskLaunchDialog } from './components/TaskLaunchDialog'
 import { usePreferences } from './preferences'
 import { usePortPolling } from './port-state'
 import { useUpdateFeed } from './update-state'
+import { useBackendLocationFeed } from './backend-location-state'
 import { AppPet } from './components/AppPet'
 import { recordingPanelShortcut, usePanelShortcuts } from './panel-shortcuts'
 
@@ -61,6 +63,7 @@ export function App() {
   useLocale((state) => state.locale)
   usePortPolling()
   useUpdateFeed()
+  useBackendLocationFeed()
   const selectedId = useCore((s) => s.selectedId)
   const section = useCore((s) => s.section)
   const selectedConversationId = useCore((s) => s.selectedConversationId)
@@ -158,6 +161,7 @@ export function App() {
                 <SquadsEntry />
               </>}
               <EnvironmentNotice />
+              <BackendLocationNotice />
               {!menuCollapsed && <SidebarTasks />}
               <ConversationList />
             </Sidebar>

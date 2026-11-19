@@ -12,6 +12,14 @@ Open [**Settings → External agents**](antumi:settings/agents) to check install
 - Listed under **Available to install**: click **Install in terminal**, or run the install command yourself, then click **Scan again**.
 - To use a model provider: configure a compatible provider as described below. If it is already configured in the agent itself, follow the setup check's confirmation prompt.
 
+### Projects and agents live in WSL (Windows)
+
+If you work inside WSL and your agents are installed only in the distro, run Antumi's backend there too: open **Settings → Backend location** (there only in the installed app on Windows), choose that distro under Run on, and Antumi restarts. From then on, choosing a project shows the distro's folders, and Antumi uses the git and agents inside it.
+
+- The distro must be WSL 2 and x64, with Node 24 or later as the default version of its login shell. When something is missing, the settings page says what and how to fix it, and this machine's backend is used for the time being.
+- Each place has its own tasks, conversations and settings, separate from the other's; switching back brings the earlier ones back.
+- Not yet available with the backend in WSL: phones connecting directly over the local network, and keeping the computer awake.
+
 ## Model providers
 
 **Skip this when the agent uses its own account.** Add one for a coding plan such as Volcengine Ark, Zhipu GLM or Kimi, or to let OpenCode, Pi or DeepSeek Harness answer.

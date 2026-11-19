@@ -177,7 +177,7 @@ Shortcuts you will use: <kbd>N</kbd> on the board to note a task, <kbd>⌘</kbd>
 |---|---|
 | **Using** | [User guide](docs/GETTING-STARTED.en.md) · [Automatic investigation](docs/SOURCE-AUTO-INVESTIGATION.md) (Chinese) · [Usage ledger](docs/USAGE-ANALYTICS.md) · [Markdown themes](docs/MARKDOWN-THEMES.md) (Chinese) · [Antigravity](docs/ANTIGRAVITY.md) · [DeepSeek Harness](docs/DEEPSEEK.md) · [ZCode](docs/ZCODE.md) · [Kimi Code](docs/KIMI.md) · [Gemini CLI](docs/GEMINI.md) |
 | **Extending** | [Task source plugins](docs/PLUGINS.md): GitHub, Jira, Linear, ZenTao, or write your own |
-| **Developing** | [Architecture](docs/ARCHITECTURE.md) (Chinese) · [Chat platforms](docs/CHANNELS.md) (Chinese) · [Phone app](docs/MOBILE.md) (Chinese) · [AGENTS.md](AGENTS.md) · [DESIGN.md](DESIGN.md) |
+| **Developing** | [Architecture](docs/ARCHITECTURE.md) (Chinese) · [Chat platforms](docs/CHANNELS.md) (Chinese) · [Phone app](docs/MOBILE.md) (Chinese) · [WSL](docs/WSL.md) (Chinese) · [AGENTS.md](AGENTS.md) · [DESIGN.md](DESIGN.md) |
 | **Releasing** | [Releasing and packaging](docs/RELEASING.md) · [Changelog](CHANGELOG.md) |
 
 ## Contributing
