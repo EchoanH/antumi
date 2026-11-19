@@ -14,7 +14,8 @@
         "android.permission.USE_BIOMETRIC"
       ],
       "blockedPermissions": [
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -27,7 +28,8 @@
       "infoPlist": {
         "NSLocalNetworkUsageDescription": "Antumi connects to the computer you paired on your local network.",
         "NSCameraUsageDescription": "Antumi scans the pairing code your computer shows.",
-        "NSFaceIDUsageDescription": "Antumi can ask for Face ID when it opens."
+        "NSFaceIDUsageDescription": "Antumi can ask for Face ID when it opens.",
+        "NSPhotoLibraryAddUsageDescription": "Antumi saves the pictures you choose to your photos."
       }
     },
     "plugins": [
