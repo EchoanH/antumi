@@ -50,12 +50,13 @@ export async function startBrowserHost(slot: WindowSlot, hostFile: string, confi
 
   const registry = new TabRegistry(() => server?.emit({ event: 'tabs', tabs: registry.list() }))
   const downloads = new BrowserDownloads(path.join(app.getPath('downloads'), 'Antumi'), (downloads) => server?.emit({ event: 'downloads', downloads }))
+  const tabOf = (webContentsId: number) => registry.all().find((tab) => views.get(tab.id)?.webContents.id === webContentsId) ?? null
   const onDownload = (_event: Event, item: DownloadItem, contents: WebContents) => {
-    const tab = registry.all().find((tab) => views.get(tab.id)?.webContents.id === contents.id)
+    const tab = tabOf(contents.id)
     if (tab) downloads.start(item, tab)
   }
   tabSession.on('will-download', onDownload)
-  const gate = new HostGate(registry, (check) => server?.emit({ event: 'hostCheck', ...check }))
+  const gate = new HostGate(tabOf, (check) => server?.emit({ event: 'hostCheck', ...check }))
   // Tabs an agent's action is at work in: its clicks and keys reach the page as the user's do,
   // and are not to be told to core as the user taking the tab.
   const agentActing = new Set<string>()
@@ -99,6 +100,7 @@ export async function startBrowserHost(slot: WindowSlot, hostFile: string, confi
     const view = new WebContentsView({ webPreferences: { partition, sandbox: true, contextIsolation: true, nodeIntegration: false } })
     view.setBounds({ x: 0, y: 0, ...BROWSER_VIEWPORT })
     const contents = view.webContents
+    gate.install(contents.session)
     await contents.loadURL('about:blank')
     let proxy = await startTabProxy(contents)
     let browser = await chromium.connectOverCDP(proxy.endpoint).catch((error: unknown) => {
@@ -113,7 +115,6 @@ export async function startBrowserHost(slot: WindowSlot, hostFile: string, confi
       contents.close()
       throw new HostError('browser-unavailable', '标签页没有打开')
     }
-    await gate.install(page.context())
     if (viewport) await applyViewport(contents, viewport)
     let tab: Tab
     const capture = new BrowserCapture(() => tab.page)
@@ -126,7 +127,6 @@ export async function startBrowserHost(slot: WindowSlot, hostFile: string, confi
         browser = await chromium.connectOverCDP(proxy.endpoint)
         const resumed = browser.contexts()[0]?.pages()[0]
         if (!resumed) throw new HostError('browser-unavailable', '无法恢复浏览器连接，请重新打开开发者工具后关闭')
-        await gate.install(resumed.context())
         registry.replacePage(tab, resumed)
       })().finally(() => { restoring = null })
       return restoring
