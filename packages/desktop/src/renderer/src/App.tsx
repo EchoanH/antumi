@@ -28,6 +28,8 @@ import { SearchPalette } from './components/SearchPalette'
 import { WorktreeManager } from './components/WorktreeManager'
 import { RoutinesView } from './components/RoutinesView'
 import { RoutinesEntry } from './components/RoutinesEntry'
+import { PluginPageEntries } from './components/PluginPageEntries'
+import { PluginPageView } from './components/PluginPageView'
 import { DiscussionView } from './components/DiscussionView'
 import { DiscussionDraft } from './components/DiscussionDraft'
 import { OverviewEntry } from './components/OverviewEntry'
@@ -67,6 +69,7 @@ export function App() {
   const conversationDraftFrom = useCore((s) => s.conversationDraftFrom)
   const draftProfileId = useCore((s) => s.draftProfileId)
   const selectedDiscussionId = useCore((s) => s.selectedDiscussionId)
+  const pluginPage = useCore((s) => s.pluginPage)
   const draftMode = useCore((s) => s.conversationDraftMode)
   const discussionDraftFrom = useCore((s) => s.discussionDraftFrom)
   const view = useCore((s) => s.view)
@@ -151,6 +154,7 @@ export function App() {
                 <OverviewEntry />
                 <InboxEntry />
                 <RoutinesEntry />
+                <PluginPageEntries />
                 <SquadsEntry />
               </>}
               <EnvironmentNotice />
@@ -167,6 +171,9 @@ export function App() {
               <RoutinesView />
             ) : section === 'squads' ? (
               <AgentsView />
+            ) : section === 'plugin' ? (
+              pluginPage ? <PluginPageView key={`${pluginPage.plugin}/${pluginPage.page}`} plugin={pluginPage.plugin} page={pluginPage.page} /> :
+                <section className="detail-empty"><div className="detail-empty-body">{t('App.chooseOrCreateAConversation')}</div></section>
             ) : section === 'discussions' ? (
               selectedDiscussionId ? <DiscussionView key={selectedDiscussionId} id={selectedDiscussionId} /> :
                 <section className="detail-empty"><div className="detail-empty-body">{t('App.chooseOrCreateAGroupChat')}</div></section>

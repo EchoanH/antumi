@@ -1,6 +1,6 @@
 import { t } from './i18n'
 import { z } from 'zod'
-import { AgentKind, BookmarkFields } from '@antumi/protocol'
+import { AgentKind, BookmarkFields, type PluginPageFiles } from '@antumi/protocol'
 import type { ActionableTarget, Notice } from './attention'
 import { ShortcutAction, type ShortcutSettings } from '../../shared/keyboard-shortcuts'
 import type { PanelBrowserContext, PanelCommand, PanelDockPayload, PanelHandoff, PanelKind } from '../../shared/panel-window'
@@ -16,6 +16,9 @@ declare global {
       appVersion?(): Promise<unknown>
       visualizationCreate?(document: string): Promise<unknown>
       visualizationRemove?(url: string): Promise<unknown>
+      // A plugin page's files, served to its frame as antumi-plugin://<id>/<entry>; absent from an older main.
+      pluginPageCreate?(files: PluginPageFiles): Promise<unknown>
+      pluginPageRemove?(url: string): Promise<unknown>
       pickPlugin?(kind: 'directory' | 'zip'): Promise<unknown>
       // title: the dialog's, where it is not a code repository being picked; a main older than the
       // renderer ignores it.

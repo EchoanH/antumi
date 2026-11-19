@@ -1,7 +1,8 @@
 import { getLocale, t, tr } from '../i18n'
 import { useEffect, useId, useState } from 'react'
 import type { PluginInfo, PluginInstallSource, RecommendedPlugin } from '@antumi/protocol'
-import { perform, useCore } from '../core-store'
+import { perform, receivePlugins, useCore } from '../core-store'
+import { pluginPageLabel } from '../plugin-pages'
 import { pickPlugin } from '../desktop-bridge'
 import { SettingsGroup, Toggle } from './SettingsControls'
 import { ChatPicker } from './ChatPicker'
@@ -12,11 +13,19 @@ function RepositoryLink({ repository }: { repository: string }) {
   return <a className="plugin-repository" href={`https://github.com/${repository}`} target="_blank" rel="noreferrer" data-tooltip={t('PluginSettings.openOnGitHub')}>{repository}</a>
 }
 
+// What the plugin brings, by name: its sources, else its pages, else its id. Never empty: it labels
+// the plugin's switch.
+function pluginName(plugin: PluginInfo): string {
+  const names = plugin.sources.length > 0 ? plugin.sources.map((source) => source.name) : plugin.pages.map((page) => pluginPageLabel(page, getLocale()))
+  return names.join('、') || plugin.id
+}
+
 export function PluginSettings() {
   const ids = useId()
   const rpc = useCore((state) => state.rpc)
   const [recommended, setRecommended] = useState<RecommendedPlugin[]>([])
-  const [plugins, setPlugins] = useState<PluginInfo[] | null>(null)
+  // Kept by the store, which loads them on connect and follows plugins.changed.
+  const plugins = useCore((state) => state.plugins)
   const [busy, setBusy] = useState(false)
   const [kind, setKind] = useState<'local' | 'github'>('local')
   const [location, setLocation] = useState('')
@@ -24,35 +33,30 @@ export function PluginSettings() {
   const [asset, setAsset] = useState('')
   const [trusted, setTrusted] = useState(false)
   const [remove, setRemove] = useState<string | null>(null)
-  const [status, setStatus] = useState('')
+  // Install's result shows by its button: the top of the page is scrolled out of view there.
+  const [status, setStatus] = useState<{ text: string, at: 'top' | 'install' } | null>(null)
 
   useEffect(() => {
     setRecommended([])
-    if (!rpc) { setPlugins(null); return }
+    if (!rpc?.features.includes('plugin-recommendations')) return
     let active = true
-    let changed = false
-    const off = rpc.on('plugins.changed', ({ plugins }) => { changed = true; if (active) setPlugins(plugins) })
-    void perform((connection) => connection.call('plugins.list', {})).then((result) => {
-      if (active && !changed && result) setPlugins(result)
+    void perform((connection) => connection.call('plugins.recommended', {})).then((result) => {
+      if (active && result) setRecommended(result)
     })
-    if (rpc.features.includes('plugin-recommendations')) {
-      void perform((connection) => connection.call('plugins.recommended', {})).then((result) => {
-        if (active && result) setRecommended(result)
-      })
-    }
-    return () => { active = false; off() }
+    return () => { active = false }
   }, [rpc])
 
-  const run = async (action: Parameters<typeof perform>[0], message: string) => {
+  const run = async (action: Parameters<typeof perform>[0], message: string, at: 'top' | 'install' = 'top', done?: () => void) => {
     if (busy) return
     setBusy(true)
-    setStatus('')
+    setStatus(null)
     try {
       const result = await perform(action)
       if (result !== null) {
-        setStatus(message)
+        setStatus({ text: message, at })
+        done?.()
         const updated = await perform((connection) => connection.call('plugins.list', {}))
-        if (updated) setPlugins(updated)
+        if (updated) receivePlugins(updated)
       }
     } finally { setBusy(false) }
   }
@@ -61,13 +65,15 @@ export function PluginSettings() {
     const source: PluginInstallSource = kind === 'local'
       ? { kind, path: location.trim() }
       : { kind, repository: location.trim(), ...(tag.trim() ? { tag: tag.trim() } : {}), ...(asset.trim() ? { asset: asset.trim() } : {}) }
-    void run((connection) => connection.call('plugins.install', { source }), t('PluginSettings.pluginInstalled'))
+    void run((connection) => connection.call('plugins.install', { source }), t('PluginSettings.pluginInstalled'), 'install', () => {
+      setLocation(''); setTag(''); setAsset(''); setTrusted(false)
+    })
   }
 
   return (
     <div className="plugin-settings">
       <p className="settings-note">{t('PluginSettings.notAgentPlugins')}</p>
-      {status && <p className="settings-status" role="status">{status}</p>}
+      {status?.at === 'top' && <p className="settings-status" role="status" data-ok>{status.text}</p>}
       {recommended.length > 0 && <SettingsGroup title={t('PluginSettings.recommended')} icon={<StarIcon />}>
         {recommended.map((entry) => {
           const installed = plugins?.find((plugin) => plugin.id === entry.id)
@@ -88,7 +94,7 @@ export function PluginSettings() {
           <div key={plugin.id} className="plugin-row">
             <div className="settings-row">
               <div className="settings-row-text">
-                <span id={`${ids}-${plugin.id}`} className="settings-row-label">{plugin.sources.map((source) => source.name).join('、')}</span>
+                <span id={`${ids}-${plugin.id}`} className="settings-row-label">{pluginName(plugin)}</span>
                 <p className="settings-row-description">{plugin.id} · {plugin.version} · {plugin.enabled ? plugin.problem ? t('PluginSettings.failedToStart') : t('PluginSettings.enabled') : t('PluginSettings.disabled')}</p>
                 <p className="settings-row-description">{plugin.origin.kind === 'bundled' ? t('PluginSettings.bundledWithAntumi') : plugin.origin.kind === 'github' ? <>GitHub · <RepositoryLink repository={plugin.origin.repository} /></> : plugin.origin.path}</p>
               </div>
@@ -142,7 +148,10 @@ export function PluginSettings() {
           </>}
           <p className="settings-note">{t('PluginSettings.pluginsRunLocalCodeAndReceiveCredentialsFor')}</p>
           <label className="plugin-trust">{tr('PluginSettings.iTrustThisPluginAndItsSource', { value1: <input type="checkbox" checked={trusted} disabled={busy} onChange={(event) => setTrusted(event.target.checked)} /> })}</label>
-          <button className="button primary" type="submit" disabled={busy || !location.trim() || !trusted}>{busy ? t('PluginSettings.processing') : t('PluginSettings.installPlugin')}</button>
+          <div className="plugin-actions">
+            <button className="button primary" type="submit" disabled={busy || !location.trim() || !trusted}>{busy ? t('PluginSettings.processing') : t('PluginSettings.installPlugin')}</button>
+            {status?.at === 'install' && <p className="settings-status" role="status" data-ok>{status.text}</p>}
+          </div>
         </form>
       </SettingsGroup>
     </div>

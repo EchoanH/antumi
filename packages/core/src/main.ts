@@ -377,7 +377,7 @@ ${comments}` }, [], Infinity)
 
 
 const plugins = new PluginService(path.join(paths.home, 'plugins'), packageJson.version, sources, sourceConfig, [],
-  (plugins) => server?.broadcast('plugins.changed', { plugins }))
+  (plugins) => server?.broadcast('plugins.changed', { plugins }), browser)
 await plugins.load()
 const pets = new PetLibrary(path.join(paths.home, 'pets'), {
   developmentDirectory: process.env.ANTUMI_PET_DIRECTORY,
@@ -556,7 +556,8 @@ channels = new ChannelService(channelStore, {
   identity: async (agent) => accounts.list().accounts.find((account) => account.agent === agent && account.id === accounts.activeOf(agent))?.email ?? null,
   daemon: async () => {
     const info = await daemon.request('info', {})
-    return { features: info.features ?? [], pid: info.pid }
+    const cleanPipe = info.features?.includes('clean-pipe') || await daemon.supports('spawnPipeClean')
+    return { cleanPipe, pid: info.pid }
   }
 })
 profiles.setChannelGuard((id) => channels?.hasChannels(id) ?? false)
