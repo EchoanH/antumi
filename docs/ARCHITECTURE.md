@@ -830,5 +830,6 @@ pnpm dist:win     # 打包 Windows 安装包
 ## 10. 已知限制与下一步
 
 - **验收**：按项目配置的测试命令在 worktree 里跑，结果放进检查器；合并分支
-- **SSH / WSL 执行宿主**：给 git、PTY 操作加上 `hostId`
+- **WSL**：后端跑在发行版里、Windows 只留界面，设计见 [WSL.md](WSL.md)，未实现
+- **SSH 执行宿主**：给 git、PTY 操作加上 `hostId`
 - **Windows**：代码按 Windows 写好了，也有单元测试，但还没在 Windows 实机上验证过，也没有 Windows CI 和代码签名，应用内更新也没在实机上试过；named pipe 没有设 ACL；「用…打开」的应用列表只有 macOS 有
