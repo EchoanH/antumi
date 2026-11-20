@@ -184,9 +184,17 @@ Shortcuts you will use: <kbd>N</kbd> on the board to note a task, <kbd>⌘</kbd>
 | **Developing** | [Architecture](docs/ARCHITECTURE.md) (Chinese) · [Chat platforms](docs/CHANNELS.md) (Chinese) · [Phone app](docs/MOBILE.md) (Chinese) · [WSL](docs/WSL.md) (Chinese) · [AGENTS.md](AGENTS.md) · [DESIGN.md](DESIGN.md) |
 | **Releasing** | [Releasing and packaging](docs/RELEASING.md) · [Changelog](CHANGELOG.md) |
 
-## Contributing
+## Community & Support
 
-If something feels awkward, or you want another agent connected, open an [issue](https://github.com/flyhero/antumi/issues).
+- **WeChat**: scan the QR code to join our group for discussions, feedback and updates:
+
+  <img src="docs/assets/wechat-group.jpg" alt="Antumi WeChat group" width="200" />
+
+- **Issues**: if something feels awkward, or you want another agent connected, open an [issue](https://github.com/flyhero/antumi/issues).
+- **LINUX DO**: thanks to the [LINUX DO](https://linux.do) community for their support.
+- **V2EX**: thanks to the [V2EX](https://www.v2ex.com) community for their support.
+
+## Contributing
 
 Read [AGENTS.md](AGENTS.md) and [DESIGN.md](DESIGN.md) before changing code. Before a commit:
 
@@ -195,7 +203,3 @@ pnpm typecheck && pnpm test
 ```
 
 Add `pnpm build` when the desktop app changed.
-
-## Links
-
-- [LINUX DO](https://linux.do): a Chinese community for developers and AI enthusiasts

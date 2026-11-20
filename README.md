@@ -184,9 +184,17 @@ ANTUMI_HOME=~/.antumi-demo pnpm dev
 | **开发** | [技术架构](docs/ARCHITECTURE.md) · [聊天平台接入](docs/CHANNELS.md) · [手机端](docs/MOBILE.md) · [WSL](docs/WSL.md) · [AGENTS.md](AGENTS.md) · [DESIGN.md](DESIGN.md) |
 | **发布** | [发版与打包](docs/RELEASING.md) · [更新日志](CHANGELOG.md) |
 
-## 参与
+## 社区与支持
 
-用下来哪里别扭、想接哪个 Agent，欢迎提 [issue](https://github.com/flyhero/antumi/issues)。
+- **微信群**：扫码加入交流群，聊用法、提反馈、看更新：
+
+  <img src="docs/assets/wechat-group.jpg" alt="Antumi 微信交流群" width="200" />
+
+- **Issues**：用下来哪里别扭、想接哪个 Agent，欢迎提 [issue](https://github.com/flyhero/antumi/issues)。
+- **LINUX DO**：感谢 [LINUX DO](https://linux.do) 社区的支持。
+- **V2EX**：感谢 [V2EX](https://www.v2ex.com) 社区的支持。
+
+## 参与
 
 改代码前先读 [AGENTS.md](AGENTS.md) 和 [DESIGN.md](DESIGN.md)。提交前跑：
 
@@ -195,7 +203,3 @@ pnpm typecheck && pnpm test
 ```
 
 桌面端改动再加 `pnpm build`。
-
-## 友情链接
-
-- [LINUX DO](https://linux.do)：新的理想型社区
