@@ -506,6 +506,8 @@ ZCode 不说 ACP，有自己的 driver（`agents/zcode/zcode-app-server.ts`）�
 
 Kimi Code 使用官方 `kimi acp` 和通用 ACP driver，dialect 负责四种原生模式、工具命名，以及由权限请求承载的单选提问和计划审批。需要 Node.js 版 CLI 2.3.2 以上，恢复会话沿用标准 ACP；原生 fork 会保留来源 MCP，改用交接以隔离会话权限。安装、权限及用量边界见 [Kimi Code](KIMI.md)。
 
+CodeBuddy 使用官方 `codebuddy --acp` 和通用 ACP driver，dialect 负责五种原生模式、按工具调用标题命名工具，以及由 `ExitPlanMode` 权限请求承载的计划审批：它批准后会悄悄回到规划前的模式，dialect 声明 `planApprovalSetsMode`，driver 随批准一起把模式切到计划的执行模式。子 Agent 跑在主会话里，dialect 的 `subagentOf` 按 `_meta` 里的父调用把它的步骤归到 Task 卡片；它的 ACP 一行最多 32 MiB，`maxLineBytes` 让 driver 发送前拒绝更长的消息。它的登录信息全机共用一份，不支持多账号。细节见 [CodeBuddy](CODEBUDDY.md)。
+
 ### 项目 Star
 
 设置 → 支持与反馈集中提供项目地址、GitHub Star 和 GitHub Issues 反馈入口，交流尚未开放时显示文字占位；关于页保留版本、更新、连接状态、Git 与快捷键。支持页可查询并为 `flyhero/antumi` 点 Star。desktop 仅调用 `support.starStatus` / `support.star`，通过 `project-star` 能力判断 core 是否支持；旧 core 只提供 GitHub 网页入口。状态不写入本机偏好，进入支持页或返回窗口时自动检查，以 GitHub 的响应为准，不提供手动检测按钮。
