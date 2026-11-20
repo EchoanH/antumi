@@ -10614,8 +10614,26 @@ button.island-compact:focus-visible { outline: 2px solid var(--focus); outline-o
 .agent-status-mark[data-glyph='failed'] .agent-status-ring { border-color: var(--danger); }
 .agent-status-mark[data-glyph='awaiting'] .agent-status-ring { border-color: var(--warning); }
 .conversation-row:has(> .agent-status-mark:not([data-glyph='idle'])) { --mark-clearance: 4px; }
+.conversation-row:has(> .agent-status-mark[data-glyph='awaiting']) { position: relative; isolation: isolate; }
+/* Behind the row's content and above its hover/selection fill, without moving either. */
+.conversation-row:has(> .agent-status-mark[data-glyph='awaiting'])::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 18%, transparent);
+  pointer-events: none;
+  animation: awaiting-row-breathe 2.4s ease-in-out infinite;
+}
+@keyframes awaiting-row-breathe {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 1; }
+}
 @media (prefers-reduced-motion: reduce) {
-  .agent-status-mark[data-glyph='running'] .agent-status-ring { animation: none; }
+  .agent-status-mark[data-glyph='running'] .agent-status-ring,
+  .conversation-row:has(> .agent-status-mark[data-glyph='awaiting'])::after { animation: none; }
 }
 /* The task's status in the row's meta line: a word in the status's colour, no heavier than the rest. */
 .conversation-task-status { font-weight: 500; }
@@ -11141,6 +11159,7 @@ button.squad-member-main { cursor: pointer; }
 :root[data-resting] .chat-assistant[data-streaming] .chat-markdown > :last-child::after,
 :root[data-resting] .chat-reasoning-body[data-streaming]::before,
 :root[data-resting] .chat-input-card[data-working]::before,
+:root[data-resting] .conversation-row:has(> .agent-status-mark[data-glyph='awaiting'])::after,
 :root[data-resting] .chat-turn-head-icon[data-live]::before { animation-play-state: paused; }
 
 /* How to spend the window's quota against its clock, under the window it is about. */
