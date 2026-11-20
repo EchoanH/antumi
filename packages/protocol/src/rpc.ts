@@ -41,7 +41,7 @@ import { CommitSha, LocalSkillFolder, RecommendedSkillRepo, SkillActivation, Ski
 import { TodoList, TodoOwner, TodoText, TodoTitle } from './todos'
 import { McpImportCandidate, McpImportItem, McpProbe, McpServer, McpServerInput, McpServerName } from './mcp'
 import { ModelProvider, ModelProviderId, ModelProviderInput, ModelProviderModels, ModelProviderModelsQuery, ModelProviderProbe } from './model-provider'
-import { AgentAccount, AgentAccountId, AgentAccounts } from './agent-account'
+import { AccountKey, AgentAccount, AgentAccountId, AgentAccounts } from './agent-account'
 import { ExternalSession, ExternalSessionRef } from './session-import'
 import { ProjectStarIdentity, ProjectStarResult, ProjectStarStatus } from './project-star'
 import { AgentPullRequestRun, PullRequestDraft, PullRequestEligibility, PullRequestHandoffKind, PullRequestLink, PullRequestMergeMethod } from './pull-request'
@@ -133,7 +133,7 @@ const UsageParams = z.object({ windowKinds: z.array(z.string()).optional() })
 //   agent reads without asking (attachments.commitText).
 // pull-request-base-branches: lists the remote branches a task's PR can target.
 // plugin-pages: a plugin may ship pages the desktop frames (PluginInfo.pages, plugins.pageFiles, plugins.pageCall; docs/PLUGINS.md).
-export const CORE_FEATURES = ['mobile', 'source-auto-investigation', 'chat-references', 'conversation-references', 'agent-profiles', 'pets', 'plugins', 'plugin-recommendations', 'chat-options', 'chat-images', 'task-start', 'worktrees', 'conversation-branches', 'conversation-commit-push', 'find-file', 'conversation-projects', 'browser', 'browser-collaboration', 'browser-file-transfers', 'keep-awake', 'terminal-commands', 'bookmarks', 'browser-history', 'usage-limit', 'agent-stats', 'conversation-stats', 'prompt-suggestions', 'environment', 'conversation-pin', 'schedules', 'chat-commands', 'file-mentions', 'plan-modes', 'agent-terminals', 'schedule-images', 'dashboard', 'task-conversation-summaries', 'routines', 'ports', 'conversation-fork', 'conversation-configuration', 'conversation-commit-steps', 'conversation-worktrees', 'conversation-start-branch', 'wire-log', 'file-preview', 'deferred-conversation-start', 'agent-cli-installation', 'agent-cli-maintenance', 'task-launch-options', 'git-management', 'git-commit-branches', 'task-handoff', 'handoff-model', 'handoff-mode', 'task-launch', 'discussions', 'discussion-members', 'discussion-projects', 'discussion-topics', 'discussion-requirements', 'discussion-model-providers', 'task-cancel', 'task-redo-in-place', 'conversation-archive', 'discussion-archive', 'translate', 'commit-message', 'squads', 'squad-leader-planning', 'conversation-todos', 'knowledge-base', 'knowledge-base-kind', 'skills-library', 'skills-search', 'skills-activation', 'mcp-servers', 'source-investigate', 'source-investigate-images', 'source-issue-preview', 'todo-overview', 'conversation-helper', 'small-model-stats', 'terminal-color-prompt', 'git-commit-actions', 'file-editor', 'project-config', 'project-config-edit', 'model-providers', 'git-update', 'git-push-target', 'git-cherry-pick', 'git-amend', 'git-force-push', 'task-auto-run', 'session-import', 'agent-accounts', 'usage-analytics', 'task-references', 'release-idle-chats', 'project-star', 'git-favorites', 'project-files', 'git-projects', 'git-branch-browser', 'git-rebase', 'direct-agent-calls', 'discussion-formats', 'discussion-format-suggest', 'agent-call-resume', 'delegation-worktree', 'pasted-text', 'task-conversation-rows', 'inline-visualizations', 'archived-worktrees', 'model-provider-models', 'skills-local', 'model-provider-headers', 'provider-model-images', 'source-comments-v1', 'pull-requests', 'pull-request-base-branches', 'browser-sites', 'chat-command-pins', 'agent-profile-delegation-mode', 'attachment-sweep', 'mobile-handoff', 'channels', 'chat-catalog-problem', 'channel-readiness', 'channel-tasks', 'plugin-pages', 'plugin-browser-sessions'] as const
+export const CORE_FEATURES = ['mobile', 'source-auto-investigation', 'chat-references', 'conversation-references', 'agent-profiles', 'pets', 'plugins', 'plugin-recommendations', 'chat-options', 'chat-images', 'task-start', 'worktrees', 'conversation-branches', 'conversation-commit-push', 'find-file', 'conversation-projects', 'browser', 'browser-collaboration', 'browser-file-transfers', 'keep-awake', 'terminal-commands', 'bookmarks', 'browser-history', 'usage-limit', 'agent-stats', 'conversation-stats', 'prompt-suggestions', 'environment', 'conversation-pin', 'schedules', 'chat-commands', 'file-mentions', 'plan-modes', 'agent-terminals', 'schedule-images', 'dashboard', 'task-conversation-summaries', 'routines', 'ports', 'conversation-fork', 'conversation-configuration', 'conversation-commit-steps', 'conversation-worktrees', 'conversation-start-branch', 'wire-log', 'file-preview', 'deferred-conversation-start', 'agent-cli-installation', 'agent-cli-maintenance', 'task-launch-options', 'git-management', 'git-commit-branches', 'task-handoff', 'handoff-model', 'handoff-mode', 'task-launch', 'discussions', 'discussion-members', 'discussion-projects', 'discussion-topics', 'discussion-requirements', 'discussion-model-providers', 'task-cancel', 'task-redo-in-place', 'conversation-archive', 'discussion-archive', 'translate', 'commit-message', 'squads', 'squad-leader-planning', 'conversation-todos', 'knowledge-base', 'knowledge-base-kind', 'skills-library', 'skills-search', 'skills-activation', 'mcp-servers', 'source-investigate', 'source-investigate-images', 'source-issue-preview', 'todo-overview', 'conversation-helper', 'small-model-stats', 'terminal-color-prompt', 'git-commit-actions', 'file-editor', 'project-config', 'project-config-edit', 'model-providers', 'git-update', 'git-push-target', 'git-cherry-pick', 'git-amend', 'git-force-push', 'task-auto-run', 'session-import', 'agent-accounts', 'usage-analytics', 'task-references', 'release-idle-chats', 'project-star', 'git-favorites', 'project-files', 'git-projects', 'git-branch-browser', 'git-rebase', 'direct-agent-calls', 'discussion-formats', 'discussion-format-suggest', 'agent-call-resume', 'delegation-worktree', 'pasted-text', 'task-conversation-rows', 'inline-visualizations', 'archived-worktrees', 'model-provider-models', 'skills-local', 'model-provider-headers', 'provider-model-images', 'source-comments-v1', 'pull-requests', 'pull-request-base-branches', 'browser-sites', 'chat-command-pins', 'agent-profile-delegation-mode', 'attachment-sweep', 'mobile-handoff', 'channels', 'chat-catalog-problem', 'channel-readiness', 'channel-tasks', 'plugin-pages', 'plugin-browser-sessions', 'account-keys', 'conversation-accounts'] as const
 // session-import: core lists the sessions agents ran outside Antumi and imports them as conversations (sessionImports.*).
 // agent-accounts: Claude and Codex sign in to several accounts, one active each, and a usage limit
 // moves the agent to the next with quota (accounts.*); usage readings name their account.
@@ -324,7 +324,11 @@ export const rpcMethods = {
   'accounts.list': { params: z.object({}), result: AgentAccounts },
   // Adds an account and signs it in, in a terminal (terminals.*) the user follows; the account is
   // there, signed out, until the sign-in ends well.
-  'accounts.add': { params: z.object({ agent: AgentKind, label: z.string().trim().max(60).nullable() }), result: z.object({ account: AgentAccount, terminal: Terminal }) },
+  // With key, for an agent that takes API keys (its descriptor's accountKeys): signed in with it at
+  // once, and no terminal. Needs account-keys.
+  'accounts.add': { params: z.object({ agent: AgentKind, label: z.string().trim().max(60).nullable(), key: AccountKey.optional() }), result: z.object({ account: AgentAccount, terminal: Terminal.optional() }) },
+  // Replaces the API key, or the edition, of an account that signs in with one. Needs account-keys.
+  'accounts.setKey': { params: AccountRef.extend({ key: AccountKey }), result: AgentAccount },
   // Signs an account in again, in a terminal.
   'accounts.login': { params: AccountRef, result: Terminal },
   'accounts.rename': { params: AccountRef.extend({ label: z.string().trim().max(60).nullable() }), result: AgentAccount },
@@ -430,7 +434,9 @@ export const rpcMethods = {
       effort: z.string().trim().min(1).max(200).optional(),
       // The model provider it runs on (Conversation.modelProvider), which must serve the agent; a
       // helper runs on its parent's. Needs model-providers.
-      modelProvider: ModelProviderId.optional()
+      modelProvider: ModelProviderId.optional(),
+      // The account it runs on, kept for it (conversations.setAccount). Needs conversation-accounts.
+      account: AgentAccountId.optional()
     }),
     result: Conversation
   },
@@ -524,6 +530,10 @@ export const rpcMethods = {
   // Switches one of the stage's options to a value its state item offers. The
   // conversation remembers it for its next start.
   'conversations.setOption': { params: ConversationRef.extend({ option: ChatOption, value: z.string().trim().min(1).max(200) }), result: Ok },
+  // The account its agent runs on from its next start, kept for the conversation; null follows the
+  // agent's active account. An idle agent is stopped so the next message resumes it there.
+  // Needs conversation-accounts.
+  'conversations.setAccount': { params: ConversationRef.extend({ account: AgentAccountId.nullable() }), result: Conversation },
   // Ends the running turn. Cursor's process goes with it; the next message starts another.
   'conversations.interrupt': { params: ConversationRef, result: Ok },
   // Stops one piece of background work, apart from the turn: a tool item marked stoppable.

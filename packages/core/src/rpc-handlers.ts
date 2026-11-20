@@ -455,7 +455,8 @@ export function createRpcHandlers(
     'modelProviders.probe': ({ id }) => modelProviderStore().probe(id),
     'modelProviders.fetchModels': (query) => modelProviderStore().fetchModels(query),
     'accounts.list': () => accountStore().list(),
-    'accounts.add': ({ agent, label }) => accountStore().add(agent, label),
+    'accounts.add': ({ agent, label, key }) => accountStore().add(agent, label, key),
+    'accounts.setKey': ({ agent, id, key }) => accountStore().setKey(agent, id, key),
     'accounts.login': ({ agent, id }) => accountStore().login(agent, id),
     'accounts.rename': ({ agent, id, label }) => accountStore().rename(agent, id, label),
     'accounts.remove': async ({ agent, id }) => { await accountStore().remove(agent, id); return OK },
@@ -534,14 +535,14 @@ export function createRpcHandlers(
     'conversations.get': ({ id }) => conversations.get(id),
     'conversations.configuration': ({ id }) => conversations.configuration(id),
     'conversations.helper': ({ id }) => conversations.helper(id),
-    'conversations.create': ({ agent, projectPaths, worktree, branch, allowBypass, permissionMode, model, effort, deferStart, helperOf, modelProvider, profileId }, connection) => {
+    'conversations.create': ({ agent, projectPaths, worktree, branch, allowBypass, permissionMode, model, effort, deferStart, helperOf, modelProvider, profileId, account }, connection) => {
       if (connection.mobile && (helperOf || profileId)) throw new Rejection('mobile-project-not-recent', 'pick a recent project')
       requireRecentForPhone(connection, projectPaths)
       const profile = profileId ? profileService().get(profileId) : undefined
       if (profile && (profile.agent !== agent || helperOf)) throw new Rejection('invalid-params', '智能体配置与会话不匹配')
       return conversations.create(agent, projectPaths, allowBypass, { permissionMode: profile?.capability === 'readOnly' ? agentDescriptor(agent).readOnlyMode : permissionMode,
         model: model ?? profile?.model ?? undefined, effort: effort ?? profile?.effort ?? undefined, worktree, branch, deferStart, helperOf,
-        modelProvider: profile?.modelProvider ?? modelProvider, profile })
+        modelProvider: profile?.modelProvider ?? modelProvider, profile, ...(account ? { account } : {}) })
     },
     'conversations.chatCatalog': ({ agent, modelProvider }) => conversations.chatCatalog(agent, modelProvider),
     'conversations.chatCatalogProblem': ({ agent }) => conversations.chatCatalogProblem(agent),
@@ -563,6 +564,7 @@ export function createRpcHandlers(
     'conversations.handoff': ({ id, agent, note, stopRunning, allowBypass, permissionMode, model, effort, references }) => { sources.automatic?.takeover(id); return conversations.handoff(id, agent, note, stopRunning, allowBypass, { permissionMode, model, effort, references }) },
     'conversations.fork': ({ id, stageId, itemId }) => conversations.fork(id, stageId, itemId),
     // A mode the user picks is theirs to answer for: a run nobody watched stops answering for them.
+    'conversations.setAccount': ({ id, account }) => { notChannel(id); profiles?.guardUser(id, true); squads?.guardUser(id, true); return conversations.setAccount(id, account) },
     'conversations.setOption': async ({ id, option, value }) => { notChannel(id); profiles?.guardUser(id, true); squads?.guardUser(id, true); if (option === 'permissionMode') conversations.attend(id); await conversations.setOption(id, option, value); sources.automatic?.takeover(id); return OK },
     'conversations.send': ({ id, text, images, queue, steer, ref, references }) => { notChannel(id); return userActed(id, async () => { profiles?.guardUser(id, true); squads?.guardUser(id, true); await conversations.send(id, text, images, queue, steer, ref, references); return OK }) },
     'conversations.cancelQueued': ({ id, ref }) => { notChannel(id); conversations.cancelQueued(id, ref); return OK },

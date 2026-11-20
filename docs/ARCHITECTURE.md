@@ -506,7 +506,7 @@ ZCode 不说 ACP，有自己的 driver（`agents/zcode/zcode-app-server.ts`）�
 
 Kimi Code 使用官方 `kimi acp` 和通用 ACP driver，dialect 负责四种原生模式、工具命名，以及由权限请求承载的单选提问和计划审批。需要 Node.js 版 CLI 2.3.2 以上，恢复会话沿用标准 ACP；原生 fork 会保留来源 MCP，改用交接以隔离会话权限。安装、权限及用量边界见 [Kimi Code](KIMI.md)。
 
-CodeBuddy 使用官方 `codebuddy --acp` 和通用 ACP driver，dialect 负责五种原生模式、按工具调用标题命名工具，以及由 `ExitPlanMode` 权限请求承载的计划审批：它批准后会悄悄回到规划前的模式，dialect 声明 `planApprovalSetsMode`，driver 随批准一起把模式切到计划的执行模式。子 Agent 跑在主会话里，dialect 的 `subagentOf` 按 `_meta` 里的父调用把它的步骤归到 Task 卡片；它的 ACP 一行最多 32 MiB，`maxLineBytes` 让 driver 发送前拒绝更长的消息。它的登录信息全机共用一份，不支持多账号。细节见 [CodeBuddy](CODEBUDDY.md)。
+CodeBuddy 使用官方 `codebuddy --acp` 和通用 ACP driver，dialect 负责五种原生模式、按工具调用标题命名工具，以及由 `ExitPlanMode` 权限请求承载的计划审批：它批准后会悄悄回到规划前的模式，dialect 声明 `planApprovalSetsMode`，driver 随批准一起把模式切到计划的执行模式。子 Agent 跑在主会话里，dialect 的 `subagentOf` 按 `_meta` 里的父调用把它的步骤归到 Task 卡片；它的 ACP 一行最多 32 MiB，`maxLineBytes` 让 driver 发送前拒绝更长的消息。它的登录信息全机共用一份，其余账号用 API Key（见「账号」）。细节见 [CodeBuddy](CODEBUDDY.md)。
 
 ### 项目 Star
 
@@ -647,12 +647,14 @@ Agent 可用之后、任务来源之前是「接着聊」一步：从零用一�
 
 ### 账号
 
-Claude Code 和 Codex 可以登录多个账号（描述符的 `capabilities.accounts`，适配器的 `accounts`），设置 → Agent → 账号（`agent-accounts.ts`）维护。和服务商走同一条路：**每次启动注入环境变量，不改 Agent 自己的配置**——每个账号一个配置目录，进程带 `CLAUDE_CONFIG_DIR` / `CODEX_HOME` 指向它。只作用于 Agent 自己的路由；走服务商的阶段不看账号。
+Claude Code、Codex 和 CodeBuddy 可以用多个账号（描述符的 `capabilities.accounts`，适配器的 `accounts`），设置 → Agent → 账号（`agent-accounts.ts`）维护。和服务商走同一条路：**每次启动注入环境变量，不改 Agent 自己的配置**——每个账号一个配置目录，进程带 `CLAUDE_CONFIG_DIR` / `CODEX_HOME` / `CODEBUDDY_CONFIG_DIR` 指向它。只作用于 Agent 自己的路由；走服务商的阶段不看账号。
 
 - **本机账号**（id `default`）就是用户自己的目录（`$CLAUDE_CONFIG_DIR` 或 `~/.claude`，`$CODEX_HOME` 或 `~/.codex`），不注入任何变量，删不掉。其它账号在 `<ANTUMI_HOME>/agent-accounts/<agent>/<id>/`，路径创建后不变：Claude Code 2.1 起在 macOS 钥匙串里按 `CLAUDE_CONFIG_DIR` 的原文起名（`Claude Code-credentials-<sha256(NFC(路径)) 前 8 位>`），换个写法就找不到登录。列表、当前账号和自动换号开关存在 `agent-accounts.json`；登录凭据由 CLI 自己存（钥匙串或目录里的文件），Antumi 只读、从不刷新 token。
 - **共享**（`agent-account-home.ts`）：账号目录里的条目是指向本机目录的软链（Windows 上目录用 junction），所以会话历史只有一份，换号后原生 session 原样恢复，不走移交。Claude 链 `projects`、`file-history`、`todos`、`plans`、`shell-snapshots`、`session-env`、`paste-cache`、`tasks`、`transcripts`、`history.jsonl`（本机没有就先建）和 `skills`、`plugins`、`agents`、`commands`、`output-styles`（有才链）；不链 `sessions/`（CLI 自己的运行进程登记）。`settings.json` 每次启动前复制一份（CLI 写它是写新文件再改名，软链会被换成普通文件），`CLAUDE.md` 是一行 `@<本机目录>/CLAUDE.md`，`.claude.json` 合进本机的 `mcpServers` 和各项目的 MCP、信任设置，`oauthAccount` 等账号自己的键不动。Codex 除 `auth.json` 和数据库的 `-wal`/`-shm`/`-journal` 外，本机目录顶层每一项都链过去（`sessions`、`archived_sessions`、`history.jsonl` 本机没有就先建）。链之前账号目录里已有的同名目录，里面的东西先挪进本机目录。
 - **登录**：添加账号时 core 在终端面板里跑 `claude auth login` / `codex login`（argv，不经 shell），带该账号的环境变量；终端结束后读登录状态和邮箱（Claude 的 `.claude.json` 里 `oauthAccount.emailAddress`，Codex `auth.json` 里 id token 的 email）。删除账号先用它的环境变量跑 `auth logout` / `logout`，再删软链和目录，不碰链到的本机文件。
 - **启动**：每个阶段启动时取 Agent 的当前账号（`AgentAccountStore.launch`），先补齐目录再注入，账号记进 `conversation_stages.account`。标题、提交说明这类小任务和模型列表探测也用当前账号。状态栏手动切换只影响之后启动的进程，运行中的阶段保持原账号。
+- **API Key 账号**（描述符的 `accountKeys`，适配器 `accounts.keys`，feature `account-keys`）：CodeBuddy 的登录全机只有一份（不在配置目录里），所以本机账号之外的账号都是 API Key，各带一个版本（国际版、国内版、iOA）。`accounts.add` 带 `key` 时不开终端，Key 存进 `CredentialStore`（`agent-account/<agent>/<id>`），账号文件只记版本（`AgentAccount.edition`）；启动时 `keys(apiKey, edition)` 给出 `CODEBUDDY_API_KEY` 和 `CODEBUDDY_INTERNET_ENVIRONMENT`（国际版设成空，免得继承用户 shell 里的值）。`accounts.setKey` 换 Key 或版本；删除时删 Key，不跑退出登录。CodeBuddy 的版本缓存在配置目录的 `local_storage` 和 `settings.json` 里，这两样不共享，共享的是 `projects`、技能、`agents`、`commands`、`plugins`、`.mcp.json`、`models.json`。本机账号的登录在终端里跑 `codebuddy` 的交互界面，起在 `<agent-accounts>/codebuddy/.sign-in` 这个空目录（`signInFolder`），免得它对主目录弹出信任警告；是否已登录看它数据目录 `auth/` 里有没有 `<哈希>.info` 而没有 `.logged-out`。
+- **会话的账号**（feature `conversation-accounts`）：会话可以为它的 Agent 选定一个账号，存在会话选项里（`chat_options.<agent>.account`，不加列），`Conversation.chatOptions.account` 告诉客户端。`conversations.create` 带 `account`，或在输入框下方用 `conversations.setAccount` 换：空闲的 Agent 停掉、立即在新账号上恢复同一个 session（任务的会话只停，由任务接着跑），回合进行中拒绝；`null` 回到跟随当前账号。之后每次启动都用它（`keptAccount`，账号删掉了就回到当前账号），不受状态栏切换影响；撞上额度时也不换号，等这个账号的重置（`UsageLimitResumes.switchedTo` 和 `leaveSpentAccount` 都跳过它）。小助手沿用父会话的账号。模型列表探测仍用当前账号，两个版本模型不同时，新建页列出的是当前账号的模型。
 - **额度**：`UsageService` 按 Agent + 账号读，每个账号用自己的凭据请求用量接口；运行中的阶段上报的额度记到它所在的账号（`AgentUsage.account`）。定时任务、自动续跑和例程看的是当前账号的额度；开着自动换号且所有账号都用完时，看最早重置的那个。
 - **自动换号**（默认开）：一轮撞上额度上限时（`UsageLimitResumes.observe`），阶段在账号 X 上、当前账号还是 X，就按 `pickAccount`（有余量的优先、再看用得少的，跳过未登录和已用完的）换当前账号；别的会话已经换走、新账号还有额度，就直接用它。然后建一个立即执行的续跑（`ScheduledTarget.switchedTo`），续跑先把空闲在旧账号上的阶段停掉（`leaveSpentAccount`），再在新账号上恢复同一个 session、发「继续」；卡片显示「已换到账号…继续」。没有可换的账号就和以前一样等重置。轮询发现当前账号已用完时也会换。
 - **待实测**：两个真实订阅账号下，钥匙串命名、跨账号恢复同一个 session（Claude 的思考签名、Codex 的加密推理是否被另一个账号拒绝）、Codex 的 sqlite 经软链读写。若跨账号恢复被拒，就把账号并进 route key，换号改走移交。

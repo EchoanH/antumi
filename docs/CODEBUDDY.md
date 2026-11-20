@@ -6,12 +6,17 @@ Antumi 通过官方 `codebuddy --acp` 接入腾讯的 CodeBuddy Code CLI，复�
 
 - 安装官方 npm 包 `@tencent-ai/codebuddy-code`（需要 Node.js 18 以上），可从 设置 → 外部智能体 安装。按 2.185.0 验证；启动时只确认 PATH 上有 `codebuddy`，不限制版本。
 - 在终端运行 `codebuddy`，在登录方式里选 **Chinese Site**（中国站，copilot.tencent.com，微信登录）或 **International Site**（国际站，codebuddy.ai，Google / GitHub 登录）。用的是国内版还是国际版，由这次登录决定，Antumi 不另外设置。企业域名和 iOA 登录也照常可用。
-- 也可以按 CodeBuddy 文档设置 `CODEBUDDY_API_KEY`（国内版另加 `CODEBUDDY_INTERNET_ENVIRONMENT=internal`），Antumi 启动的进程会继承这些环境变量。
-- Antumi 不代办登录、不读取或修改凭据。环境检查只确认 CLI 可用；未登录时，新建会话会提示先在终端登录。
+- 用 API Key 的话，在 设置 → 账号 里添加 Key 账号（见下），不必再设环境变量。
+- Antumi 不代办登录、不读取或修改它的登录凭据。未登录时，新建会话会提示先在终端登录。
 
-## 一次只能用一个账号
+## 多账号：本机登录 + API Key
 
-CodeBuddy 把登录信息存在系统固定位置（macOS 是 `~/Library/Application Support/CodeBuddyExtension/Data/Public/auth/`），国内版和国际版共用同一份，`CODEBUDDY_CONFIG_DIR` 也改不了它。所以同一台电脑同一时间只有一个登录账号：在终端里换账号登录，正在运行的 CodeBuddy 会话也会跟着换。Antumi 暂不提供 CodeBuddy 的多账号，要同时用两个版本，只能一个登录、另一个用 API Key（见上）。
+CodeBuddy 把登录信息存在系统固定位置（macOS 是 `~/Library/Application Support/CodeBuddyExtension/Data/Public/auth/`），国内版和国际版共用同一份，`CODEBUDDY_CONFIG_DIR` 也改不了它：同一台电脑同一时间只有一个登录账号。所以在 设置 → 账号 里：
+
+- **本机账号**是你在终端登录的那个（中国站或国际站）。点「登录」会在一个空目录里打开 `codebuddy`，选站点登录后退出即可。
+- **其他账号**用 API Key 添加：填名称、选版本（国际版 / 国内版 / iOA）、填 Key。Key 存在 Antumi 的凭据文件里，不写进账号列表，也不会再显示；每个 Key 账号有自己的配置目录，带 `CODEBUDDY_API_KEY` 和 `CODEBUDDY_INTERNET_ENVIRONMENT` 启动，会话历史、技能、MCP 配置和自定义模型与本机目录共享。
+
+每个会话可以在输入框下方选账号：新建时选，或在会话中途换（空闲时立即用新账号接上同一个会话，正在回复时等这一轮结束）。选定了账号的会话一直用它，不跟状态栏切换，额度用完时也不自动换号。不选就跟随状态栏的当前账号。两个版本的模型不同，切换后原来的模型没有时用新版本的默认模型；新建页里列出的是当前账号的模型。
 
 ## 权限与边界
 

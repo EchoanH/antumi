@@ -2,7 +2,7 @@ import type { AgentProfile } from '@antumi/protocol'
 import type { SearchCategory } from './search-palette'
 import { mergeCliStatuses } from './agent-cli-state'
 import { getLocale, t } from './i18n'
-import { accountsSupported, activeAccount, isHelper, usageAccount, type AgentAccounts } from '@antumi/protocol'
+import { accountsSupported, activeAccount, isHelper, usageAccount, type AccountKey, type AgentAccounts } from '@antumi/protocol'
 import { useEffect, useMemo, useState } from 'react'
 import { create } from 'zustand'
 import {
@@ -1230,9 +1230,24 @@ export async function refreshUsage(): Promise<void> {
 }
 
 // Signs in to a new account in the terminal panel, which opens on it.
-export async function addAccount(agent: AgentKind, label: string | null): Promise<void> {
-  const added = await perform((rpc) => rpc.call('accounts.add', { agent, label }))
-  if (added) showTerminalOf(added.terminal)
+// With a key, signed in with it at once; without, in the terminal panel, which opens on it.
+export async function addAccount(agent: AgentKind, label: string | null, key?: AccountKey): Promise<boolean> {
+  const added = await perform((rpc) => rpc.call('accounts.add', { agent, label, ...(key ? { key } : {}) }))
+  if (added?.terminal) showTerminalOf(added.terminal)
+  return added !== null
+}
+
+export async function setAccountKey(agent: AgentKind, id: string, key: AccountKey): Promise<boolean> {
+  return await perform((rpc) => rpc.call('accounts.setKey', { agent, id, key })) !== null
+}
+
+export async function setConversationAccount(id: string, account: string | null): Promise<void> {
+  await perform((rpc) => rpc.call('conversations.setAccount', { id, account }))
+}
+
+// Whether core adds accounts that sign in with an API key (accounts.add's key).
+export function useAccountKeysSupported(): boolean {
+  return useCore((s) => s.rpc?.features.includes('account-keys') ?? false)
 }
 
 export async function signInAccount(agent: AgentKind, id: string): Promise<void> {
