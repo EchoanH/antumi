@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promis
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { copyPlugin, extractPlugin, packagePath, readManifest, stagePlugin } from './plugin-package'
+import { copyPlugin, extractPlugin, githubPluginPackages, packagePath, readManifest, stagePlugin } from './plugin-package'
 import { pluginFixture, pluginZip } from './plugin-fixtures'
 
 describe('plugin packages', () => {
@@ -81,6 +81,21 @@ describe('plugin packages', () => {
     await expect(readManifest(root, '0.19.6')).rejects.toThrow('重复')
     await writeFile(path.join(root, 'manifest.json'), JSON.stringify({ ...manifest, engines: { antumi: '>=9.0.0' }, contributes: { future: true } }))
     await expect(readManifest(root, '0.19.6')).rejects.toThrow('插件版本无效或不兼容当前 Antumi')
+  })
+
+  it('lists every ZIP on the latest release and refuses a release with none', async () => {
+    const fetch = vi.fn(async (url: string) => {
+      if (url.endsWith('/releases/latest')) return Response.json({ tag_name: 'v2', assets: [
+        { name: 'linuxdo.zip', browser_download_url: 'https://github.com/demo/plugin/releases/download/v2/linuxdo.zip' },
+        { name: 'notes.txt', browser_download_url: 'https://github.com/demo/plugin/releases/download/v2/notes.txt' },
+        { name: 'v2ex.zip', browser_download_url: 'https://github.com/demo/plugin/releases/download/v2/v2ex.zip' }
+      ] })
+      throw new Error(`Unexpected request ${url}`)
+    })
+    vi.stubGlobal('fetch', fetch)
+    await expect(githubPluginPackages('demo/plugin')).resolves.toEqual({ tag: 'v2', packages: ['linuxdo.zip', 'v2ex.zip'] })
+    fetch.mockResolvedValue(Response.json({ tag_name: 'v2', assets: [] }))
+    await expect(githubPluginPackages('demo/plugin')).rejects.toThrow('必须有一个插件 ZIP')
   })
 
   it('downloads only the selected release asset and requires an unambiguous ZIP', async () => {

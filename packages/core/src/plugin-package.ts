@@ -250,6 +250,14 @@ async function releaseFromSite(source: GitHubSource): Promise<Release> {
   return { tag_name: tag, assets: [...links].map((href) => ({ name: decodeURIComponent(href.slice(href.lastIndexOf('/') + 1)), browser_download_url: `https://github.com${href}` })) }
 }
 
+// ZIP packages on the latest stable release. A project with several asks the user which one to install.
+export async function githubPluginPackages(repository: string): Promise<{ tag: string, packages: string[] }> {
+  const release = await releaseOf({ kind: 'github', repository })
+  const packages = release.assets.filter((asset) => /\.zip$/i.test(asset.name)).map((asset) => asset.name)
+  if (packages.length === 0) throw new Error('Release 必须有一个插件 ZIP')
+  return { tag: release.tag_name, packages }
+}
+
 export async function stagePlugin(source: PluginInstallSource, target: string): Promise<void> {
   if (source.kind === 'local') {
     const info = await lstat(source.path)

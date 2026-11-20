@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { MAX_PLUGIN_PAGE_BYTES, MAX_PLUGIN_PAGE_PARAMS, PluginInfo, PluginManifest, type PluginPageFiles, PluginVersion, type PluginInstallSource, RecommendedPlugin } from '@antumi/protocol'
 import { readJsonIfExists, writePrivateJson } from '@antumi/protocol/node'
 import { renameWhenFree } from './patient-rename'
-import { packagePath, readManifest, stagePlugin } from './plugin-package'
+import { githubPluginPackages, packagePath, readManifest, stagePlugin } from './plugin-package'
 import { PluginProcess } from './plugin-process'
 import { sourceRejection } from './source-error'
 import { Rejection } from './rejection'
@@ -182,6 +182,10 @@ export class PluginService {
 
   install(source: PluginInstallSource): Promise<PluginInfo> {
     return this.serialize(() => this.installInner(source))
+  }
+
+  githubPackages(repository: string): Promise<{ tag: string, packages: string[] }> {
+    return this.serialize(() => githubPluginPackages(repository))
   }
 
   update(id: string): Promise<PluginInfo> {

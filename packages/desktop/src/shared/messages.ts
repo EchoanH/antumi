@@ -6783,8 +6783,28 @@ export const MESSAGES = {
     "en": "Plugin path"
   },
   "PluginSettings.githubRepository": {
-    "zh": "GitHub 仓库",
-    "en": "GitHub repository"
+    "zh": "GitHub 项目地址",
+    "en": "GitHub project"
+  },
+  "PluginSettings.notAGitHubProject": {
+    "zh": "请填写 GitHub 项目地址，例如 https://github.com/owner/repository",
+    "en": "Enter a GitHub project address, for example https://github.com/owner/repository"
+  },
+  "PluginSettings.findingPackages": {
+    "zh": "正在查找插件包…",
+    "en": "Looking for plugin packages…"
+  },
+  "PluginSettings.packageFound": {
+    "zh": "将安装 {name}（{tag}）",
+    "en": "Will install {name} ({tag})"
+  },
+  "PluginSettings.choosePackage": {
+    "zh": "插件包",
+    "en": "Plugin package"
+  },
+  "PluginSettings.chooseOnePackage": {
+    "zh": "选择要安装的包",
+    "en": "Choose a package"
   },
   "PluginSettings.fullPathToPluginDirectoryOrZip": {
     "zh": "插件目录或 ZIP 的完整路径",
@@ -6797,22 +6817,6 @@ export const MESSAGES = {
   "PluginSettings.chooseZip": {
     "zh": "选择 ZIP",
     "en": "Choose ZIP"
-  },
-  "PluginSettings.releaseTagOptional": {
-    "zh": "Release 标签（可选）",
-    "en": "Release tag (optional)"
-  },
-  "PluginSettings.leaveEmptyForTheLatestStableRelease": {
-    "zh": "留空使用最新正式版",
-    "en": "Leave empty for the latest stable release"
-  },
-  "PluginSettings.zipAssetNameOptional": {
-    "zh": "ZIP 附件名称（可选）",
-    "en": "ZIP asset name (optional)"
-  },
-  "PluginSettings.specifyIfTheReleaseHasMultipleZipFiles": {
-    "zh": "有多个 ZIP 时填写",
-    "en": "Specify if the release has multiple ZIP files"
   },
   "PluginSettings.pluginsRunLocalCodeAndReceiveCredentialsFor": {
     "zh": "插件会运行本机代码，并接收对应来源的登录凭据。请只安装你信任的插件。",

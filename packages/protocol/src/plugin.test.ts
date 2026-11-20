@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { PluginCall, PluginInfo, PluginInstallSource, PluginManifest, pluginSchemas, RecommendedPlugin } from './plugin'
+import { githubRepository, PluginCall, PluginInfo, PluginInstallSource, PluginManifest, pluginSchemas, RecommendedPlugin } from './plugin'
 
 const detail = { key: 'DEMO-1', title: 'Example', url: 'https://example.com/1', status: 'Open', statusCategory: 'todo', type: 'Issue', priority: null, updatedAt: null, markdown: '# Example' }
 
@@ -8,6 +8,16 @@ it('keeps existing install sources compatible and accepts per-plugin release sel
   expect(PluginInstallSource.parse({ kind: 'github', repository: 'demo/plugins', tagPrefix: 'github-v', asset: 'github.zip' })).toMatchObject({ tagPrefix: 'github-v', asset: 'github.zip' })
   expect(PluginInstallSource.safeParse({ kind: 'github', repository: 'demo/plugins', tagPrefix: '' }).success).toBe(false)
   expect(RecommendedPlugin.parse({ id: 'antumi.github', name: 'GitHub', repository: 'demo/plugins', tagPrefix: 'github-v', description: '', descriptionEn: '', previousRepositories: ['demo/old-plugin'] })).toMatchObject({ previousRepositories: ['demo/old-plugin'] })
+})
+
+it('reads a GitHub project from an owner/repository or a project address', () => {
+  expect(githubRepository('demo/plugin')).toBe('demo/plugin')
+  expect(githubRepository(' https://github.com/Demo/plugin.git/ ')).toBe('Demo/plugin')
+  expect(githubRepository('https://www.github.com/demo/plugin/tree/main')).toBe('demo/plugin')
+  expect(githubRepository('github.com/demo/plugin/releases')).toBe('demo/plugin')
+  for (const input of ['', 'demo', 'https://gitlab.com/demo/plugin', 'https://github.com/demo', 'not a project']) {
+    expect(githubRepository(input)).toBeNull()
+  }
 })
 
 it('accepts existing text plugins and validates optional image encoding and limits', () => {

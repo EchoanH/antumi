@@ -37,6 +37,27 @@ export const PluginInstallSource = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('github'), repository: z.string().regex(/^[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+$/), tag: z.string().min(1).max(128).optional(), tagPrefix: ReleaseTagPrefix.optional(), asset: z.string().min(1).max(200).optional() })
 ])
 export type PluginInstallSource = z.infer<typeof PluginInstallSource>
+
+// A GitHub project as typed in settings: owner/repository, or the project page (a tree or release link still counts).
+export function githubRepository(input: string): string | null {
+  const text = input.trim().replace(/\/+$/, '')
+  const direct = /^([A-Za-z0-9_-]+)\/([A-Za-z0-9_.-]+)$/.exec(text)
+  const owner = direct?.[1]
+  const repo = direct?.[2]
+  const path = owner && repo ? [owner, repo] as const : githubPath(text)
+  if (!path) return null
+  const name = path[1].replace(/\.git$/, '')
+  const repository = `${path[0]}/${name}`
+  return /^[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+$/.test(repository) ? repository : null
+}
+
+function githubPath(input: string): [string, string] | null {
+  let url: URL
+  try { url = new URL(input.includes('://') ? input : `https://${input}`) } catch { return null }
+  if ((url.protocol !== 'https:' && url.protocol !== 'http:') || (url.hostname !== 'github.com' && url.hostname !== 'www.github.com')) return null
+  const [owner, repo] = url.pathname.split('/').filter(Boolean)
+  return owner && repo ? [owner, repo] : null
+}
 export const PluginInfo = z.object({
   id: PluginId, version: PluginVersion, enabled: z.boolean(),
   sources: z.array(PluginSource), pages: z.array(PluginPage).default([]), versions: z.array(PluginVersion),
