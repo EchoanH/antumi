@@ -30,6 +30,8 @@ Bugs investigated automatically · An agent that answers for you · Agents worki
   <a href="#supported-agents" title="CodeArts"><img src="docs/assets/agents/codearts.svg" alt="CodeArts" width="32" height="32" /></a>
 </p>
 
+<img src="docs/assets/showcase.png" alt="Antumi on the desktop, the same conversation carried on from a phone, and colleagues asking an agent in Slack, Feishu and DingTalk" />
+
 **One minute:** three bugs, from the inbox all the way to a merge.
 
 https://github.com/user-attachments/assets/74747188-10e9-4d1d-b444-86c867f25c58

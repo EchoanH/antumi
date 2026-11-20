@@ -30,6 +30,8 @@ Bug 自动排查 · 智能体替你答疑 · 多 Agent 自由协作
   <a href="#支持的-agent" title="CodeArts"><img src="docs/assets/agents/codearts.svg" alt="CodeArts" width="32" height="32" /></a>
 </p>
 
+<img src="docs/assets/showcase.png" alt="Antumi 桌面端，同一个会话在手机上接着做，同事在 Slack、飞书、钉钉群里 @ 智能体" />
+
 **一分钟看完：** 三个 bug，从收件箱一路做到合并。
 
 https://github.com/user-attachments/assets/74747188-10e9-4d1d-b444-86c867f25c58
