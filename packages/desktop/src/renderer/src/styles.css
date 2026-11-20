@@ -240,15 +240,10 @@
 
 /* Experimental backdrops, after Slack's themes: the window's frame is a gradient of two shades
    (a radial wash over a conic sweep, as Slack draws it), and the sidebar and status bar sit on it
-   while the panes float above. A light gradient keeps dark ink on the frame; every other one, and
-   every gradient in dark, takes light ink. See backdrops.ts. */
-[data-backdrop='aubergine'] { --backdrop-primary: light-dark(#4a154b, #431349); --backdrop-highlight: light-dark(#39063a, #200221); }
-[data-backdrop='lagoon'] { --backdrop-primary: light-dark(#0b527b, #003d61); --backdrop-highlight: light-dark(#1c405f, #001a2d); }
-[data-backdrop='mood-indigo'] { --backdrop-primary: light-dark(#112377, #12206c); --backdrop-highlight: light-dark(#091861, #040b3d); }
+   while the panes float above. Light gradients keep dark ink on the frame; dark gradients take
+   light ink. See backdrops.ts. */
 [data-backdrop='sea-glass'] { --backdrop-primary: light-dark(#a9edef, #053c48); --backdrop-highlight: light-dark(#df9ff4, #200221); --backdrop-ink-light: light; }
-[data-backdrop='kind-of-blue'] { --backdrop-primary: light-dark(#1f407d, #002d63); --backdrop-highlight: light-dark(#002034, #00101c); }
 [data-backdrop='funky-fresh'] { --backdrop-primary: light-dark(#c5b8ff, #272665); --backdrop-highlight: light-dark(#5bbb7b, #001204); --backdrop-ink-light: light; }
-[data-backdrop='sunglasses-inside'] { --backdrop-primary: #2e1331; --backdrop-highlight: #1c0227; }
 [data-backdrop] {
   --backdrop:
     radial-gradient(circle at 50% 50%, var(--backdrop-primary) 20%, transparent 80%),
