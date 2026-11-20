@@ -5569,6 +5569,7 @@ div.inspector-empty > p { margin: 0 0 8px; }
 .support-share-status { display: block; }
 .support-share-status:not(:empty) { margin-top: 8px; }
 .support-share-status[data-error] { color: var(--danger); }
+.support-wechat-qr { display: block; height: auto; border-radius: var(--radius-sm); }
 
 .task-launch-dialog { width: min(420px, calc(100vw - 32px)); border-radius: var(--radius-lg); }
 .task-launch-dialog .modal-body { padding: 24px; gap: 16px; }
