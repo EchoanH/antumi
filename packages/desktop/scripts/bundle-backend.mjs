@@ -37,6 +37,8 @@ for (const [name, entry] of [
   ['gateway', 'packages/core/src/gateway-main.ts'],
   // The channel gateway, likewise (channel-service.ts): the chat platforms' connections.
   ['channel-gateway', 'packages/core/src/channel-gateway-main.ts'],
+  // CodeArts' bridge, which an agent stage runs (codearts-bridge-command.ts).
+  ['codearts-bridge', 'packages/core/src/codearts-bridge-main.ts'],
   ...forWsl
 ]) {
   await build({

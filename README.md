@@ -26,7 +26,8 @@ Bug 自动排查 · 智能体替你答疑 · 多 Agent 自由协作
   <a href="#支持的-agent" title="ZCode"><img src="docs/assets/agents/zcode.svg" alt="ZCode" width="32" height="32" /></a>&nbsp;&nbsp;
   <a href="#支持的-agent" title="Kimi Code"><img src="docs/assets/agents/kimi.svg" alt="Kimi Code" width="32" height="32" /></a>&nbsp;&nbsp;
   <a href="#支持的-agent" title="Gemini CLI"><img src="docs/assets/agents/gemini.svg" alt="Gemini CLI" width="32" height="32" /></a>&nbsp;&nbsp;
-  <a href="#支持的-agent" title="CodeBuddy"><img src="docs/assets/agents/codebuddy.svg" alt="CodeBuddy" width="32" height="32" /></a>
+  <a href="#支持的-agent" title="CodeBuddy"><img src="docs/assets/agents/codebuddy.svg" alt="CodeBuddy" width="32" height="32" /></a>&nbsp;&nbsp;
+  <a href="#支持的-agent" title="CodeArts"><img src="docs/assets/agents/codearts.svg" alt="CodeArts" width="32" height="32" /></a>
 </p>
 
 **一分钟看完：** 三个 bug，从收件箱一路做到合并。
@@ -148,6 +149,7 @@ ANTUMI_HOME=~/.antumi-demo pnpm dev
 | [**Kimi Code**](docs/KIMI.md) | `kimi acp`（Node.js 版 2.3.2+） | Default · Plan · Auto | ✓ | ✓ | ✓ |
 | [**Gemini CLI**](docs/GEMINI.md) | `gemini --acp`（0.66.0+） | Default · Auto Edit · Plan | ✓ | — | ✓ |
 | [**CodeBuddy**](docs/CODEBUDDY.md) | `codebuddy --acp` | 每次询问 · 自动接受编辑 · 规划 · 自动审查 | ✓ | — | ✓ |
+| [**CodeArts**](docs/CODEARTS.md) | `codearts serve`（经 Antumi 的桥） | Build · 自动 · 规划 · 只读 | — | ✓ | ✓ |
 
 「只读委派」为 — 的，只能以可改代码的方式被委派。你自己聊的会话里，「全部放行」不会默认选中。定时和预约这类无人值守运行，新安装默认「全部放行」，可在设置 → 权限改成更谨慎的「稳妥」。设置 → 外部智能体还会列出 Antumi 认识、但尚未接入的 Agent CLI。
 

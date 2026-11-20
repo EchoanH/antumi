@@ -26,7 +26,8 @@ Bugs investigated automatically · An agent that answers for you · Agents worki
   <a href="#supported-agents" title="ZCode"><img src="docs/assets/agents/zcode.svg" alt="ZCode" width="32" height="32" /></a>&nbsp;&nbsp;
   <a href="#supported-agents" title="Kimi Code"><img src="docs/assets/agents/kimi.svg" alt="Kimi Code" width="32" height="32" /></a>&nbsp;&nbsp;
   <a href="#supported-agents" title="Gemini CLI"><img src="docs/assets/agents/gemini.svg" alt="Gemini CLI" width="32" height="32" /></a>&nbsp;&nbsp;
-  <a href="#supported-agents" title="CodeBuddy"><img src="docs/assets/agents/codebuddy.svg" alt="CodeBuddy" width="32" height="32" /></a>
+  <a href="#supported-agents" title="CodeBuddy"><img src="docs/assets/agents/codebuddy.svg" alt="CodeBuddy" width="32" height="32" /></a>&nbsp;&nbsp;
+  <a href="#supported-agents" title="CodeArts"><img src="docs/assets/agents/codearts.svg" alt="CodeArts" width="32" height="32" /></a>
 </p>
 
 **One minute:** three bugs, from the inbox all the way to a merge.
@@ -148,6 +149,7 @@ Any of them can hand off to another. In a plain conversation or a single-agent t
 | [**Kimi Code**](docs/KIMI.md) | `kimi acp` (Node.js CLI 2.3.2+) | Default · Plan · Auto | ✓ | ✓ | ✓ |
 | [**Gemini CLI**](docs/GEMINI.md) | `gemini --acp` (0.66.0+) | Default · Auto Edit · Plan | ✓ | — | ✓ |
 | [**CodeBuddy**](docs/CODEBUDDY.md) | `codebuddy --acp` | Always Ask · Accept Edits · Plan · Auto | ✓ | — | ✓ |
+| [**CodeArts**](docs/CODEARTS.md) | `codearts serve` (through Antumi’s bridge) | Build · Automatic · Plan · Read only | — | ✓ | ✓ |
 
 An agent marked — for read-only delegation can only be given work that may change code. In conversations you run yourself, Allow everything is never selected by default. Unattended runs (routines and scheduled sends) default to Allow everything on a fresh install; switch to the more cautious Careful under Settings → Permissions. Settings → External agents also lists agent CLIs Antumi recognises but does not drive yet.
 

@@ -508,6 +508,8 @@ Kimi Code 使用官方 `kimi acp` 和通用 ACP driver，dialect 负责四种原
 
 CodeBuddy 使用官方 `codebuddy --acp` 和通用 ACP driver，dialect 负责五种原生模式、按工具调用标题命名工具，以及由 `ExitPlanMode` 权限请求承载的计划审批：它批准后会悄悄回到规划前的模式，dialect 声明 `planApprovalSetsMode`，driver 随批准一起把模式切到计划的执行模式。子 Agent 跑在主会话里，dialect 的 `subagentOf` 按 `_meta` 里的父调用把它的步骤归到 Task 卡片；它的 ACP 一行最多 32 MiB，`maxLineBytes` 让 driver 发送前拒绝更长的消息。它的登录信息全机共用一份，其余账号用 API Key（见「账号」）。细节见 [CodeBuddy](CODEBUDDY.md)。
 
+CodeArts（华为云码道）的 CLI 带着 OpenCode 1 的 ACP 服务却拒绝启动它（`acp` 在它不支持的命令名单里），所以 Antumi 带一个桥（`codearts-bridge-main.ts`，打包为 `codearts-bridge.mjs`，像 MCP 服务一样由 Electron 自带的 Node 运行）：为每个进程启动只属于它的 `codearts serve`（本机端口、随机密码），一侧说 ACP，一侧调它的 REST 接口、订阅事件流，于是通用 ACP driver 照常运行它，转换逻辑在 `agents/codearts/codearts-bridge.ts`。它的权限服务只按自己的运行模式和黑白名单回答，不看配置里 agent 的规则，改文件也从不询问：规划和只读的 agent 在配置里拒绝编辑和命令，这些工具因此不提供给模型；自动、全部放行和参考项目由启动时写进会话目录、经 `OPENCODE_CONFIG_CONTENT` 的 `plugin` 加载的权限插件执行，它的 `permission.ask` 钩子先于码道的规则作答。插件加载后写一个就绪文件，`launch.ready` 等不到就拒绝启动。它在 TUI 之外只认环境变量里的 AK/SK，并只在被信任的目录里启动。细节见 [CodeArts](CODEARTS.md)。
+
 ### 项目 Star
 
 设置 → 支持与反馈集中提供项目地址、GitHub Star 和 GitHub Issues 反馈入口，交流尚未开放时显示文字占位；关于页保留版本、更新、连接状态、Git 与快捷键。支持页可查询并为 `flyhero/antumi` 点 Star。desktop 仅调用 `support.starStatus` / `support.star`，通过 `project-star` 能力判断 core 是否支持；旧 core 只提供 GitHub 网页入口。状态不写入本机偏好，进入支持页或返回窗口时自动检查，以 GitHub 的响应为准，不提供手动检测按钮。

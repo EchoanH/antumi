@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
 import type { AgentKind, ChannelPlatform } from '@antumi/protocol'
 import cursorMark from '../assets/cursor.svg'
+import codeartsMark from '../assets/codearts.svg'
 
 // Line icons on a 20px grid; they take the button's text color.
 const stroked = {
@@ -245,7 +246,17 @@ function CodeBuddyMark() {
   )
 }
 
-const AGENT_MARKS = { claude: ClaudeMark, codex: CodexMark, cursor: CursorMark, opencode: OpenCodeMark, pi: PiMark, dsh: DeepSeekMark, antigravity: AntigravityMark, zcode: ZCodeMark, kimi: KimiMark, gemini: GeminiMark, codebuddy: CodeBuddyMark } satisfies Record<AgentKind, () => ReactElement>
+// CodeArts' logo from Huawei Cloud's CodeArts web console (codearts-logo.svg), kept unaltered; the
+// viewBox keeps its drawing and leaves out the empty tile around it.
+function CodeArtsMark() {
+  return (
+    <svg className="agent-mark agent-mark-codearts" viewBox="12 12 48 48" aria-hidden="true">
+      <image href={codeartsMark} width="72" height="72" />
+    </svg>
+  )
+}
+
+const AGENT_MARKS = { claude: ClaudeMark, codex: CodexMark, cursor: CursorMark, opencode: OpenCodeMark, pi: PiMark, dsh: DeepSeekMark, antigravity: AntigravityMark, zcode: ZCodeMark, kimi: KimiMark, gemini: GeminiMark, codebuddy: CodeBuddyMark, codearts: CodeArtsMark } satisfies Record<AgentKind, () => ReactElement>
 
 export function AgentIcon({ agent }: { agent: AgentKind | null }) {
   if (agent === null) return <NoAgentMark />
