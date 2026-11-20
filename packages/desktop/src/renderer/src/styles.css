@@ -10045,14 +10045,25 @@ summary.agent-group-head:focus-visible { outline: 2px solid var(--focus); outlin
 .routine-row[data-open] .routine-toggle svg { transform: rotate(90deg); }
 .routine-main { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
 .routine-title-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.routine-status { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; color: var(--text-muted); font-size: 12px; }
+.routine-status::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.routine-status[data-state='enabled'] { color: var(--status-done); }
+.routine-status[data-state='paused'] { color: var(--warning); }
+.routine-enabled { flex-shrink: 0; gap: 6px; margin-right: 12px; font-size: 12px; }
+.routine-run-now { white-space: nowrap; }
 .routine-row[data-paused] .routine-title { color: var(--text-muted); }
 .routine-unread { margin-left: 0; flex-shrink: 0; }
-.routine-failure { color: var(--warning); }
+.routine-failure { color: var(--warning); font-size: 12px; }
 .routine-confirm { font-size: 12px; }
 /* The row's own words stay quiet until pointed at: a page of rules is not a column of accent links. */
 .routine-actions .link-button { margin: 0 6px 0 0; color: var(--text-muted); font-size: 12px; }
 .routine-actions .link-button:hover { color: var(--accent); }
 .routine-actions .routine-delete, .routine-actions .routine-delete:hover { color: var(--danger); }
+@container worktrees (max-width: 640px) {
+  .routine-line { grid-template-columns: 20px minmax(0, 1fr); gap: 8px; }
+  .routine-actions { grid-column: 2; justify-content: flex-end; flex-wrap: wrap; }
+  .routine-title-line { flex-wrap: wrap; }
+}
 .routine-history { margin: 0 0 4px 40px; padding: 0 12px 0 0; list-style: none; border-left: 1px solid var(--border); }
 .routine-history-empty { margin: 0 0 8px 40px; font-size: 12px; }
 .routine-history-more { margin: 0 0 8px 40px; font-size: 12px; }

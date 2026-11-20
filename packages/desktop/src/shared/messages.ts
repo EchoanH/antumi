@@ -7248,8 +7248,8 @@ export const MESSAGES = {
     "en": "Every {value1} {value1, plural, one {hour} other {hours}}, starting at midnight"
   },
   "RoutineEditor.runsOnlyWhenYouClickRunNow": {
-    "zh": "只在你点「立即运行」时运行。",
-    "en": "Runs only when you click “Run now”."
+    "zh": "只在你点「立即运行一次」时运行，不会自动执行。",
+    "en": "Runs only when you click “Run once now”, never automatically."
   },
   "RoutineEditor.chooseAWeekday": {
     "zh": "选一个星期几。",
@@ -7320,9 +7320,16 @@ export const MESSAGES = {
     "en": "Enable"
   },
   "RoutinesSection.runImmediatelyIgnoringTimeAndQuota": {
-    "zh": "立即运行，不等时间和额度",
-    "en": "Run immediately, ignoring time and quota"
+    "zh": "立即运行一次，不等计划时间和额度；不改变自动运行设置",
+    "en": "Run once now, ignoring time and quota; automatic run settings stay the same"
   },
+  "RoutinesSection.manualOnly": { "zh": "仅手动", "en": "Manual only" },
+  "RoutinesSection.noAutomaticRuns": { "zh": "不会自动运行", "en": "Does not run automatically" },
+  "RoutinesSection.automaticRuns": { "zh": "自动运行", "en": "Automatic runs" },
+  "RoutinesSection.automaticFor": { "zh": "自动运行：{title}", "en": "Automatic runs: {title}" },
+  "RoutinesSection.runOnce": { "zh": "立即运行一次", "en": "Run once now" },
+  "RoutinesSection.runOnceFor": { "zh": "立即运行一次：{title}", "en": "Run once now: {title}" },
+  "RoutinesSection.lastFailure": { "zh": "上次失败：{reason}", "en": "Last run failed: {reason}" },
   "RoutinesSection.templates": {
     "zh": "模板",
     "en": "Templates"
