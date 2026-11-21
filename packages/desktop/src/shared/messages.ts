@@ -99,6 +99,7 @@ export const MESSAGES = {
   "PluginPage.failed": {"zh": "页面打不开：{message}", "en": "The page could not open: {message}"},
   "PluginPage.unavailable": {"zh": "当前桌面端无法显示插件页面，请更新 Antumi。", "en": "This app cannot show plugin pages. Update Antumi."},
   "PluginPage.retry": {"zh": "重试", "en": "Retry"},
+  "PluginPage.heldInBackground": {"zh": "页面在后台时暂停了这次请求，请重试", "en": "This request was paused while the page was in the background; try again"},
   "ProjectColor.label": {"zh": "项目颜色", "en": "Project color"},
   "ProjectColor.default": {"zh": "默认颜色", "en": "Default color"},
   "ProjectColor.blue": {"zh": "蓝色", "en": "Blue"},

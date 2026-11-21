@@ -26,6 +26,7 @@ function hostMessage(value: unknown): value is PluginPageHostMessage {
   switch (value.kind) {
     case 'init': return theme(value.theme) && (value.locale === 'zh-CN' || value.locale === 'en') && Object.hasOwn(value, 'state')
     case 'theme': return theme(value.theme)
+    case 'visibility': return typeof value.visible === 'boolean'
     case 'response': return typeof value.id === 'number' && Number.isInteger(value.id)
       && (value.error === undefined || typeof value.error === 'string' && value.error.length <= 2000)
     default: return false
@@ -48,6 +49,22 @@ function applyTheme(theme: PageTheme, previous?: PageTheme): void {
 
 // Across every connect() in the page: two bridges must not answer each other's calls.
 let calls = 0
+
+// The app keeps a page the user left loaded but hidden for a while. The frame cannot tell (its
+// document stays "visible"), so the bridge reports it through the standard properties and event:
+// a page that pauses on visibilitychange pauses here too. A hidden window still reads hidden.
+let shownByHost = true
+function reportVisibility(visible: boolean): void {
+  let native: (() => DocumentVisibilityState) | undefined
+  for (let proto = Object.getPrototypeOf(document); proto && !native; proto = Object.getPrototypeOf(proto)) native = Object.getOwnPropertyDescriptor(proto, 'visibilityState')?.get
+  const before = document.visibilityState
+  if (!Object.hasOwn(document, 'visibilityState')) {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => shownByHost ? native?.call(document) ?? 'visible' : 'hidden' })
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => document.visibilityState === 'hidden' })
+  }
+  shownByHost = visible
+  if (document.visibilityState !== before) document.dispatchEvent(new Event('visibilitychange'))
+}
 
 export function connect(): Promise<PageHost> {
   const token = location.hash.slice(1)
@@ -107,6 +124,8 @@ export function connect(): Promise<PageHost> {
         applyTheme(message.theme, current.theme)
         current.theme = message.theme
         for (const listener of listeners) listener(message.theme)
+      } else if (message.kind === 'visibility' && current) {
+        reportVisibility(message.visible)
       } else if (message.kind === 'response' && current) {
         const call = pending.get(message.id)
         if (!call) return

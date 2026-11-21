@@ -154,4 +154,6 @@ void start()
 - `open(url: string): void`: opens an http/https URL in the app's browser.
 - `leave(): void`: returns to conversations.
 
+Leaving a page hides it rather than unloading it (SDK 0.4.0): coming back within 10 minutes finds it as it was; past that, or with more than three pages hidden, the oldest is unloaded and reopens from `state`. While hidden, the bridge reports `document.visibilityState === 'hidden'` and fires `visibilitychange`, so pause polling on that event as a web page would in a background tab. New calls made while hidden wait until the page is shown (and fail if held over 50 seconds); `open`, `leave` and forwarded shortcuts are ignored.
+
 The sandbox blocks network requests (`connect-src 'none'`); fetch remote data in the Node handler. Remote images must use HTTPS; local packaged images are supported. Fonts are not accepted. Page files total at most 8 MiB and 256 files. Backend calls last at most 60 seconds, output at most 8 MiB, and accept at most 64 KiB of JSON params; at most four calls may run at once per plugin. Saved JSON state is limited to 32 KiB. The bridge forwards modifier chords and F1–F12 so app shortcuts work while the frame has focus.

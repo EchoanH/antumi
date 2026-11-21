@@ -33,6 +33,9 @@ export const PluginPageHostMessage = z.intersection(Token, z.discriminatedUnion(
   // The answer to ready.
   z.object({ kind: z.literal('init'), theme: PluginPageTheme, state: z.unknown(), locale: UiLocale }),
   z.object({ kind: z.literal('theme'), theme: PluginPageTheme }),
+  // Whether the page is on screen. A page the user left may stay loaded but hidden for a while;
+  // it is told, and the SDK reports it through document.visibilityState.
+  z.object({ kind: z.literal('visibility'), visible: z.boolean() }),
   z.object({ kind: z.literal('response'), id: z.number().int(), result: z.unknown().optional(), error: z.string().max(2000).optional() })
 ]))
 export type PluginPageHostMessage = z.infer<typeof PluginPageHostMessage>
