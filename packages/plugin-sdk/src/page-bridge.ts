@@ -81,7 +81,7 @@ export function connect(): Promise<PageHost> {
     function call(method: string, params: unknown = null): Promise<unknown> {
       if (!method || method.length > 64) return Promise.reject(new Error('Invalid page method'))
       let value: unknown
-      try { value = json(params, 64 * 1024) } catch (error) { return Promise.reject(error) }
+      try { value = json(params, 3 * 1024 * 1024) } catch (error) { return Promise.reject(error) }
       return new Promise((resolve, reject) => {
         const id = ++calls
         const timer = setTimeout(() => { pending.delete(id); reject(new Error('Plugin page call timed out')) }, 60_000)

@@ -293,7 +293,7 @@ connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'
 
 插件在 manifest 声明 `browserSites: [{ id: 'forum', origin: 'https://forum.example', loginPath: '/login' }]` 后，页面后台可调用 `context.browser`：`open` 打开官网登录页，`status` 检查会话 Cookie 是否存在，`request` 使用该会话请求站点，`disconnect` 关闭该会话的标签、取消请求并清理浏览器数据。站点确实使用独立的 HTTPS 请求源时，在同一项中用 `requestOrigins` 明确列出；它们只供请求使用，不改变登录页和会话归属。新 core 声明 `plugin-browser-sessions`，插件进程握手声明 `browser-sessions`；旧 core 会得到 SDK 的升级提示。
 
-`request` 参数为 `{ action: 'request', site: 'forum', path: '/posts', method: 'POST', headers: { 'x-csrf-token': '...' }, body: '...' }`，返回 `{ connected, response: { status, headers, body } }`。默认请求登录源；使用声明的附属源时另传 `origin`。只允许声明的 HTTPS 源及相对路径、GET/POST 和受限请求头，不跟随重定向，不返回 Set-Cookie。每次请求默认 12 秒；长轮询可用 `timeoutMs` 调整到最多 40 秒。响应最多 4 MiB，仍受页面一次调用 60 秒的限制。宿主不会自动重试写入。
+`request` 参数为 `{ action: 'request', site: 'forum', path: '/posts', method: 'POST', headers: { 'x-csrf-token': '...' }, body: '...' }`，返回 `{ connected, response: { status, headers, body } }`。默认请求登录源；使用声明的附属源时另传 `origin`。只允许声明的 HTTPS 源及相对路径、GET/POST 和受限请求头，不跟随重定向，不返回 Set-Cookie。正文最多 4 MiB；要发二进制（比如上传图片时自己组好的 multipart 表单），把字节用 base64 编码放进 `body`，并传 `bodyEncoding: 'base64'`，宿主解码后再发出（SDK 0.4.0，core 握手声明 `browser-binary`；旧 core 上 SDK 直接报错，不会把编码后的文字当正文发出去）。每次请求默认 12 秒；长轮询可用 `timeoutMs` 调整到最多 40 秒。响应最多 4 MiB，仍受页面一次调用 60 秒的限制。宿主不会自动重试写入。
 
 Cookie 由 desktop main 的 Chromium 会话保管，按 Antumi 数据目录、插件与站点隔离；core 校验声明和请求权限，保持无 Electron 依赖。普通浏览器标签和其他插件不会共享账号。`connected` 仅说明 Cookie 存在，插件须读取站点自己的当前用户接口来确认是否登录。页面状态、错误、日志中都不能存放凭据。打开登录页时只向发起调用的客户端通知显示标签；这个能力不开放给手机 RPC。应用关闭时不可用。
 
@@ -304,7 +304,7 @@ Cookie 由 desktop main 的 Chromium 会话保管，按 Antumi 数据目录、�
 | | 上限 |
 |---|---|
 | 页面文件 | 合计 8 MiB，256 个 |
-| 一次调用 | 60 秒，输出 8 MiB，参数 64 KiB |
+| 一次调用 | 60 秒，输出 8 MiB，参数 3 MiB（旧版 64 KiB） |
 | 同时进行的调用 | 每个插件 4 个 |
 | `setState` | 32 KiB |
 

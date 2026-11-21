@@ -115,7 +115,7 @@ describe('page bridge', () => {
     expect(f.messages.at(-1)).toMatchObject({ kind: 'state', value: { text: 'saved' } })
     expect(() => host.setState('界'.repeat(12_000))).toThrow()
     expect(() => host.setState(undefined)).toThrow()
-    await expect(host.call('large', '界'.repeat(22_000))).rejects.toThrow()
+    await expect(host.call('large', '界'.repeat(1_100_000))).rejects.toThrow()
     host.open('https://example.test/'); host.leave()
     expect(f.messages.slice(-2)).toMatchObject([{ kind: 'open', url: 'https://example.test/' }, { kind: 'leave' }])
     expect(() => host.open('javascript:alert(1)')).toThrow()
