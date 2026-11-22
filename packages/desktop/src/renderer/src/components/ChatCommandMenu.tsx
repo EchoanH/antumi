@@ -43,8 +43,9 @@ function CommandOption({ entry, id, active, onHover, onPick }: {
 }
 
 // The commands whose names match what follows a leading /, above the input: the user's own first,
-// then the agent's. Enter runs the one picked (the user's own expands into the input, an agent's is
-// sent), Tab only completes its name, Esc puts the list away until the text changes.
+// then the agent's commands, then its skills. Enter runs the one picked (the user's own expands
+// into the input, an agent's command is sent, a skill waits in the input for what it is to do),
+// Tab only completes its name, Esc puts the list away until the text changes.
 export function useChatCommandMenu({ text, entries, agentLabel, input, sendCommand }: {
   text: string
   entries: readonly CommandEntry[]
@@ -63,7 +64,8 @@ export function useChatCommandMenu({ text, entries, agentLabel, input, sendComma
   const query = commandQuery(text)
   const shown = useMemo(() => {
     const matches = query === null ? [] : matchCommands(entries, query)
-    return [...matches.filter((entry) => entry.source === 'antumi'), ...matches.filter((entry) => entry.source === 'agent')]
+    const agent = matches.flatMap((entry) => entry.source === 'agent' ? [entry] : [])
+    return [...matches.filter((entry) => entry.source === 'antumi'), ...agent.filter((entry) => entry.kind !== 'skill'), ...agent.filter((entry) => entry.kind === 'skill')]
   }, [entries, query, getLocale()])
   const open = query !== null && text !== closedAt && shown.length > 0
   const active = Math.min(highlight, shown.length - 1)
@@ -77,7 +79,7 @@ export function useChatCommandMenu({ text, entries, agentLabel, input, sendComma
     view.focus()
   }
   const pick = (entry: CommandEntry, complete: boolean) => {
-    if (complete || (entry.source === 'antumi' && entry.argumentHint)) {
+    if (complete || (entry.source === 'antumi' && entry.argumentHint) || (entry.source === 'agent' && entry.kind === 'skill')) {
       replace(`/${entry.name} `)
     } else if (entry.source === 'antumi') {
       replace(expandPrompt(entry.command.prompt, ''))
@@ -113,8 +115,8 @@ export function useChatCommandMenu({ text, entries, agentLabel, input, sendComma
   }
 
   const optionId = (index: number) => `${listId}-${index}`
-  const group = (source: CommandEntry['source'], label: string) => {
-    const rows = shown.map((entry, index) => ({ entry, index })).filter(({ entry }) => entry.source === source)
+  const group = (id: string, label: string, accept: (entry: CommandEntry) => boolean) => {
+    const rows = shown.map((entry, index) => ({ entry, index })).filter(({ entry }) => accept(entry))
     if (rows.length === 0) return null
     return (
       <li role="presentation" className="chat-command-group">
@@ -122,7 +124,7 @@ export function useChatCommandMenu({ text, entries, agentLabel, input, sendComma
         <ul role="group" aria-label={label} className="menu-list">
           {rows.map(({ entry, index }) => (
             <CommandOption
-              key={`${source}:${entry.name}`}
+              key={`${id}:${entry.name}`}
               entry={entry}
               id={optionId(index)}
               active={index === active}
@@ -138,8 +140,9 @@ export function useChatCommandMenu({ text, entries, agentLabel, input, sendComma
   const menu = open ? (
     <div className="menu menu-up chat-command-menu">
       <ul id={listId} role="listbox" aria-label={t('ChatCommandMenu.slashCommands')} className="menu-list">
-        {group('antumi', ANTUMI_LABEL())}
-        {group('agent', t('ChatCommandMenu.commands', { agentLabel: agentLabel }))}
+        {group('antumi', ANTUMI_LABEL(), (entry) => entry.source === 'antumi')}
+        {group('command', t('ChatCommandMenu.commands', { agentLabel: agentLabel }), (entry) => entry.source === 'agent' && entry.kind !== 'skill')}
+        {group('skill', t('ChatCommandMenu.skills'), (entry) => entry.source === 'agent' && entry.kind === 'skill')}
       </ul>
       <div className="chat-command-keys" aria-hidden="true">{tr('ChatCommandMenu.navigateSelectCompleteClose', { value1: <kbd>↑↓</kbd>, value2: <kbd>Enter</kbd>, value3: <kbd>Tab</kbd>, value4: <kbd>Esc</kbd> })}</div>
     </div>

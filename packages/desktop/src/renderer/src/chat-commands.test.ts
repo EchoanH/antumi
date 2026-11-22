@@ -17,7 +17,18 @@ describe('commandQuery', () => {
     expect(commandQuery('/rev')).toBe('rev')
     expect(commandQuery('/review main')).toBeNull()
     expect(commandQuery('hi /rev')).toBeNull()
+    expect(commandQuery('请检查 /tmp/rev')).toBeNull()
+    expect(commandQuery('https://example.com/docs')).toBeNull()
     expect(commandQuery('')).toBeNull()
+  })
+})
+
+describe('agentEntries', () => {
+  it('tells an agent\'s skills from its commands, older cores\' all being commands', () => {
+    expect(agentEntries([
+      { name: 'compact', description: '', argumentHint: null },
+      { name: 'demo', description: '', argumentHint: null, kind: 'skill' }
+    ]).map((entry) => entry.source === 'agent' && entry.kind)).toEqual(['command', 'skill'])
   })
 })
 

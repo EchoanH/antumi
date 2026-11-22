@@ -1,9 +1,11 @@
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { createServer } from 'node:net'
+import os from 'node:os'
 import { createInterface } from 'node:readline'
 import { z } from 'zod'
 import { CodeartsApiError, CodeartsBridge } from './agents/codearts/codearts-bridge'
+import { codeartsSkillDirs } from './agents/codearts/codearts-config'
 
 // What an agent stage runs for CodeArts: its local server, started for this process alone on a
 // port of its own with a password no one else has, and the bridge between it and the ACP Antumi
@@ -45,6 +47,13 @@ function readable(printed: string): string {
 const port = await freePort()
 const env: NodeJS.ProcessEnv = { ...process.env, CODEARTS_SERVER_USERNAME: user, CODEARTS_SERVER_PASSWORD: password }
 delete env.ELECTRON_RUN_AS_NODE
+
+// Where Antumi passes its library, the server takes the order the bridge lists skills in.
+const ConfigSchema = z.looseObject({ skills: z.looseObject({ paths: z.array(z.string()).optional() }).optional() })
+const config = (() => { try { return ConfigSchema.safeParse(JSON.parse(env.OPENCODE_CONFIG_CONTENT ?? '')).data } catch { return undefined } })()
+const skillDirs = codeartsSkillDirs(process.cwd(), os.homedir(), config?.skills?.paths ?? [])
+if (config?.skills?.paths) env.OPENCODE_CONFIG_CONTENT = JSON.stringify({ ...config, skills: { ...config.skills, paths: skillDirs } })
+
 const server = spawn(executable, ['serve', '--port', String(port), '--hostname', '127.0.0.1'], { cwd: process.cwd(), env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
 let printed = ''
 let stopping = false
@@ -86,7 +95,7 @@ let streamOpen: () => void = () => {}
 const streaming = new Promise<void>((resolve) => { streamOpen = resolve })
 const ready = Promise.all([listening, streaming]).then(() => {})
 ready.catch(() => {})
-const bridge = new CodeartsBridge(api, write, ready, process.env.npm_package_version ?? '1')
+const bridge = new CodeartsBridge(api, write, ready, process.env.npm_package_version ?? '1', skillDirs)
 
 async function stream(): Promise<void> {
   // A server that never listened has said why already.
