@@ -789,7 +789,12 @@ void app.whenReady().then(async () => {
   createWindow()
   void removeUpdateLeftovers()
   // After the backend: ensureBackend may move the home, and the host file belongs in the one core reads.
-  void backend.start().then(() => backend.browserProxy()).catch(() => null).then((proxy) => startBrowserHost(slot, backend.browserHostFile(), confirmLeavePage, proxy).then(
+  // On a server, tabs go out through it and downloads are put there, where the agent reads them.
+  const browserServer = async () => {
+    const proxy = await backend.browserProxy()
+    return proxy ? { proxy, mirror: async (local: string) => { const put = await backend.putOnServer(local, 'downloads'); return put?.kind === 'ok' ? put.path : null } } : null
+  }
+  void backend.start().then(browserServer).catch(() => null).then((remote) => startBrowserHost(slot, backend.browserHostFile(), confirmLeavePage, remote).then(
     (host) => {
       browserHost = host
       backend.browserHostStarted(host.server)

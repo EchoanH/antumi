@@ -163,10 +163,10 @@ export class AppBackend {
 
   // A file or folder of this machine put on the server, for core to name; null when the backend is
   // not on one.
-  putOnServer(local: string): Promise<Dropped> | null {
+  putOnServer(local: string, area: 'drops' | 'downloads' = 'drops'): Promise<Dropped> | null {
     const session = this.session
     const home = session instanceof SshSession ? session.home : null
-    return session instanceof SshSession && home ? putOnServer(session.host, session.destination, home, local) : null
+    return session instanceof SshSession && home ? putOnServer(session.host, session.destination, home, local, area) : null
   }
 
   // Where a folder dialog opens when the renderer names no place: the distro's home, or the

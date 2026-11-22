@@ -92,11 +92,12 @@ function tarOf(host: SshHost, folder: string, limit: number): Promise<Buffer | n
   })
 }
 
-// Puts what was dropped on the server under ~/.antumi/drops/<id>/, for the agent to read by the
-// path this answers. Each drop gets a folder of its own, so two of the same name do not collide.
-export async function putOnServer(host: SshHost, destination: string, home: string, local: string): Promise<Dropped> {
+// Puts a file or folder of this machine on the server under ~/.antumi/<area>/<id>/ (what was
+// dropped into the composer, what the built-in browser downloaded), for the agent to read by the
+// path this answers. Each gets a folder of its own, so two of the same name do not collide.
+export async function putOnServer(host: SshHost, destination: string, home: string, local: string, area: 'drops' | 'downloads' = 'drops'): Promise<Dropped> {
   const name = path.basename(local)
-  const folder = `${home}/.antumi/drops/${randomUUID()}`
+  const folder = `${home}/.antumi/${area}/${randomUUID()}`
   try {
     const info = await stat(local)
     if (info.isFile()) {
