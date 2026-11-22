@@ -6,6 +6,7 @@
 
 ### 改进
 
+- 电脑和手机上的 Cursor、DeepSeek Harness、Antigravity、Gemini CLI 和 CodeBuddy 图标更新为对应品牌样式。
 - 设置中的「运行」和「权限」合为「运行与权限」，页内分区查看和调整。
 - 设置中的会话、聊天命令、会话导入和项目统一归入「工作区」。
 - 设置导航中的「Agent」分组改名为「智能体」。
