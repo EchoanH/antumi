@@ -7,7 +7,7 @@ import { git, gitOrNull } from './git-changes'
 import { projectHead } from './workspace'
 import { commitAll } from './project-commit'
 import { Rejection } from './rejection'
-import { checkoutKey, commitRef, committedDiff, conflictFiles, filesBetween, gitOperation, logCommits, picking, repositoryKey, writeGit } from './git-repository'
+import { checkoutKey, checkoutKeys, commitRef, committedDiff, conflictFiles, filesBetween, gitOperation, logCommits, picking, repositoryKey, writeGit } from './git-repository'
 import { abortOperation, clearDirectRebase, continueOperation, parseTrack, pickCommit, rebaseBranch, rebasing, updateBranch } from './git-update'
 import { outgoingCommits, pushBranch, trackBranch } from './git-push'
 import type { GitFavoriteStore } from './git-favorite-store'
@@ -54,31 +54,33 @@ export class GitService {
   }
 
   private async taskAt(dir: string) {
-    const checkout = await checkoutKey(dir)
-    if (!checkout) return undefined
-    for (const task of this.tasks.list()) {
-      for (const repo of task.repos) {
-        if (repo.worktreePath && await checkoutKey(repo.worktreePath) === checkout) return { task, repo }
-      }
-    }
-    return undefined
+    const [checkout, tasks] = await Promise.all([checkoutKey(dir), this.taskCheckouts()])
+    return checkout ? tasks(checkout) : undefined
+  }
+
+  private async taskCheckouts() {
+    const repos = this.tasks.list().flatMap((task) => task.repos.flatMap((repo) => repo.worktreePath ? [{ task, repo, path: repo.worktreePath }] : []))
+    const keys = await checkoutKeys(repos.map((repo) => repo.path))
+    return (checkout: string) => repos.find((repo) => keys.get(repo.path) === checkout)
+  }
+
+  private async conversationCheckouts() {
+    const conversations = this.conversations.listAll().filter((conversation) => !conversation.taskId)
+    const keys = await checkoutKeys(conversations.flatMap((conversation) => conversation.projectPaths))
+    return (checkout: string) => conversations.filter((conversation) => conversation.projectPaths.some((project) => keys.get(project) === checkout)).map((conversation) => conversation.id)
   }
 
   async openProject(project: string): Promise<GitProject> {
     const directory = await checkoutKey(this.directory({ kind: 'project', project }))
     if (!directory) throw new Rejection('repo-not-git', '这个目录不是 Git 工作区。')
-    const workspaces = await gitWorkspaces(directory)
-    await Promise.all(workspaces.map(async (workspace) => {
-      workspace.taskId = (await this.taskAt(workspace.path))?.task.id
-      const checkout = await checkoutKey(workspace.path)
-      if (!checkout) return
-      for (const conversation of this.conversations.listAll()) {
-        if (conversation.taskId) continue
-        for (const project of conversation.projectPaths) {
-          if (await checkoutKey(project) === checkout) { workspace.conversationIds.push(conversation.id); break }
-        }
-      }
-    }))
+    const [workspaces, tasks, conversations] = await Promise.all([gitWorkspaces(directory), this.taskCheckouts(), this.conversationCheckouts()])
+    const keys = await checkoutKeys(workspaces.map((workspace) => workspace.path))
+    for (const workspace of workspaces) {
+      const checkout = keys.get(workspace.path)
+      if (!checkout) continue
+      workspace.taskId = tasks(checkout)?.task.id
+      workspace.conversationIds.push(...conversations(checkout))
+    }
     return { project: workspaces[0]?.path ?? directory, directory, workspaces }
   }
 

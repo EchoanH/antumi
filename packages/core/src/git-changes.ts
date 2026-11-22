@@ -28,9 +28,26 @@ export async function changedFileAt(root: string, files: readonly ChangedFile[],
   return files.find((each) => each.path === relative)
 }
 
+// Reads past this many wait their turn: hundreds of git at once slow every one of them down.
+const MAX_READS = 8
+let reading = 0
+const waiting: Array<() => void> = []
+
+async function readSlot<T>(run: () => Promise<T>): Promise<T> {
+  if (reading < MAX_READS) reading++
+  else await new Promise<void>((resolve) => waiting.push(resolve))
+  try {
+    return await run()
+  } finally {
+    const next = waiting.shift()
+    if (next) next()
+    else reading--
+  }
+}
+
 // --no-optional-locks keeps every read off index.lock, which the agent's own git would trip on.
 export async function git(dir: string, args: readonly string[]): Promise<string> {
-  const { stdout } = await execFileAsync('git', ['--no-optional-locks', '-C', dir, ...args], { maxBuffer: MAX_BUFFER })
+  const { stdout } = await readSlot(() => execFileAsync('git', ['--no-optional-locks', '-C', dir, ...args], { maxBuffer: MAX_BUFFER }))
   return stdout
 }
 

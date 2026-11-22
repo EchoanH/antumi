@@ -26,9 +26,11 @@ const KIND: Record<ChangedFile['kind'], { mark: string; text: string }> = locali
 export function useFocusCount(): number {
   const [count, setCount] = useState(0)
   useEffect(() => {
-    const onFocus = () => setCount((current) => current + 1)
+    // Switching windows back and forth fires focus in bursts; read again once they settle.
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const onFocus = () => { clearTimeout(timer); timer = setTimeout(() => setCount((current) => current + 1), 250) }
     window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
+    return () => { clearTimeout(timer); window.removeEventListener('focus', onFocus) }
   }, [])
   return count
 }

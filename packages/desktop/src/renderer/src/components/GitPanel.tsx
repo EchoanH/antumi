@@ -13,6 +13,10 @@ import { dockThisPanel, hideThisPanel } from '../panel-window-page'
 import { ProjectIcon } from './ProjectIcon'
 import { projectName } from './ProjectPicker'
 
+// The last project each path read as, shown while it is read again: reopening the panel or switching
+// back to a project should not blank it.
+const opened = new Map<string, GitProject>()
+
 export function GitPanel({ windowed = false }: { windowed?: boolean }) {
   const rpc = useCore((s) => s.rpc)
   const location = useCore((s) => s.gitLocation)
@@ -30,7 +34,7 @@ export function GitPanel({ windowed = false }: { windowed?: boolean }) {
   const request = useRef(0)
   const selected = location?.project || lastProject || recent[0] || ''
   const workspace = location?.workspace || selected
-  const project = data?.path === selected ? data.project : null
+  const project = data?.path === selected ? data.project : opened.get(selected) ?? null
   useEffect(() => {
     let live = true
     void rpc?.call('projects.recent', {}).then((paths) => { if (live) setRecent(paths) }, () => {})
@@ -42,6 +46,7 @@ export function GitPanel({ windowed = false }: { windowed?: boolean }) {
     if (!selected || !rpc?.features.includes('git-projects')) return
     void rpc.call('git.openProject', { path: selected }).then((project) => {
       if (sequence !== request.current) return
+      opened.set(selected, project)
       setData({ path: selected, project })
       const latest = useCore.getState().gitLocation
       if ((!latest || latest.project === selected && latest.workspace === selected) && project.directory !== selected) setGitLocation(selected, project.directory)

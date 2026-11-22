@@ -1,4 +1,4 @@
-import { access, realpath } from 'node:fs/promises'
+import { access, readFile, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { GitCommit, ChangedFile, FileDiff } from '@antumi/protocol'
 import { git, gitOrNull } from './git-changes'
@@ -14,8 +14,39 @@ export async function repositoryKey(dir: string): Promise<string | null> {
 // One working tree of a repository: its own HEAD, branch and index, which another worktree's agent
 // does not touch.
 export async function checkoutKey(dir: string): Promise<string | null> {
+  const real = await realpath(dir).catch(() => null)
+  if (!real) return null
+  const found = await checkoutRoot(real)
+  if (found !== undefined) return found
   const top = await gitOrNull(dir, ['rev-parse', '--show-toplevel'])
   return top ? realpath(top.trim()).catch(() => null) : null
+}
+
+// The checkout read from the files git itself would find, without starting git: a panel matches
+// hundreds of paths at once. undefined leaves what this does not plainly recognise to git: a bare
+// repository, a folder inside .git, a .git that names nothing.
+async function checkoutRoot(real: string): Promise<string | null | undefined> {
+  for (let dir = real; ; dir = path.dirname(dir)) {
+    if (path.basename(dir) === '.git' || await exists(path.join(dir, 'HEAD')) && await exists(path.join(dir, 'objects'))) return undefined
+    const dotGit = path.join(dir, '.git')
+    const entry = await stat(dotGit).catch(() => null)
+    if (entry?.isDirectory()) return await exists(path.join(dotGit, 'HEAD')) ? dir : undefined
+    if (entry?.isFile()) {
+      const pointer = /^gitdir: (.+)$/m.exec(await readFile(dotGit, 'utf8').catch(() => ''))?.[1]?.trim()
+      return pointer && await exists(path.join(path.resolve(dir, pointer), 'HEAD')) ? dir : undefined
+    }
+    if (entry) return undefined
+    if (path.dirname(dir) === dir) return null
+  }
+}
+
+const exists = (file: string) => access(file).then(() => true, () => false)
+
+// Each distinct path resolved once and all together: hundreds of conversations name the same few projects.
+export async function checkoutKeys(paths: Iterable<string>): Promise<Map<string, string | null>> {
+  const unique = [...new Set(paths)]
+  const keys = await Promise.all(unique.map(checkoutKey))
+  return new Map(unique.map((dir, index) => [dir, keys[index] ?? null]))
 }
 
 export async function writeGit(dir: string, args: string[]): Promise<string> {
