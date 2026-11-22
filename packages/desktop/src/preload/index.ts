@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('antumi', {
     return typeof named === 'string' ? named : ''
   },
   backendLocation: (): Promise<unknown> => ipcRenderer.invoke('antumi:backend-location'),
+  backendRemote: (): Promise<unknown> => ipcRenderer.invoke('antumi:backend-remote'),
   setBackendLocation: (location: unknown): Promise<unknown> => ipcRenderer.invoke('antumi:backend-location-set', location),
   openWithApps: (): Promise<unknown> => ipcRenderer.invoke('antumi:open-with-apps'),
   openWith: (path: string, app: string): Promise<unknown> => ipcRenderer.invoke('antumi:open-with', path, app),

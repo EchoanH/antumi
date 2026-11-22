@@ -2,7 +2,7 @@ import type { SpawnOptions } from 'node:child_process'
 import { join } from 'node:path'
 import type { CoreEndpoint } from '@antumi/protocol'
 import { antumiPaths, readCoreEndpoint } from '@antumi/protocol/node'
-import type { BackendLocation, BackendLocationState, BackendProblem } from '../shared/backend-location'
+import type { BackendLocation, BackendLocationState, BackendProblem, RemoteBackend } from '../shared/backend-location'
 import { ensureBackend, replaceOldDaemon } from './backend'
 import { readBackendLocation, writeBackendLocation } from './backend-location'
 import { bundledLinuxBackend, type LinuxArch } from './linux-backend/bundled-archive'
@@ -33,8 +33,6 @@ export type AppBackendOptions = {
   sshConfig?: string
 }
 
-// Where a backend runs that is not on this machine, for what main says about its paths.
-export type RemoteBackend = { kind: 'wsl'; distro: string } | { kind: 'ssh'; host: string }
 
 export class AppBackend {
   private chosen: BackendLocation = { kind: 'local' }

@@ -3,7 +3,8 @@ import { z } from 'zod'
 import { AgentKind, BookmarkFields, type PluginPageFiles } from '@antumi/protocol'
 import type { ActionableTarget, Notice } from './attention'
 import { ShortcutAction, type ShortcutSettings } from '../../shared/keyboard-shortcuts'
-import { BackendLocationState, type BackendLocation } from '../../shared/backend-location'
+import { BackendLocationState, RemoteBackend, type BackendLocation } from '../../shared/backend-location'
+import { askServerFolder } from './server-folder-dialog'
 import type { PanelBrowserContext, PanelCommand, PanelDockPayload, PanelHandoff, PanelKind } from '../../shared/panel-window'
 
 // What the Electron preload exposes; absent when the UI runs in a plain browser.
@@ -85,6 +86,7 @@ declare global {
       // Where the backend runs (main's app-backend.ts); setting it restarts the app. Absent from a
       // main older than the renderer.
       backendLocation?(): Promise<unknown>
+      backendRemote?(): Promise<unknown>
       setBackendLocation?(location: unknown): Promise<unknown>
     }
   }
@@ -119,6 +121,13 @@ export async function backendLocation(): Promise<BackendLocationState | null> {
   return parsed.success ? parsed.data : null
 }
 
+// Where the backend runs when not on this machine; null when it does, or outside Electron.
+export async function backendRemote(): Promise<RemoteBackend | null> {
+  const found = await window.antumi?.backendRemote?.().catch(() => null)
+  const parsed = RemoteBackend.nullable().safeParse(found)
+  return parsed.success ? parsed.data : null
+}
+
 // Saves the choice and restarts the app, so a true answer is seldom seen.
 export async function setBackendLocation(location: BackendLocation): Promise<boolean> {
   const done = await window.antumi?.setBackendLocation?.(location).catch(() => false)
@@ -129,7 +138,10 @@ export function canPickFolder(): boolean {
   return window.antumi !== undefined
 }
 
+// The system's folder dialog where core reads this machine's files (or WSL's, which Windows
+// reaches), the server's folders listed through core where it runs on one. Paths are core's.
 export async function pickFolder(defaultPath?: string, title?: string): Promise<string | null> {
+  if ((await backendRemote())?.kind === 'ssh') return askServerFolder({ ...(title ? { title } : {}), ...(defaultPath ? { start: defaultPath } : {}) })
   const picked = await window.antumi?.pickFolder(defaultPath, title)
   return typeof picked === 'string' && picked !== '' ? picked : null
 }
@@ -365,6 +377,7 @@ export function setNativeTheme(theme: 'system' | 'light' | 'dark'): void {
 }
 
 export async function pickPlugin(kind: 'directory' | 'zip'): Promise<string | null> {
+  if ((await backendRemote())?.kind === 'ssh') return askServerFolder(kind === 'zip' ? { files: ['zip'] } : {})
   const picked = await window.antumi?.pickPlugin?.(kind)
   return typeof picked === 'string' && picked ? picked : null
 }

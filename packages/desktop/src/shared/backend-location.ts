@@ -56,6 +56,13 @@ export type SshBackendProblem = z.infer<typeof SshBackendProblem>
 
 export type BackendProblem = WslBackendProblem | SshBackendProblem
 
+// Where a backend runs that is not on this machine.
+export const RemoteBackend = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('wsl'), distro: z.string() }),
+  z.object({ kind: z.literal('ssh'), host: z.string() })
+])
+export type RemoteBackend = z.infer<typeof RemoteBackend>
+
 export const BackendLocationState = z.object({
   // Whether this app can run its backend in WSL at all: Windows, installed, carrying the archive.
   wsl: z.boolean(),

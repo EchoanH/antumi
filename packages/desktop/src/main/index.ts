@@ -374,6 +374,11 @@ ipcMain.handle('antumi:core-endpoint', () => backend.coreEndpoint())
 // Where the backend runs, and the choice of it for the next start: the app talks to one backend
 // for as long as it runs, so a new choice restarts it.
 ipcMain.handle('antumi:backend-location', () => backend.state())
+// Where the backend runs, without listing WSL distros: asked each time a folder is picked.
+ipcMain.handle('antumi:backend-remote', async () => {
+  await backend.start()
+  return backend.remote()
+})
 ipcMain.handle('antumi:backend-location-set', async (_event, location: unknown) => {
   const parsed = BackendLocation.safeParse(location)
   if (!parsed.success) return false
