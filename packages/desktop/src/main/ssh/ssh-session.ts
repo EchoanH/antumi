@@ -37,4 +37,13 @@ export class SshSession extends BackendSession<SshSessionOptions, SshBackendPlac
   get destination(): string {
     return this.options.destination
   }
+
+  get host(): SshHost {
+    return this.options.host
+  }
+
+  // The user's home on the server, once the backend there was found.
+  get home(): string | null {
+    return this.place?.home ?? null
+  }
 }

@@ -87,6 +87,8 @@ declare global {
       // main older than the renderer.
       backendLocation?(): Promise<unknown>
       backendRemote?(): Promise<unknown>
+      localPathForFile?(file: File): string
+      putDropped?(path: string): Promise<unknown>
       setBackendLocation?(location: unknown): Promise<unknown>
     }
   }
@@ -125,7 +127,31 @@ export async function backendLocation(): Promise<BackendLocationState | null> {
 export async function backendRemote(): Promise<RemoteBackend | null> {
   const found = await window.antumi?.backendRemote?.().catch(() => null)
   const parsed = RemoteBackend.nullable().safeParse(found)
-  return parsed.success ? parsed.data : null
+  knownRemote = parsed.success ? parsed.data : null
+  return knownRemote
+}
+
+// The same, for what must be known at once (whether to offer a file manager): asked as the window
+// opens, and the backend's place does not change while the app runs.
+let knownRemote: RemoteBackend | null = null
+if (typeof window !== 'undefined' && window.antumi?.backendRemote) void backendRemote()
+
+export function onServer(): boolean {
+  return knownRemote?.kind === 'ssh'
+}
+
+const Dropped = z.union([z.object({ path: z.string() }), z.object({ error: z.string() })])
+
+// A file or folder dropped on the window, put on the server when core runs on one: its path there,
+// or why not. Null where it is read where it is (this machine, or WSL through /mnt).
+export function putDroppedOnServer(file: File): Promise<z.infer<typeof Dropped>> | null {
+  const local = onServer() ? window.antumi?.localPathForFile?.(file) : undefined
+  const put = window.antumi?.putDropped
+  if (!local || !put) return null
+  return put(local).then((answer) => {
+    const parsed = Dropped.safeParse(answer)
+    return parsed.success ? parsed.data : { error: t('desktopBridge.putDroppedFailed') }
+  }, () => ({ error: t('desktopBridge.putDroppedFailed') }))
 }
 
 // Saves the choice and restarts the app, so a true answer is seldom seen.
@@ -146,8 +172,9 @@ export async function pickFolder(defaultPath?: string, title?: string): Promise<
   return typeof picked === 'string' && picked !== '' ? picked : null
 }
 
+// Not on a server: its files are in no file manager here.
 export function canRevealFile(): boolean {
-  return window.antumi?.revealFile !== undefined
+  return window.antumi?.revealFile !== undefined && !onServer()
 }
 
 export function canOpenFile(): boolean {

@@ -27,6 +27,9 @@ contextBridge.exposeInMainWorld('antumi', {
     const named: unknown = path ? ipcRenderer.sendSync('antumi:backend-path', path) : path
     return typeof named === 'string' ? named : ''
   },
+  // Where a dropped file is on this machine, for main to put on the server when core runs there.
+  localPathForFile: (file: File): string => webUtils.getPathForFile(file),
+  putDropped: (path: string): Promise<unknown> => ipcRenderer.invoke('antumi:put-dropped', path),
   backendLocation: (): Promise<unknown> => ipcRenderer.invoke('antumi:backend-location'),
   backendRemote: (): Promise<unknown> => ipcRenderer.invoke('antumi:backend-remote'),
   setBackendLocation: (location: unknown): Promise<unknown> => ipcRenderer.invoke('antumi:backend-location-set', location),

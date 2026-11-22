@@ -1,11 +1,13 @@
-import { readFile, realpath, stat } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { spawn } from 'node:child_process'
-import { dirname, extname, isAbsolute, join } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, Notification, protocol, screen, session, shell, type OpenDialogOptions, type WebContents } from 'electron'
 import { z } from 'zod'
 import { PLUGIN_PAGE_SCHEME, PluginPageFiles, resolveUiLocale, UiLocale } from '@antumi/protocol'
 import { applicationMenu } from './application-menu'
+import { REMOTE_EDITORS, remoteEditorUrl, type ServerFile } from './ssh/ssh-files'
 import { ShortcutAction, ShortcutSettings } from '../shared/keyboard-shortcuts'
 import { ensureBackend, stopBackendForInstall } from './backend'
 import { AppBackend } from './app-backend'
@@ -77,23 +79,35 @@ const PREVIEW_POLICY = [
   "base-uri 'none'", "form-action 'none'"
 ].join('; ')
 
+const PREVIEW_MAX_BYTES = 32 * 1024 * 1024
+
+function previewResponse(real: string, body: Buffer): Response {
+  const type = PREVIEW_TYPES[extname(real).toLowerCase()] ?? 'application/octet-stream'
+  const content = type.startsWith('text/html') ? previewHtml(body.toString('utf8')) : body
+  return new Response(content, { headers: { 'content-type': type, 'content-security-policy': PREVIEW_POLICY, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } })
+}
+
 async function servePreview(request: Request): Promise<Response> {
   const url = new URL(request.url)
   const named = decodeURIComponent(url.pathname)
+  if (url.host !== 'file') return new Response('not found', { status: 404 })
+  // A file of a backend on a server is read there, over ssh.
+  const remote = backend.readServerFile(named, PREVIEW_MAX_BYTES)
+  if (remote) {
+    const found = await remote
+    return found.kind === 'file' ? previewResponse(found.real, found.bytes) : new Response('not found', { status: 404 })
+  }
   // A Windows path comes as /C:/x (see urlPath in the renderer).
   const spelled = process.platform === 'win32' && /^\/[a-zA-Z]:\//.test(named) ? named.slice(1) : named
   // A file of a backend in WSL is read where this machine reaches it.
   const path = backend.fromBackendPath(spelled)
-  if (url.host !== 'file' || !path || !isAbsolute(path)) return new Response('not found', { status: 404 })
+  if (!path || !isAbsolute(path)) return new Response('not found', { status: 404 })
   try {
     // The path as it really is: a link may not lead the frame somewhere else under a page's name.
     const real = await realpath(path)
     const info = await stat(real)
-    if (!info.isFile() || info.size > 32 * 1024 * 1024) return new Response('not found', { status: 404 })
-    const body = await readFile(real)
-    const type = PREVIEW_TYPES[extname(real).toLowerCase()] ?? 'application/octet-stream'
-    const content = type.startsWith('text/html') ? previewHtml(body.toString('utf8')) : body
-    return new Response(content, { headers: { 'content-type': type, 'content-security-policy': PREVIEW_POLICY, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } })
+    if (!info.isFile() || info.size > PREVIEW_MAX_BYTES) return new Response('not found', { status: 404 })
+    return previewResponse(real, await readFile(real))
   } catch {
     return new Response('not found', { status: 404 })
   }
@@ -387,6 +401,18 @@ ipcMain.handle('antumi:backend-location-set', async (_event, location: unknown) 
   app.quit()
   return true
 })
+// A file or folder dropped on the window, put on the server for core to read there: its path on the
+// server, or what went wrong as { error }. Nothing when the backend is not on a server.
+ipcMain.handle('antumi:put-dropped', async (_event, local: unknown) => {
+  if (typeof local !== 'string' || !isAbsolute(local)) return { error: uiText('Invalid file path', '文件路径无效') }
+  const put = backend.putOnServer(local)
+  if (!put) return { error: uiText('Antumi does not run on a server', 'Antumi 没有运行在服务器上') }
+  const done = await put
+  if (done.kind === 'ok') return { path: done.path }
+  if (done.kind === 'too-large') return { error: uiText('Over 100 MB, too large to put on the server', '超过 100 MB，不能放到服务器上') }
+  return { error: uiText(`Could not put it on the server: ${done.detail}`, `没能放到服务器上：${done.detail}`) }
+})
+
 // A file dropped on the window, named as core reads it. Synchronous, as the drop's handler is.
 ipcMain.on('antumi:backend-path', (event, path: unknown) => {
   event.returnValue = typeof path === 'string' ? backend.toBackendPath(path) : null
@@ -494,7 +520,8 @@ ipcMain.handle('antumi:bookmark-pick-html', async (event) => {
 // resolved it to that exists. Showing never opens or runs it, so a path an agent wrote cannot start
 // anything.
 ipcMain.handle('antumi:reveal-file', async (_event, candidates: unknown) => {
-  if (!Array.isArray(candidates)) return null
+  // The server's files are in no file manager here.
+  if (!Array.isArray(candidates) || backend.remote()?.kind === 'ssh') return null
   for (const candidate of candidates.slice(0, 20)) {
     if (typeof candidate !== 'string') continue
     const path = hereOf(candidate)
@@ -510,7 +537,24 @@ ipcMain.handle('antumi:reveal-file', async (_event, candidates: unknown) => {
   return null
 })
 
+// A server's file opened here: a copy in this machine's temporary folder, as VS Code's remote
+// windows open one, so the default app shows it. Changes to the copy stay here.
+const SERVER_COPY_MAX_BYTES = 100 * 1024 * 1024
+async function openServerFile(named: string, read: Promise<ServerFile>): Promise<string> {
+  const found = await read
+  if (found.kind === 'not-a-file') return uiText('A folder on the server cannot be opened on this computer', '服务器上的文件夹不能在这台电脑上打开')
+  if (found.kind === 'too-large') return uiText('The file is over 100 MB, too large to open from the server', '文件超过 100 MB，不能从服务器上打开')
+  if (found.kind !== 'file') return uiText(`Cannot open file: ${named}`, `无法打开文件：${named}`)
+  const folder = join(app.getPath('temp'), 'antumi-server-files', createHash('sha256').update(found.real).digest('hex').slice(0, 16))
+  await mkdir(folder, { recursive: true })
+  const copy = join(folder, basename(found.real))
+  await writeFile(copy, found.bytes)
+  return shell.openPath(copy)
+}
+
 ipcMain.handle('antumi:open-file', async (_event, named: unknown) => {
+  const remote = typeof named === 'string' ? backend.readServerFile(named, SERVER_COPY_MAX_BYTES) : null
+  if (remote && typeof named === 'string') return openServerFile(named, remote).catch(() => uiText(`Cannot open file: ${named}`, `无法打开文件：${named}`))
   const file = typeof named === 'string' ? backend.fromBackendPath(named) : null
   if (!file || !isAbsolute(file) || file.includes('\0')) return uiText('Invalid file path', '文件路径无效')
   try {
@@ -530,13 +574,27 @@ const foundApps = () => (apps ??= installedApps(process.platform, homedir(), exi
 
 // Each with its own icon, read from the app itself, so nothing of a brand is bundled here. As the
 // Finder shows it: getFileIcon goes by the extension on macOS, so every .app gets the same one.
-ipcMain.handle('antumi:open-with-apps', async () => Promise.all((await foundApps()).map(async ({ path, ...entry }) => {
+ipcMain.handle('antumi:open-with-apps', async () => Promise.all((await foundApps()).filter((entry) => backend.remote()?.kind !== 'ssh' || REMOTE_EDITORS[entry.id]).map(async ({ path, ...entry }) => {
   const icon = await nativeImage.createThumbnailFromPath(path, { width: 64, height: 64 }).then((image) => image.toDataURL(), () => null)
   return { ...entry, icon }
 })))
 
 // A file opened in one of those apps, named by its id: the renderer never names what runs.
 ipcMain.handle('antumi:open-with', async (_event, named: unknown, id: unknown) => {
+  // On a server only the editors that reach it themselves, by their own URL.
+  const remote = backend.remote()
+  if (remote?.kind === 'ssh') {
+    const editor = typeof id === 'string' ? REMOTE_EDITORS[id] : undefined
+    if (typeof named !== 'string' || !named.startsWith('/') || named.includes('\0')) return uiText('Invalid file path', '文件路径无效')
+    if (!editor) return uiText('This app cannot open files on the server', '这个应用打不开服务器上的文件')
+    const directory = await backend.serverIsDirectory(named)
+    try {
+      await shell.openExternal(remoteEditorUrl(editor, remote.host, named, directory === false))
+      return ''
+    } catch {
+      return uiText(`Cannot open on the server: ${named}`, `无法打开服务器上的：${named}`)
+    }
+  }
   const file = typeof named === 'string' ? backend.fromBackendPath(named) : null
   if (!file || !isAbsolute(file) || file.includes('\0')) return uiText('Invalid file path', '文件路径无效')
   const chosen = (await foundApps()).find((entry) => entry.id === id)

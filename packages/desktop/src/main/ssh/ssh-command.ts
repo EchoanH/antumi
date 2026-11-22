@@ -107,9 +107,15 @@ function prepare(host: SshHost): string | null {
 }
 
 // A program on the host, run to its end. Resolves on any exit code; ssh's own failures exit 255.
-export function runOverSsh(host: SshHost, destination: string, argv: readonly string[], options: LinuxRunOptions = {}): Promise<LinuxResult> {
+export async function runOverSsh(host: SshHost, destination: string, argv: readonly string[], options: LinuxRunOptions = {}): Promise<LinuxResult> {
+  const result = await runOverSshBytes(host, destination, argv, options)
+  return { ...result, stdout: result.stdout.toString('utf8') }
+}
+
+// The same, its output as the bytes it was: a file read off the host.
+export function runOverSshBytes(host: SshHost, destination: string, argv: readonly string[], options: LinuxRunOptions = {}): Promise<Omit<LinuxResult, 'stdout'> & { stdout: Buffer }> {
   const file = prepare(host)
-  if (!file) return Promise.resolve({ code: null, stdout: '', stderr: 'ssh not found', timedOut: false })
+  if (!file) return Promise.resolve({ code: null, stdout: Buffer.alloc(0), stderr: 'ssh not found', timedOut: false })
   return new Promise((resolve) => {
     const out: Buffer[] = []
     const err: Buffer[] = []
@@ -119,13 +125,13 @@ export function runOverSsh(host: SshHost, destination: string, argv: readonly st
       settled = true
       clearTimeout(timer)
       const stderr = Buffer.concat(err).toString('utf8')
-      resolve({ code, stdout: Buffer.concat(out).toString('utf8'), stderr: note ? `${stderr}${stderr ? '\n' : ''}${note}` : stderr, timedOut })
+      resolve({ code, stdout: Buffer.concat(out), stderr: note ? `${stderr}${stderr ? '\n' : ''}${note}` : stderr, timedOut })
     }
     let child: ChildProcess
     try {
       child = host.spawn(file, sshArgs(host, destination, remoteCommand(argv, options.env)), { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
     } catch (error) {
-      resolve({ code: null, stdout: '', stderr: String(error), timedOut: false })
+      resolve({ code: null, stdout: Buffer.alloc(0), stderr: String(error), timedOut: false })
       return
     }
     const timer = setTimeout(() => {

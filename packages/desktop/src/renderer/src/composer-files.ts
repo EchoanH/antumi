@@ -4,7 +4,7 @@ import { ATTACHMENT_CHUNK_BYTES, IMAGE_MIME_TYPES, MAX_ATTACHMENT_BYTES } from '
 import { bytesToBase64 } from './base64'
 import { CLIPBOARD_TYPE, heldPastePath, isHeldPaste, pathTarget, placeTargets, type Mention, type MentionedText, type MentionTarget } from './chat-mentions'
 import { useCore } from './core-store'
-import { pathForFile } from './desktop-bridge'
+import { pathForFile, putDroppedOnServer } from './desktop-bridge'
 import { t } from './i18n'
 
 // Past this many characters a paste goes to the agent as a file it reads rather than in the
@@ -142,15 +142,34 @@ export function useComposerFiles({ conversationId, cwd, input, setValue, addImag
       return file ? [{ file, directory: item.webkitGetAsEntry()?.isDirectory ?? false }] : []
     })
     const pictures = images ? dropped.filter((entry) => !entry.directory && isImage(entry.file)).map((entry) => entry.file) : []
-    const targets = mentions ? dropped.flatMap((entry) => {
-      if (pictures.includes(entry.file)) return []
+    const targets: MentionTarget[] = []
+    // A server reads none of this machine's files: those go up to it first (docs/REMOTE.md).
+    const puts: Promise<MentionTarget | null>[] = []
+    for (const entry of mentions ? dropped : []) {
+      if (pictures.includes(entry.file)) continue
+      const kind = entry.directory ? 'directory' : 'file'
       const path = pathForFile(entry.file)
-      return path ? [pathTarget(path, entry.directory ? 'directory' : 'file', cwd)] : []
-    }) : []
-    if (pictures.length === 0 && targets.length === 0) return
+      const put = path ? null : putDroppedOnServer(entry.file)
+      if (path) targets.push(pathTarget(path, kind, cwd))
+      else if (put) puts.push(put.then((answer) => {
+        if ('path' in answer) return pathTarget(answer.path, kind, cwd)
+        useCore.setState({ error: answer.error })
+        return null
+      }))
+    }
+    if (pictures.length === 0 && targets.length === 0 && puts.length === 0) return
     event.preventDefault()
     if (pictures.length > 0) addImages(pictures)
-    if (targets.length > 0) place(targets, input.current?.posAtCoords({ x: event.clientX, y: event.clientY }, false) ?? null)
+    const at = input.current?.posAtCoords({ x: event.clientX, y: event.clientY }, false) ?? null
+    if (targets.length > 0) place(targets, at)
+    if (puts.length > 0) {
+      setPasting((count) => count + 1)
+      void Promise.all(puts).then((answers) => {
+        setPasting((count) => count - 1)
+        const put = answers.filter((target): target is MentionTarget => target !== null)
+        if (put.length > 0) place(put, null)
+      })
+    }
   }
 
   return { pasting, onPasteCapture, onDragOver, onDropCapture }

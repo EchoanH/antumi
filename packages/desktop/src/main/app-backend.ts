@@ -8,6 +8,7 @@ import { readBackendLocation, writeBackendLocation } from './backend-location'
 import { bundledLinuxBackend, type LinuxArch } from './linux-backend/bundled-archive'
 import type { LinuxBackendArchive } from './linux-backend/linux-backend'
 import { nodeSshHost, sshExecutable } from './ssh/ssh-command'
+import { putOnServer, readServerFile, serverIsDirectory, type Dropped, type ServerFile } from './ssh/ssh-files'
 import { SshSession } from './ssh/ssh-session'
 import { listDistros } from './wsl/wsl-distros'
 import { WslSession } from './wsl/wsl-session'
@@ -138,6 +139,26 @@ export class AppBackend {
   fromBackendPath(path: string): string | null {
     if (this.session instanceof WslSession) return this.session.windowsPath(path)
     return this.session ? null : path
+  }
+
+  // A file of a backend on a server, read over ssh; null when the backend is not on one, and the
+  // path is read here (or through WSL) instead.
+  readServerFile(path: string, maxBytes: number): Promise<ServerFile> | null {
+    const session = this.session
+    return session instanceof SshSession ? readServerFile(session.host, session.destination, path, maxBytes) : null
+  }
+
+  serverIsDirectory(path: string): Promise<boolean | null> | null {
+    const session = this.session
+    return session instanceof SshSession ? serverIsDirectory(session.host, session.destination, path) : null
+  }
+
+  // A file or folder of this machine put on the server, for core to name; null when the backend is
+  // not on one.
+  putOnServer(local: string): Promise<Dropped> | null {
+    const session = this.session
+    const home = session instanceof SshSession ? session.home : null
+    return session instanceof SshSession && home ? putOnServer(session.host, session.destination, home, local) : null
   }
 
   // Where a folder dialog opens when the renderer names no place: the distro's home, or the
