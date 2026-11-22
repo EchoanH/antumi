@@ -3419,6 +3419,14 @@ export const MESSAGES = {
     "zh": "置顶",
     "en": "Pin"
   },
+  "ConversationList.renameProject": {
+    "zh": "重命名项目",
+    "en": "Rename project"
+  },
+  "ConversationList.projectName": {
+    "zh": "项目名称",
+    "en": "Project name"
+  },
   "ConversationActions.rename": {
     "zh": "重命名",
     "en": "Rename"

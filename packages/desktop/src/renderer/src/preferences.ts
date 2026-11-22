@@ -10,6 +10,7 @@ import { COLLAPSED_NAVIGATION_WIDTH, DEFAULT_CONVERSATION_LIST_WIDTH, DEFAULT_SI
 import { SetupProgress } from './setup-progress'
 import { ShortcutSettings } from '../../shared/keyboard-shortcuts'
 
+export const MAX_PROJECT_NAME = 100
 export const MIN_FILE_TREE_WIDTH = 120
 export const MAX_FILE_TREE_WIDTH = 600
 export const DEFAULT_FILE_TREE_WIDTH = 220
@@ -31,6 +32,8 @@ const Preferences = z.object({
   // The set of colours the interface is drawn in; each has a light and a dark side.
   palette: z.enum(PALETTES).catch('terracotta'),
   projectColors: z.record(z.string(), z.enum(PROJECT_COLORS)).catch({}),
+  // Names the user gave projects, by projectColorKey, in place of their folder's.
+  projectNames: z.record(z.string(), z.string().max(MAX_PROJECT_NAME)).catch({}),
   markdownTheme: MarkdownThemeSelection.catch('default'),
   markdownThemePacks: MarkdownThemeLibrary,
   // Experimental: the gradient behind the sidebar and status bar; none keeps the flat canvas.

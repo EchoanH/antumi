@@ -61,6 +61,8 @@ function leavesTask(event: KeyboardEvent): boolean {
 export function App() {
   usePanelShortcuts()
   useLocale((state) => state.locale)
+  // projectName reads them outside React, as t reads the language.
+  usePreferences((state) => state.projectNames)
   usePortPolling()
   useUpdateFeed()
   useBackendLocationFeed()

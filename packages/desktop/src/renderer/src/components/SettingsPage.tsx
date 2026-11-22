@@ -5,9 +5,11 @@ import { useEffect, useId, useMemo, useRef, useState, type ReactElement } from '
 import { AGENT_KINDS, agentDescriptor, LANGUAGE_NAMES, PROTOCOL_VERSION, quickModel, TRANSLATE_LANGUAGES, UNATTENDED_MODES, type AgentKind, type SourceDescriptor, type UnattendedMode } from '@antumi/protocol'
 import packageJson from '../../../../package.json'
 import { perform, setAwakeMode, setChatSettings, setSettingsOpen, useAwakeSupported, useCore, useBrowserSupported, useChatCommandsSupported, useConversationArchiveSupported, useKnowledgeBaseSupported, useMcpServersSupported, useModelProvidersSupported, useSessionImportSupported, useAccountsSupported, useProjectConfigEditSupported, useSkillsSupported, useTranslateSupported, useWireLogSupported } from '../core-store'
-import { setPreference, usePreferences, type Preferences } from '../preferences'
+import { MAX_PROJECT_NAME, setPreference, usePreferences, type Preferences } from '../preferences'
+import { renameProject } from '../project-names'
 import { ProjectColorPicker } from './ProjectColorPicker'
 import { ProjectIcon } from './ProjectIcon'
+import { TitleEditor } from './TitleEditor'
 import { UNATTENDED_LABEL } from '../schedules'
 import { askConfirm } from '../confirm-dialog'
 import { modeLabel } from './ChatOptionsBar'
@@ -483,6 +485,7 @@ function ProjectRow({ projectPath, onForget }: { projectPath: string; onForget: 
   const [summary, setSummary] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
   const [reads, setReads] = useState(0)
+  const [renaming, setRenaming] = useState(false)
   useEffect(() => {
     if (!rpc || !editable) return
     let current = true
@@ -495,12 +498,15 @@ function ProjectRow({ projectPath, onForget }: { projectPath: string; onForget: 
   return (
     <li className="settings-project">
       <ProjectIcon path={projectPath} />
-      <span className="settings-project-name">{projectName(projectPath)}</span>
+      {renaming
+        ? <TitleEditor title={projectName(projectPath)} label={t('ConversationList.projectName')} maxLength={MAX_PROJECT_NAME} onSave={(name) => renameProject(projectPath, name)} onDone={() => setRenaming(false)} />
+        : <span className="settings-project-name">{projectName(projectPath)}</span>}
       <span className="settings-project-path mono" title={projectPath}>
         {projectPath}
       </span>
       {summary && <span className="settings-project-config muted">{summary}</span>}
       <ProjectColorPicker path={projectPath} />
+      <button type="button" className="button" onClick={() => setRenaming(true)}>{t('ConversationActions.rename')}</button>
       {editable && <button type="button" className="button" onClick={() => setEditing(true)}>{t('ProjectConfigDialog.projectConfiguration')}</button>}
       <button type="button" className="button" onClick={onForget}>{t('ChatQuoteCards.remove')}</button>
       {editing && <ProjectConfigDialog projectPath={projectPath} onClose={() => setEditing(false)} onSaved={() => setReads((count) => count + 1)} />}

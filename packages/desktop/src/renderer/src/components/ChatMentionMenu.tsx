@@ -7,6 +7,7 @@ import { useCore, useFileMentionsSupported } from '../core-store'
 import { fileTarget, insertMention, matchConversations, matchProjects, mentionQuery, placeMention, type MentionedText, type MentionTarget } from '../chat-mentions'
 import type { SetText } from './ChatMentionField'
 import { projectName } from './ProjectPicker'
+import { baseName } from '../file-tree-rows'
 import { AgentAvatar } from './AgentAvatar'
 import { AgentIcon, ChatIcon, FolderIcon } from './icons'
 import { FileTypeIcon } from './FileTypeIcon'
@@ -34,7 +35,7 @@ function fileEntry(match: ProjectFileMatch, cwd: string | null, manyRoots: boole
   const folder = match.relative.includes('/') ? match.relative.slice(0, match.relative.lastIndexOf('/')) : ''
   const detail = manyRoots ? [projectName(match.root), folder].filter(Boolean).join('/') : folder
   const opens = match.kind === 'directory' ? `${match.relative}/` : null
-  return { key: `file:${match.path}`, group: 'files', target: fileTarget(match, cwd), name: projectName(match.relative), detail, opens,
+  return { key: `file:${match.path}`, group: 'files', target: fileTarget(match, cwd), name: baseName(match.relative), detail, opens,
     icon: <FileTypeIcon path={match.path} directory={match.kind === 'directory'} dark={dark} /> }
 }
 

@@ -19,19 +19,20 @@ import { endConversationDrag, startConversationDrag } from '../conversation-drag
 import { hasPrimaryModifier } from '../shortcut-keys'
 import { conversationGlyph, conversationState, timeAgo } from '../conversation-state'
 import { agentLabel } from '../labels'
-import { CONVERSATION_DENSITIES, CONVERSATION_GROUPS, CONVERSATION_KINDS, CONVERSATION_SORTS, setPreference, usePreferences, type Preferences } from '../preferences'
+import { CONVERSATION_DENSITIES, CONVERSATION_GROUPS, CONVERSATION_KINDS, CONVERSATION_SORTS, MAX_PROJECT_NAME, setPreference, usePreferences, type Preferences } from '../preferences'
 import { beginHandoff, ConversationContextMenu, newConversation, renameConversation } from './ConversationActions'
 import { ConversationMark } from './ConversationStatus'
 import { ConversationGroupActivity } from './ConversationGroupActivity'
 import { ConversationPeek, DiscussionPeek, useConversationPeek } from './ConversationPeek'
 import { conversationActivity } from '../work-activity'
-import { ContextMenu, MenuCheckboxItem, menuPoint, MenuRadioItem, MenuSubmenu, type MenuPoint } from './ContextMenu'
-import { AgentIcon, BoardIcon, ChatIcon, ChevronDownIcon, CloseIcon, FolderIcon, GroupChatIcon, PinIcon, PlusIcon, SlidersIcon } from './icons'
+import { ContextMenu, MenuCheckboxItem, MenuItem, menuPoint, MenuRadioItem, MenuSubmenu, type MenuPoint } from './ContextMenu'
+import { AgentIcon, BoardIcon, ChatIcon, ChevronDownIcon, CloseIcon, FolderIcon, GroupChatIcon, PencilIcon, PinIcon, PlusIcon, SlidersIcon } from './icons'
 import { ProjectIcon } from './ProjectIcon'
 import { projectName, projectNames } from './ProjectPicker'
 import { SidebarCollapseButton } from './SidebarCollapseButton'
 import { SidebarSearchField, SidebarSearchToggle } from './SidebarSearch'
 import { TitleEditor } from './TitleEditor'
+import { renameProject } from '../project-names'
 import { ContextUsage } from './ContextUsage'
 
 type GroupBy = Preferences['conversationGroup']
@@ -337,6 +338,9 @@ export function ConversationList() {
   const closeView = useCallback(() => setViewAt(null), [])
   const viewButton = useRef<HTMLButtonElement>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [projectMenu, setProjectMenu] = useState<{ path: string; at: MenuPoint } | null>(null)
+  const closeProjectMenu = useCallback(() => setProjectMenu(null), [])
+  const [renamingProject, setRenamingProject] = useState<string | null>(null)
   const menuItem = menu ? byId.get(menu.id) : undefined
   const density = usePreferences((p) => p.conversationDensity)
   const { peek, rowProps } = useConversationPeek()
@@ -512,14 +516,25 @@ export function ConversationList() {
           const mark = groupMark(group, groupBy)
           return <section key={group.key} className="conversation-group" data-tree={mark ? '' : undefined} aria-label={group.label}>
             <h3 className="conversation-group-title">
-              <button type="button" className="conversation-group-fold" aria-expanded={!isFolded(group.key)} onClick={() => toggleFold(group.key)}>
-                {mark ? <span className="conversation-group-mark">{mark}</span> : <ChevronDownIcon />}
-                <span className="conversation-group-label">{group.label}</span>
-                <span className="count">{group.items.length}</span>
-                {isFolded(group.key) && <ConversationGroupActivity items={group.items} />}
-                {mark && <ChevronDownIcon />}
-              </button>
-              {group.project && (
+              {group.project && renamingProject === group.project
+                ? <TitleEditor title={projectName(group.project)} label={t('ConversationList.projectName')} maxLength={MAX_PROJECT_NAME} onSave={(name) => group.project && renameProject(group.project, name)} onDone={() => setRenamingProject(null)} />
+                : <button
+                  type="button"
+                  className="conversation-group-fold"
+                  aria-expanded={!isFolded(group.key)}
+                  onClick={() => toggleFold(group.key)}
+                  onContextMenu={group.project ? (event) => {
+                    event.preventDefault()
+                    if (group.project) setProjectMenu({ path: group.project, at: menuPoint(event) })
+                  } : undefined}
+                >
+                  {mark ? <span className="conversation-group-mark">{mark}</span> : <ChevronDownIcon />}
+                  <span className="conversation-group-label">{group.label}</span>
+                  <span className="count">{group.items.length}</span>
+                  {isFolded(group.key) && <ConversationGroupActivity items={group.items} />}
+                  {mark && <ChevronDownIcon />}
+                </button>}
+              {group.project && renamingProject !== group.project && (
                 <button
                   type="button"
                   className="icon-button conversation-group-new sidebar-add"
@@ -568,6 +583,14 @@ export function ConversationList() {
       {peekable && peeked && <ConversationPeek conversation={peeked} row={peekable.row} />}
       {peekable && peekedDiscussion && <DiscussionPeek discussion={peekedDiscussion} row={peekable.row} />}
       {viewAt && <ViewMenu at={viewAt} trigger={viewButton.current} archived={archivedAll.length} kinds={kindChoices} onClose={closeView} />}
+      {projectMenu && (
+        <ContextMenu at={projectMenu.at} label={t('GitInspector.actionsFor', { value1: projectName(projectMenu.path) })} onClose={closeProjectMenu}>
+          <MenuItem label={t('ConversationList.renameProject')} icon={<PencilIcon />} onSelect={() => {
+            closeProjectMenu()
+            setRenamingProject(projectMenu.path)
+          }} />
+        </ContextMenu>
+      )}
       {menu && menuItem?.kind === 'conversation' && (
         <ConversationContextMenu
           conversation={menuItem.conversation}

@@ -5299,6 +5299,9 @@ div.inspector-empty > p { margin: 0 0 8px; }
   font-weight: 600;
 }
 
+/* Renaming keeps the row's shape: the input stands where the name was. */
+.settings-project .title-editor { flex: 0 1 220px; width: auto; min-width: 120px; font-weight: 600; }
+
 .settings-project-config { flex-shrink: 0; font-size: 12px; white-space: nowrap; }
 
 .settings-project-path {

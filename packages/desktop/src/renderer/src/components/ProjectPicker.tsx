@@ -7,10 +7,9 @@ import { ContextMenu, MenuItem, menuPoint, type MenuPoint } from './ContextMenu'
 import { Popover } from './Popover'
 import { FolderIcon } from './icons'
 import { ProjectIcon } from './ProjectIcon'
+import { projectName } from '../project-names'
 
-export function projectName(projectPath: string): string {
-  return projectPath.split(/[\\/]/).filter(Boolean).at(-1) ?? projectPath
-}
+export { projectName }
 
 export function projectNames(paths: readonly string[]): string {
   return paths.length ? paths.map(projectName).join('、') : t('ProjectPicker.noProject')

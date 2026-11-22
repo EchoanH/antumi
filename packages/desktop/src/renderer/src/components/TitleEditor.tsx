@@ -31,7 +31,11 @@ export function TitleEditor({ title, label, maxLength = 200, onSave, onDone }: {
       onBlur={() => finish(true)}
       onKeyDown={(event) => {
         if (event.key === 'Enter' && !event.nativeEvent.isComposing) finish(true)
-        else if (event.key === 'Escape') finish(false)
+        else if (event.key === 'Escape') {
+          // Handled, so the page it is on (Settings) does not close with it.
+          event.preventDefault()
+          finish(false)
+        }
       }}
     />
   )
