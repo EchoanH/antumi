@@ -4,6 +4,8 @@
 
 ## 未发布
 
+## 0.21.9-beta.1 — 2026-11-22
+
 ### 改进
 
 - 电脑和手机上的 Cursor、DeepSeek Harness、Antigravity、Gemini CLI 和 CodeBuddy 图标更新为对应品牌样式。
