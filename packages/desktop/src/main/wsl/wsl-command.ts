@@ -2,6 +2,9 @@ import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process'
 import { statSync } from 'node:fs'
 import path from 'node:path'
 import { envValue } from '@antumi/protocol/node'
+import type { LinuxEnv, LinuxResult } from '../linux-backend/linux-target'
+
+export type { LinuxEnv }
 
 // What running wsl.exe reads of the machine; tests stand in a Windows one on any OS.
 export type WslHost = {
@@ -24,16 +27,9 @@ export const nodeWslHost: WslHost = {
   spawn: (file, args, options) => spawn(file, args, options)
 }
 
-// Environment for the Linux side, set by `env` inside the distro rather than through WSLENV.
-export type LinuxEnv = Readonly<Record<string, string>>
-
-export type WslResult = {
-  // Null when wsl.exe never ran, was killed, or ended on a signal.
-  code: number | null
-  stdout: string
-  stderr: string
-  timedOut: boolean
-}
+// Null `code` when wsl.exe never ran, was killed, or ended on a signal. The Linux env is set by
+// `env` inside the distro rather than through WSLENV.
+export type WslResult = LinuxResult
 
 export type WslRunOptions = {
   // Written to stdin, then stdin ends: how secrets and long scripts go in, never through argv.

@@ -8,14 +8,9 @@ export const BackendLocation = z.discriminatedUnion('kind', [
 ])
 export type BackendLocation = z.infer<typeof BackendLocation>
 
-// Why a backend in WSL did not start, for the renderer to say what to do about it.
-export const WslBackendProblem = z.discriminatedUnion('kind', [
-  // No wsl.exe, so no WSL on this machine.
-  z.object({ kind: z.literal('wsl-unavailable') }),
-  // wsl.exe would not say: nothing is known, least of all that the distro is gone.
-  z.object({ kind: z.literal('wsl-unknown'), detail: z.string() }),
-  z.object({ kind: z.literal('distro-missing'), distro: z.string() }),
-  z.object({ kind: z.literal('distro-wsl1'), distro: z.string() }),
+// Why a backend on another Linux machine did not start, whichever reaches it: what that machine
+// lacks, or what went wrong putting the backend there.
+export const LinuxBackendProblem = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('arch'), arch: z.string() }),
   z.object({ kind: z.literal('login-environment') }),
   z.object({ kind: z.literal('node-missing') }),
@@ -24,6 +19,18 @@ export const WslBackendProblem = z.discriminatedUnion('kind', [
   // node-pty does not load there: a libc older than the one it was compiled against, mostly.
   z.object({ kind: z.literal('pty'), detail: z.string() }),
   z.object({ kind: z.literal('start'), detail: z.string() })
+])
+export type LinuxBackendProblem = z.infer<typeof LinuxBackendProblem>
+
+// Why a backend in WSL did not start, for the renderer to say what to do about it.
+export const WslBackendProblem = z.discriminatedUnion('kind', [
+  // No wsl.exe, so no WSL on this machine.
+  z.object({ kind: z.literal('wsl-unavailable') }),
+  // wsl.exe would not say: nothing is known, least of all that the distro is gone.
+  z.object({ kind: z.literal('wsl-unknown'), detail: z.string() }),
+  z.object({ kind: z.literal('distro-missing'), distro: z.string() }),
+  z.object({ kind: z.literal('distro-wsl1'), distro: z.string() }),
+  ...LinuxBackendProblem.options
 ])
 export type WslBackendProblem = z.infer<typeof WslBackendProblem>
 
