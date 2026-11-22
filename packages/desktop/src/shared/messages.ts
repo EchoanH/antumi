@@ -13471,7 +13471,7 @@ export const MESSAGES = {
   "BackendLocation.confirmSsh": {"zh": "把后端换到服务器「{host}」？", "en": "Move the backend to the server {host}?"},
   "BackendLocation.fellBackSsh": {"zh": "服务器「{host}」上的后端没能启动，这次先用本机的，看到的是本机的任务和会话。", "en": "The backend on {host} did not start, so this machine's is in use for now, with this machine's tasks and conversations."},
   "BackendLocation.noticeSsh": {"zh": "服务器「{host}」上的后端没能启动，现在显示的是本机的任务和会话。", "en": "The backend on {host} did not start; this machine's tasks and conversations are shown instead."},
-  "BackendLocation.notYetSsh": {"zh": "后端在服务器上时暂时没有：在内置浏览器里打开服务器上的端口、手机在局域网里直连、保持唤醒。", "en": "Not yet available with the backend on a server: opening the server's ports in the built-in browser, phones connecting over the local network, and keeping the computer awake."},
+  "BackendLocation.notYetSsh": {"zh": "后端在服务器上时暂时没有：手机在局域网里直连、保持唤醒。", "en": "Not yet available with the backend on a server: phones connecting over the local network, and keeping the computer awake."},
   "BackendLocation.problemSshUnavailable": {"zh": "这台电脑上找不到 ssh。", "en": "No ssh client was found on this computer."},
   "BackendLocation.problemSshUnavailableFix": {"zh": "Antumi 用系统自带的 OpenSSH 客户端。Windows 上在「设置 → 系统 → 可选功能」里添加「OpenSSH 客户端」，再重启 Antumi。", "en": "Antumi uses the system's own OpenSSH client. On Windows, add OpenSSH Client under Settings → System → Optional features, then restart Antumi."},
   "BackendLocation.problemSshHostKey": {"zh": "还没有确认过「{host}」的主机密钥，或者它变了。", "en": "The host key of {host} has not been accepted yet, or it changed."},

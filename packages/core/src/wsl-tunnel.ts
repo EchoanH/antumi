@@ -41,7 +41,11 @@ export function parseTunnelHelperConfig(text: string): TunnelHelperConfig {
     if (!isObject(dial) || typeof dial.port !== 'number' || !Number.isInteger(dial.port) || dial.port < 1 || dial.port > 65535) throw new Error('dial.port is not a port')
     config.dial = { port: dial.port }
   }
-  if (!config.listen && !config.dial) throw new Error('config has neither listen nor dial')
+  if (raw.connect !== undefined) {
+    if (raw.connect !== true) throw new Error('connect is not true')
+    config.connect = true
+  }
+  if (!config.listen && !config.dial && !config.connect) throw new Error('config has neither listen, dial nor connect')
   return config
 }
 
@@ -63,7 +67,8 @@ export async function startTunnelHelper(options: { stdin: Readable; stdout: Writ
     output: options.stdout,
     head: rest,
     offers: server ? [{ target: TUNNEL_TARGETS.app, server }] : [],
-    dials: config.dial ? { [TUNNEL_TARGETS.helper]: config.dial.port } : {}
+    dials: config.dial ? { [TUNNEL_TARGETS.helper]: config.dial.port } : {},
+    connects: config.connect === true
   })
 
   const stopped = tunnel.closed.then(async (reason) => {

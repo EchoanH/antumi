@@ -2,6 +2,7 @@ import type { ChildProcess } from 'node:child_process'
 import { BROWSER_HOST_PROTOCOL_VERSION, connectTunnelHelper, type TunnelHelperLink } from '@antumi/protocol/node'
 import type { LinuxBackendPlace } from './linux-backend'
 import type { LinuxTarget } from './linux-target'
+import { startSocksEntry, type SocksEntry } from './socks-entry'
 
 // The loopback connections between the app and a backend on another Linux machine, carried over
 // the stdio of one tunnel helper there (docs/WSL.md 连接, docs/REMOTE.md): core reaches the
@@ -13,6 +14,8 @@ export type BackendLinkEnds = { corePort: number; browserHost: { port: number; t
 export type BackendLinkOptions = {
   // Names the machine in what is logged: "WSL", "ssh".
   label?: string
+  // Whether the helper also connects to any host and port from there, for the built-in browser.
+  connects?: boolean
   log?: (line: string) => void
   // How long after the helper went before it is started again; doubles up to a minute.
   retryMs?: number
@@ -30,6 +33,7 @@ export class BackendLink {
   // Counts starts, so what an earlier helper reports late is told from the current one's.
   private run = 0
   private stopped = false
+  private socks: Promise<SocksEntry> | null = null
 
   constructor(private readonly target: LinuxTarget, private readonly place: LinuxBackendPlace, private readonly options: BackendLinkOptions = {}) {}
 
@@ -66,6 +70,7 @@ export class BackendLink {
         toHelper: child.stdin,
         config: {
           dial: { port: ends.corePort },
+          ...(this.options.connects ? { connect: true as const } : {}),
           // The file core reads to find the browser host, naming the helper's port in its place.
           ...(ends.browserHost ? { listen: { endpointFile: `${this.place.home}/.antumi/browser/host.json`, endpoint: { token: ends.browserHost.token, protocolVersion: BROWSER_HOST_PROTOCOL_VERSION } } } : {})
         },
@@ -94,11 +99,22 @@ export class BackendLink {
     }
   }
 
+  // A SOCKS5 proxy here whose connections are made from there, for as long as the link runs:
+  // the same port across the helper's restarts, so what is set to use it need not change.
+  socksPort(): Promise<number> {
+    this.socks ??= startSocksEntry((host, port, socket) => {
+      if (this.link) this.link.connect(host, port, socket)
+      else socket.destroy()
+    })
+    return this.socks.then((entry) => entry.port)
+  }
+
   // The helper leaves as its stdin closes, taking the browser host's file there with it.
   stop(): void {
     this.stopped = true
     this.run += 1
     this.drop()
+    void this.socks?.then((entry) => entry.close())
   }
 
   private drop(): void {

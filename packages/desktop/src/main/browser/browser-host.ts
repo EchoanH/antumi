@@ -62,8 +62,12 @@ export type BrowserHost = {
 // over each tab's own CDP proxy, and shown to the user by the window slot. Core connects over the
 // host server, finding it through the host file, and keeps every policy; this only does.
 // confirmLeave: asks the user, there and then, whether to leave a page that asks before it is left.
-export async function startBrowserHost(slot: WindowSlot, hostFile: string, confirmLeave: () => boolean): Promise<BrowserHost> {
+// proxy: where tabs go out when the backend runs on a server, so a page reaches what that machine
+// does, its localhost included (docs/REMOTE.md 内置浏览器); plugin pages keep this machine's way out.
+export async function startBrowserHost(slot: WindowSlot, hostFile: string, confirmLeave: () => boolean, proxy: string | null = null): Promise<BrowserHost> {
   const tabSession = session.fromPartition(PARTITION)
+  // Chromium sends loopback addresses past any proxy unless told not to.
+  if (proxy) await tabSession.setProxy({ proxyRules: proxy, proxyBypassRules: '<-loopback>' })
   siteUserAgents(tabSession)
   const views = new Map<string, WebContentsView>()
   const captures = new Map<string, BrowserCapture>()

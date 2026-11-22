@@ -14,7 +14,7 @@ export type BackendSessionParts<O, P, E> = {
   ensure(options: O): Promise<BackendStart<P, E>>
   coreEndpoint(place: P): Promise<CoreEndpoint | null>
   replaceDaemon(place: P, version: string): Promise<void>
-  link(place: P, log?: (line: string) => void): { connect(ends: BackendLinkEnds): Promise<boolean>; corePort(): number | null; stop(): void }
+  link(place: P, log?: (line: string) => void): { connect(ends: BackendLinkEnds): Promise<boolean>; corePort(): number | null; socksPort?(): Promise<number>; stop(): void }
   now(): number
 }
 
@@ -81,6 +81,12 @@ export class BackendSession<O extends BackendSessionOptions, P extends LinuxBack
   setBrowserHost(host: BackendLinkEnds['browserHost']): void {
     this.browserHost = host
     if (this.known) void this.join(this.known.endpoint)
+  }
+
+  // Where the built-in browser's proxy listens here, its connections made from there; null where
+  // the link makes none (WSL: Windows reaches a distro's ports itself).
+  async socksPort(): Promise<number | null> {
+    return this.link?.socksPort ? this.link.socksPort() : null
   }
 
   async replaceOldDaemon(): Promise<void> {

@@ -141,6 +141,14 @@ export class AppBackend {
     return this.session ? null : path
   }
 
+  // The proxy the built-in browser goes out through, so a page reaches what the backend's machine
+  // does (a dev server on its localhost); null where it goes out from here.
+  async browserProxy(): Promise<string | null> {
+    await this.decide()
+    const port = this.session instanceof SshSession ? await this.session.socksPort() : null
+    return port === null ? null : `socks5://127.0.0.1:${port}`
+  }
+
   // A file of a backend on a server, read over ssh; null when the backend is not on one, and the
   // path is read here (or through WSL) instead.
   readServerFile(path: string, maxBytes: number): Promise<ServerFile> | null {

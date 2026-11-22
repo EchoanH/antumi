@@ -789,7 +789,7 @@ void app.whenReady().then(async () => {
   createWindow()
   void removeUpdateLeftovers()
   // After the backend: ensureBackend may move the home, and the host file belongs in the one core reads.
-  void backend.start().finally(() => startBrowserHost(slot, backend.browserHostFile(), confirmLeavePage).then(
+  void backend.start().then(() => backend.browserProxy()).catch(() => null).then((proxy) => startBrowserHost(slot, backend.browserHostFile(), confirmLeavePage, proxy).then(
     (host) => {
       browserHost = host
       backend.browserHostStarted(host.server)

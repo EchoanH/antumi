@@ -24,7 +24,7 @@ function realParts(host: SshHost): SshSessionParts {
     ensure: (options) => ensureSshBackend(options),
     coreEndpoint: (place) => sshCoreEndpoint(host, place),
     replaceDaemon: (place, version) => replaceOldSshDaemon(host, place, version),
-    link: (place, log) => new BackendLink(sshTarget(host, place.destination), place, { label: 'ssh', ...(log ? { log } : {}) }),
+    link: (place, log) => new BackendLink(sshTarget(host, place.destination), place, { label: 'ssh', connects: true, ...(log ? { log } : {}) }),
     now: () => Date.now()
   }
 }

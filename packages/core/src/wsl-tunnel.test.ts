@@ -62,6 +62,7 @@ describe('parseTunnelHelperConfig', () => {
       dial: { port: 51234 }
     })
     expect(parseTunnelHelperConfig('{"listen":{}}')).toEqual({ listen: {} })
+    expect(parseTunnelHelperConfig('{"dial":{"port":1},"connect":true}')).toEqual({ dial: { port: 1 }, connect: true })
   })
 
   it.each([
@@ -72,7 +73,8 @@ describe('parseTunnelHelperConfig', () => {
     ['{"dial":{"port":"1"}}', /port/],
     ['{"listen":{"endpointFile":"host.json","endpoint":{}}}', /absolute/],
     ['{"listen":{"endpointFile":"/x/host.json"}}', /together/],
-    ['{"listen":{"endpointFile":"/x/host.json","endpoint":"t"}}', /endpoint is not/]
+    ['{"listen":{"endpointFile":"/x/host.json","endpoint":"t"}}', /endpoint is not/],
+    ['{"connect":"yes"}', /connect is not true/]
   ])('refuses %s', (text, message) => {
     expect(() => parseTunnelHelperConfig(text)).toThrow(message)
   })
