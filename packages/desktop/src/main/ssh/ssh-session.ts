@@ -2,6 +2,7 @@ import type { SshBackendProblem } from '../../shared/backend-location'
 import { BackendLink } from '../linux-backend/backend-link'
 import type { LinuxArch } from '../linux-backend/bundled-archive'
 import type { LinuxBackendArchive } from '../linux-backend/linux-backend'
+import type { FetchNode } from '../linux-backend/managed-node'
 import { BackendSession, type BackendSessionParts } from '../linux-backend/backend-session'
 import { ensureSshBackend, replaceOldSshDaemon, sshCoreEndpoint, sshTarget, type SshBackendPlace } from './ssh-backend'
 import type { SshHost } from './ssh-command'
@@ -14,6 +15,7 @@ export type SshSessionOptions = {
   version: string
   archive(arch: LinuxArch): Promise<LinuxBackendArchive | null>
   host: SshHost
+  fetchNode?: FetchNode | null
   log?: (line: string) => void
 }
 

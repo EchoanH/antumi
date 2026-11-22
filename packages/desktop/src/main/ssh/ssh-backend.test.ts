@@ -98,8 +98,27 @@ describe('findSshBackendPlace', () => {
     expect(await problem((s) => (s.includes('uname -s') ? { code: 0, stdout: 'os=Linux\narch=riscv64\n' } : undefined))).toEqual({ kind: 'arch', arch: 'riscv64' })
     expect(await problem(() => undefined, () => null)).toEqual({ kind: 'arch', arch: 'x86_64' })
     expect(await problem((s) => (s.includes('uname -s') ? { code: 0, stdout: 'os=Linux\narch=x86_64\nkill=b true\nlinger=no\nuid=1000\n' } : undefined))).toEqual({ kind: 'linger' })
-    expect(await problem((s) => (s.includes('command -v "$1"') ? { code: 127 } : undefined))).toEqual({ kind: 'node-missing' })
-    expect(await problem((s) => (s.includes('--version') ? { code: 0, stdout: 'v22.1.0\n' } : undefined))).toEqual({ kind: 'node-old', version: 'v22.1.0', path: '/usr/local/bin/node' })
+    // Without a Node new enough, the one Antumi installs; here neither the server nor this app could get it.
+    const unreachable = (s: string) => (s.includes('.archive.') ? { code: 11 } : undefined)
+    expect(await problem((s) => (s.includes('command -v "$1"') ? { code: 127 } : unreachable(s)))).toMatchObject({ kind: 'node-download', detail: expect.stringContaining('could not download') })
+    expect(await problem((s) => (s.includes('--version') ? { code: 0, stdout: 'v22.1.0\n' } : unreachable(s)))).toMatchObject({ kind: 'node-download' })
+  })
+
+  it('installs the Node for the server\'s architecture where it has none new enough', async () => {
+    const asked: string[] = []
+    const { host } = ready((script) => {
+      if (script.includes('uname -s')) return { code: 0, stdout: 'os=Linux\narch=aarch64\n' }
+      if (script.includes('command -v "$1"')) return { code: 127 }
+      if (script.includes('.archive.')) {
+        asked.push(script)
+        return { code: 0, stdout: '/home/dev/.antumi/node/v24/node\n' }
+      }
+      return undefined
+    })
+    const found = await find(host)
+    expect(found.ok && found.place.node).toBe('/home/dev/.antumi/node/v24/node')
+    expect(asked[0]).toContain('linux-arm64.tar.gz')
+    expect(asked[0]).toContain('https://npmmirror.com/mirrors/node/')
   })
 
   it('says so when there is no ssh at all', async () => {

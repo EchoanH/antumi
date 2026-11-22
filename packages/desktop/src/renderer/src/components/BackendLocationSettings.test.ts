@@ -169,7 +169,8 @@ describe('backend location on a server', () => {
       [{ kind: 'arch', arch: 'riscv64' }, ['「dev@box」是 riscv64，后端只有 x86_64 和 aarch64 的。']],
       [{ kind: 'linger' }, ['ssh 断开时结束你的所有进程', '<code>sudo loginctl enable-linger $USER</code>']],
       [{ kind: 'node-old', version: 'v20.1.0', path: '/usr/bin/node' }, ['「dev@box」上的 Node 是 v20.1.0，需要 24 以上。', '后端用服务器上的 Node']],
-      [{ kind: 'start', detail: 'exited with 1' }, ['「dev@box」上的后端没能启动。', '服务器上的', 'exited with 1']]
+      [{ kind: 'start', detail: 'exited with 1' }, ['「dev@box」上的后端没能启动。', '服务器上的', 'exited with 1']],
+      [{ kind: 'node-download', detail: 'the machine could not download it' }, ['没能在「dev@box」上装好 Node 24。', '国内镜像', 'the machine could not download it', 'nvm install 24']]
     ]
     for (const [problem, expected] of cases) {
       const html = settings(sshFailed(problem))

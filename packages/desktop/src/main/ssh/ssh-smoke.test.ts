@@ -11,6 +11,7 @@ import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { coreUrl, PROTOCOL_VERSION, type CoreEndpoint } from '@antumi/protocol'
 import { bundledLinuxBackend, type LinuxArch } from '../linux-backend/bundled-archive'
+import { fetchNodeInto } from '../linux-backend/managed-node'
 import { ensureSshBackend, sshCoreEndpoint, sshTarget, type SshBackendPlace } from './ssh-backend'
 import { nodeSshHost, runOverSsh, type SshHost } from './ssh-command'
 import { SshSession } from './ssh-session'
@@ -25,7 +26,9 @@ const real = nodeSshHost(controlDir)
 const host: SshHost = config ? { ...real, spawn: (file, args, options) => real.spawn(file, ['-F', config, ...args], options) } : real
 const version = folder ? String(JSON.parse(readFileSync(join(folder, `backend-linux-${process.arch === 'x64' ? 'x64' : 'arm64'}.json`), 'utf8')).version) : ''
 const archive = (arch: LinuxArch) => bundledLinuxBackend(folder, arch, '')
-const options = { destination, version, archive, host }
+// Node fetched here for a server that cannot download it, kept apart from the app's own cache.
+const fetchNode = fetchNodeInto(mkdtempSync('/tmp/antumi-node-'))
+const options = { destination, version, archive, host, fetchNode }
 
 function rpc(endpoint: Pick<CoreEndpoint, 'port' | 'token'>, method: string, params: unknown): Promise<unknown> {
   return new Promise((resolve, reject) => {
@@ -67,6 +70,8 @@ describe.skipIf(!destination || !folder)('a backend on a real SSH host', () => {
     }
     place = started.place
     pid = started.endpoint.pid
+    // The server's own Node when it has one new enough, else the one installed for it.
+    expect(place.node).toMatch(/^\/usr\/(local\/)?bin\/node$|\/\.antumi\/node\/v24\.[0-9.]+\/node$/)
     expect(place.dir).toContain(`/.antumi/backend/${version}-`)
   }, 120_000)
 

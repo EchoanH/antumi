@@ -10,6 +10,7 @@ import {
   type LinuxBackendArchive,
   type LinuxBackendPlace
 } from '../linux-backend/linux-backend'
+import type { FetchNode } from '../linux-backend/managed-node'
 import { nodeWslHost, runInDistro, type WslHost } from './wsl-command'
 import { listDistros } from './wsl-distros'
 import { linuxSearchPath } from './wsl-login-environment'
@@ -32,14 +33,16 @@ export type WslBackendOptions = {
   version: string
   archive: WslBackendArchive
   host?: WslHost
+  // This app's way to Node for a distro that has none new enough and cannot download it.
+  fetchNode?: FetchNode | null
   startWaitMs?: number
 }
 
 export type WslBackendStart = { ok: true; place: WslBackendPlace; endpoint: CoreEndpoint } | { ok: false; problem: WslBackendProblem }
 
-// The distro as the backend needs it: there, WSL 2, x64, with a login shell that names a Node new
-// enough. Nothing is installed or started by asking.
-export async function findWslBackendPlace(distro: string, folder: string, host: WslHost = nodeWslHost): Promise<{ ok: true; place: WslBackendPlace } | { ok: false; problem: WslBackendProblem }> {
+// The distro as the backend needs it: there, WSL 2, x64, with a login shell, and a Node new enough:
+// its own, else the one Antumi installs there.
+export async function findWslBackendPlace(distro: string, folder: string, host: WslHost = nodeWslHost, fetchNode: FetchNode | null = null): Promise<{ ok: true; place: WslBackendPlace } | { ok: false; problem: WslBackendProblem }> {
   const problem = (found: WslBackendProblem) => ({ ok: false as const, problem: found })
   const listed = await listDistros(host)
   if (listed.status === 'unavailable') return problem({ kind: 'wsl-unavailable' })
@@ -50,7 +53,7 @@ export async function findWslBackendPlace(distro: string, folder: string, host: 
 
   const arch = (await runInDistro(entry.name, ['/bin/uname', '-m'], { host })).stdout.trim()
   if (arch !== 'x86_64') return problem(arch ? { kind: 'arch', arch } : { kind: 'wsl-unknown', detail: 'uname gave no answer' })
-  const found = await findLinuxBackendPlace(wslTarget(entry.name, host), folder, { searchPath: linuxSearchPath })
+  const found = await findLinuxBackendPlace(wslTarget(entry.name, host), folder, { searchPath: linuxSearchPath, arch: 'x64', fetchNode })
   if (!found.ok) return problem(found.problem.kind === 'start' ? { kind: 'wsl-unknown', detail: found.problem.detail } : found.problem)
   return { ok: true, place: { ...found.place, distro: entry.name } }
 }
@@ -74,7 +77,7 @@ export function replaceOldWslDaemon(place: WslBackendPlace, version: string, hos
 // one to leave under the same rules, starts what is missing and waits for core to answer.
 export async function ensureWslBackend(options: WslBackendOptions): Promise<WslBackendStart> {
   const host = options.host ?? nodeWslHost
-  const found = await findWslBackendPlace(options.distro, backendFolder(options.version, options.archive), host)
+  const found = await findWslBackendPlace(options.distro, backendFolder(options.version, options.archive), host, options.fetchNode ?? null)
   if (!found.ok) return found
   const { place } = found
   const started = await ensureLinuxBackend({

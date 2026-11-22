@@ -2,8 +2,10 @@ import { readFile } from 'node:fs/promises'
 import { z } from 'zod'
 import { CoreEndpoint } from '@antumi/protocol'
 import type { LinuxBackendProblem } from '../../shared/backend-location'
+import type { LinuxArch } from './bundled-archive'
 import type { LinuxResult, LinuxTarget } from './linux-target'
 import { findLinuxExecutable, loginEnvironment } from './login-environment'
+import { ensureManagedNode, MANAGED_NODE, type FetchNode } from './managed-node'
 
 // Daemon and core running on another Linux machine, for this app to be their client
 // (docs/WSL.md 安装和启动, docs/REMOTE.md): the Node it must have, the backend's files put there,
@@ -55,15 +57,21 @@ const INSTALL_SCRIPT = [
 ].join('\n')
 
 // Removes the folders of other builds, but for one a process still runs from: a daemon kept for
-// the sessions it runs, or an MCP server an agent started from it. $1 is this build's folder.
+// the sessions it runs, or an MCP server an agent started from it. Likewise the Node versions
+// Antumi installed for other builds. $1 is this build's folder, $2 the Node version it installs.
 const TIDY_SCRIPT = [
-  'root="$HOME/.antumi/backend"',
-  'for dir in "$root"/*/; do',
-  '  dir=${dir%/}',
-  '  [ "$dir" = "$root/$1" ] && continue',
-  '  grep -q -a -F -- "$dir/" /proc/[0-9]*/cmdline 2>/dev/null && continue',
-  '  rm -rf "$dir"',
-  'done'
+  'tidy() {',
+  '  root=$1',
+  '  for dir in "$root"/*/; do',
+  '    dir=${dir%/}',
+  '    [ -d "$dir" ] || continue',
+  '    [ "$dir" = "$root/$2" ] && continue',
+  '    grep -q -a -F -- "$dir/" /proc/[0-9]*/cmdline 2>/dev/null && continue',
+  '    rm -rf "$dir"',
+  '  done',
+  '}',
+  'tidy "$HOME/.antumi/backend" "$1"',
+  'tidy "$HOME/.antumi/node" "$2"'
 ].join('\n')
 
 const Started = z.object({ start: z.array(z.enum(['daemon', 'core'])) })
@@ -87,20 +95,29 @@ async function control<T>(target: LinuxTarget, place: LinuxBackendPlace, schema:
 export type FindNodeOptions = {
   // The login PATH as the search should see it: WSL leaves out the Windows one under /mnt.
   searchPath?: (path: string) => string
+  // The machine's architecture, for the Node installed where it has none new enough; without it
+  // such a machine is a problem to report.
+  arch?: LinuxArch
+  // This app's way to that Node when the machine cannot download it.
+  fetchNode?: FetchNode | null
 }
 
-// The machine's login shell, and a Node on its PATH new enough to run the backend from `folder`.
-// Nothing is installed or started by asking.
+// The machine's login shell, and a Node new enough to run the backend from `folder`: the one on
+// its PATH, else one installed for it. Nothing of the backend is installed or started by asking.
 export async function findLinuxBackendPlace(target: LinuxTarget, folder: string, options: FindNodeOptions = {}): Promise<{ ok: true; place: LinuxBackendPlace } | { ok: false; problem: LinuxBackendProblem }> {
   const problem = (found: LinuxBackendProblem) => ({ ok: false as const, problem: found })
   const login = await loginEnvironment(target)
   if (!login) return problem({ kind: 'login-environment' })
   const node = await findLinuxExecutable(target, 'node', options.searchPath ? options.searchPath(login.path) : login.path)
-  if (node.status === 'missing') return problem({ kind: 'node-missing' })
   if (node.status === 'unknown') return problem({ kind: 'start', detail: 'could not look for node' })
-  const version = (await target.run([node.path, '--version'])).stdout.trim()
-  if (!nodeIsNewEnough(version)) return problem({ kind: 'node-old', version, path: node.path })
-  return { ok: true, place: { node: node.path, dir: `${login.home}/.antumi/backend/${folder}`, home: login.home, path: login.path } }
+  const version = node.status === 'found' ? (await target.run([node.path, '--version'])).stdout.trim() : null
+  const place = (found: string) => ({ ok: true as const, place: { node: found, dir: `${login.home}/.antumi/backend/${folder}`, home: login.home, path: login.path } })
+  if (node.status === 'found' && version !== null && nodeIsNewEnough(version)) return place(node.path)
+  if (options.arch) {
+    const managed = await ensureManagedNode(target, login.home, options.arch, options.fetchNode ?? null)
+    return managed.ok ? place(managed.node) : problem({ kind: 'node-download', detail: managed.detail })
+  }
+  return problem(node.status === 'found' ? { kind: 'node-old', version: version ?? '', path: node.path } : { kind: 'node-missing' })
 }
 
 // A rebuilt archive of the same version is another folder, so it is installed too.
@@ -171,7 +188,7 @@ export async function ensureLinuxBackend(options: LinuxBackendOptions): Promise<
     const endpoint = await linuxCoreEndpoint(target, place)
     if (endpoint) {
       // After the start, so what was just asked to leave has left; nothing depends on it.
-      await target.run(['/bin/sh', '-c', TIDY_SCRIPT, 'sh', folder])
+      await target.run(['/bin/sh', '-c', TIDY_SCRIPT, 'sh', folder, MANAGED_NODE.version])
       return { ok: true, endpoint }
     }
     if (Date.now() >= until) return { ok: false, problem: { kind: 'start', detail: `core did not come up; see ${place.home}/.antumi/logs/core.log${options.where ?? ''}` } }

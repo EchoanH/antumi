@@ -1,5 +1,6 @@
 import type { WslBackendProblem } from '../../shared/backend-location'
 import { BackendSession, type BackendSessionParts } from '../linux-backend/backend-session'
+import type { FetchNode } from '../linux-backend/managed-node'
 import { ensureWslBackend, replaceOldWslDaemon, wslCoreEndpoint, type WslBackendArchive, type WslBackendPlace } from './wsl-backend'
 import { isDistroRunning } from './wsl-distros'
 import { WslLink } from './wsl-link'
@@ -8,7 +9,7 @@ import { linuxPathForBackend, windowsPathForLinux, wslUncPath } from './wsl-path
 // The app's side of a backend in a WSL distro: a backend session whose Linux paths are told from
 // this machine's.
 
-export type WslSessionOptions = { distro: string; version: string; archive: WslBackendArchive; log?: (line: string) => void }
+export type WslSessionOptions = { distro: string; version: string; archive: WslBackendArchive; fetchNode?: FetchNode | null; log?: (line: string) => void }
 
 export type WslSessionParts = BackendSessionParts<WslSessionOptions, WslBackendPlace, WslBackendProblem>
 

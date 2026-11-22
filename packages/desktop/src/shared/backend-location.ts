@@ -18,6 +18,8 @@ export const LinuxBackendProblem = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('login-environment') }),
   z.object({ kind: z.literal('node-missing') }),
   z.object({ kind: z.literal('node-old'), version: z.string(), path: z.string() }),
+  // No Node new enough there, and the one Antumi installs could not be put there either.
+  z.object({ kind: z.literal('node-download'), detail: z.string() }),
   z.object({ kind: z.literal('install'), detail: z.string() }),
   // node-pty does not load there: a libc older than the one it was compiled against, mostly.
   z.object({ kind: z.literal('pty'), detail: z.string() }),

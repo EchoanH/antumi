@@ -12,6 +12,7 @@ import {
   type LinuxBackendPlace
 } from '../linux-backend/linux-backend'
 import type { LinuxResult, LinuxTarget } from '../linux-backend/linux-target'
+import type { FetchNode } from '../linux-backend/managed-node'
 import { runOverSsh, spawnOverSsh, sshExecutable, type SshHost } from './ssh-command'
 
 // Daemon and core on a server reached over SSH (docs/REMOTE.md): what the connection and the server
@@ -27,6 +28,8 @@ export type SshBackendOptions = {
   // The archive for the server's architecture, null for one this build carries none for.
   archive(arch: LinuxArch): Promise<LinuxBackendArchive | null>
   host: SshHost
+  // This app's way to Node for a server that has none new enough and cannot download it.
+  fetchNode?: FetchNode | null
   startWaitMs?: number
 }
 
@@ -110,7 +113,7 @@ export async function findSshBackendPlace(options: SshBackendOptions): Promise<{
   const archive = arch ? await options.archive(arch) : null
   if (!archive) return problem({ kind: 'arch', arch: probe.arch })
   if (probe.endsSessions) return problem({ kind: 'linger' })
-  const found = await findLinuxBackendPlace(target, backendFolder(options.version, archive))
+  const found = await findLinuxBackendPlace(target, backendFolder(options.version, archive), { arch: linuxArch(probe.arch) ?? undefined, fetchNode: options.fetchNode ?? null })
   if (!found.ok) return found
   return { ok: true, place: { ...found.place, destination: options.destination }, archive }
 }

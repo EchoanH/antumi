@@ -45,6 +45,7 @@ const backend = new AppBackend({
   packaged: app.isPackaged,
   platform: process.platform,
   resources: process.resourcesPath,
+  nodeCache: join(app.getPath('userData'), 'linux-node'),
   // From source: pack-linux-backend's output, to try a backend in WSL or on a server.
   ...(process.env.ANTUMI_LINUX_BACKEND ? { linuxBackendFolder: process.env.ANTUMI_LINUX_BACKEND } : {}),
   ...(process.env.ANTUMI_SSH_CONFIG ? { sshConfig: process.env.ANTUMI_SSH_CONFIG } : {})

@@ -7,6 +7,7 @@ import { ensureBackend, replaceOldDaemon } from './backend'
 import { readBackendLocation, writeBackendLocation } from './backend-location'
 import { bundledLinuxBackend, type LinuxArch } from './linux-backend/bundled-archive'
 import type { LinuxBackendArchive } from './linux-backend/linux-backend'
+import { fetchNodeInto } from './linux-backend/managed-node'
 import { nodeSshHost, sshExecutable } from './ssh/ssh-command'
 import { putOnServer, readServerFile, serverIsDirectory, type Dropped, type ServerFile } from './ssh/ssh-files'
 import { SshSession } from './ssh/ssh-session'
@@ -32,6 +33,8 @@ export type AppBackendOptions = {
   linuxBackendFolder?: string
   // An ssh config in place of ~/.ssh/config, from source only: to reach a throwaway server.
   sshConfig?: string
+  // Where Node archives fetched for a machine that cannot download them itself are kept.
+  nodeCache: string
 }
 
 
@@ -78,12 +81,12 @@ export class AppBackend {
       if (chosen.kind === 'wsl') {
         const archive = await this.archive()
         if (!archive) return
-        session = new WslSession({ distro: chosen.distro, version: this.options.version, archive })
+        session = new WslSession({ distro: chosen.distro, version: this.options.version, archive, fetchNode: fetchNodeInto(this.options.nodeCache) })
       } else if (chosen.kind === 'ssh') {
         const real = nodeSshHost(join(antumiPaths().home, 'ssh'))
         const config = this.options.packaged ? undefined : this.options.sshConfig
         const host = config ? { ...real, spawn: (file: string, args: string[], spawnOptions: SpawnOptions) => real.spawn(file, ['-F', config, ...args], spawnOptions) } : real
-        session = new SshSession({ destination: chosen.host, version: this.options.version, archive: (arch) => this.linuxArchive(arch), host })
+        session = new SshSession({ destination: chosen.host, version: this.options.version, archive: (arch) => this.linuxArchive(arch), host, fetchNode: fetchNodeInto(this.options.nodeCache) })
       } else {
         return
       }

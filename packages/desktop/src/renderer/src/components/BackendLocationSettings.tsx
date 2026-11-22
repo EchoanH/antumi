@@ -112,6 +112,8 @@ function sshProblemContent(problem: BackendProblem, host: string): ProblemConten
       return { title: t('BackendLocation.problemNodeMissingSsh', { host }), body: <SshNodeFix />, retry: true }
     case 'node-old':
       return { title: t('BackendLocation.problemNodeOldSsh', { host, version: problem.version }), body: <><p>{tr('BackendLocation.problemNodeFound', { path: <code>{problem.path}</code> })}</p><SshNodeFix /></>, retry: true }
+    case 'node-download':
+      return { title: t('BackendLocation.problemNodeDownloadSsh', { host }), body: <><p>{t('BackendLocation.problemNodeDownloadFix')}</p><Detail text={problem.detail} /><SshNodeFix /></>, retry: true }
     case 'install':
       return { title: t('BackendLocation.problemInstallSsh', { host }), body: <Detail text={problem.detail} />, retry: true }
     case 'pty':
@@ -143,6 +145,8 @@ function wslProblemContent(problem: BackendProblem, distro: string): ProblemCont
       return { title: t('BackendLocation.problemNodeMissing', { distro }), body: <NodeFix />, retry: true }
     case 'node-old':
       return { title: t('BackendLocation.problemNodeOld', { distro, version: problem.version }), body: <><p>{tr('BackendLocation.problemNodeFound', { path: <code>{problem.path}</code> })}</p><NodeFix /></>, retry: true }
+    case 'node-download':
+      return { title: t('BackendLocation.problemNodeDownload', { distro }), body: <><p>{t('BackendLocation.problemNodeDownloadFix')}</p><Detail text={problem.detail} /><NodeFix /></>, retry: true }
     case 'install':
       return { title: t('BackendLocation.problemInstall', { distro }), body: <Detail text={problem.detail} />, retry: true }
     case 'pty':
