@@ -12654,6 +12654,7 @@ export const MESSAGES = {
   "RouteBadge.removedProvider": { "zh": "已删除的服务商", "en": "Removed provider" },
   "ChatHandoff.keepsProvider": { "zh": "沿用服务商「{value1}」", "en": "Keeps {value1}" },
   "AgentAccounts.title": { "zh": "账号", "en": "Accounts" },
+  "AgentAccounts.onServer": {"zh": "后端在服务器上，账号也登录在服务器上：添加账号时，在服务器上的终端里按提示完成登录。也可以给 Agent 配模型服务商。", "en": "The backend runs on a server, so accounts sign in there: adding one opens a terminal on the server; follow its prompts. You can also give an Agent a model provider."},
   "AgentAccounts.description": { "zh": "登录多个 Claude、Codex 账号，或添加 CodeBuddy 的 API Key；在状态栏切换，也可以给每个会话单独选账号。", "en": "Sign in to several Claude and Codex accounts, or add CodeBuddy API keys; switch in the status bar, or pick one for each conversation." },
   "AgentAccounts.intro": { "zh": "每个账号在自己的配置目录里运行，会话历史、设置、技能和 MCP 服务器与本机账号共享，所以换号后会话原样接着跑。正在运行的会话保持原账号，之后启动的用当前账号；在会话输入框下方选定了账号的会话，一直用它，也不参与额度用完时的自动切换。", "en": "Each account runs in a config folder of its own that shares conversation history, settings, skills and MCP servers with your own, so a conversation carries on as it was after a switch. Running conversations keep their account; whatever starts next uses the active one. A conversation given an account below its composer keeps it, and is not moved when one runs out." },
   "AgentAccounts.own": { "zh": "本机账号", "en": "Default account" },
