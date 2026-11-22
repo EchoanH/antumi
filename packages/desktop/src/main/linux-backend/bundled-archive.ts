@@ -17,8 +17,10 @@ export function linuxArch(machine: string): LinuxArch | null {
   return null
 }
 
-export async function bundledLinuxBackend(resources: string, arch: LinuxArch): Promise<LinuxBackendArchive | null> {
-  const folder = join(resources, 'linux-backend')
+// `subfolder` is where under `resources` they are: the installer's, or '' for pack-linux-backend's
+// own output folder.
+export async function bundledLinuxBackend(resources: string, arch: LinuxArch, subfolder = 'linux-backend'): Promise<LinuxBackendArchive | null> {
+  const folder = join(resources, subfolder)
   try {
     const manifest = Manifest.parse(JSON.parse(await readFile(join(folder, `backend-linux-${arch}.json`), 'utf8')))
     return { file: join(folder, manifest.file), sha256: manifest.sha256 }

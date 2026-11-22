@@ -1,10 +1,13 @@
 import { z } from 'zod'
 
-// Where the app's backend (daemon and core) runs: on this machine, or inside a WSL distro with the
-// app as its client (docs/WSL.md). Chosen in Settings, kept by main, applied at the next start.
+// Where the app's backend (daemon and core) runs: on this machine, inside a WSL distro, or on a
+// server reached over SSH, with the app as its client (docs/WSL.md, docs/REMOTE.md). Chosen in
+// Settings, kept by main, applied at the next start.
 export const BackendLocation = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('local') }),
-  z.object({ kind: z.literal('wsl'), distro: z.string().min(1).max(200) })
+  z.object({ kind: z.literal('wsl'), distro: z.string().min(1).max(200) }),
+  // What ssh takes as the destination: `user@host` or an alias of ~/.ssh/config.
+  z.object({ kind: z.literal('ssh'), host: z.string().min(1).max(255).regex(/^[^-\s][^\s]*$/) })
 ])
 export type BackendLocation = z.infer<typeof BackendLocation>
 
@@ -34,15 +37,36 @@ export const WslBackendProblem = z.discriminatedUnion('kind', [
 ])
 export type WslBackendProblem = z.infer<typeof WslBackendProblem>
 
+// Why a backend on an SSH host did not start.
+export const SshBackendProblem = z.discriminatedUnion('kind', [
+  // No ssh client on this machine.
+  z.object({ kind: z.literal('ssh-unavailable') }),
+  // The host's key is unknown or changed: the user checks it in a terminal once.
+  z.object({ kind: z.literal('ssh-host-key'), detail: z.string() }),
+  // No key ssh could log in with and no prompt to ask for one.
+  z.object({ kind: z.literal('ssh-auth'), detail: z.string() }),
+  z.object({ kind: z.literal('ssh-unreachable'), detail: z.string() }),
+  z.object({ kind: z.literal('os'), os: z.string() }),
+  // systemd kills a user's processes when their last session ends, and this user does not linger:
+  // the backend would go with the connection.
+  z.object({ kind: z.literal('linger') }),
+  ...LinuxBackendProblem.options
+])
+export type SshBackendProblem = z.infer<typeof SshBackendProblem>
+
+export type BackendProblem = WslBackendProblem | SshBackendProblem
+
 export const BackendLocationState = z.object({
   // Whether this app can run its backend in WSL at all: Windows, installed, carrying the archive.
-  supported: z.boolean(),
+  wsl: z.boolean(),
+  // Whether it can run it on an SSH host: installed, carrying the archives, with an ssh client.
+  ssh: z.boolean(),
   chosen: BackendLocation,
   // Where the backend this app talks to runs now: the chosen place, or this machine when the one
-  // in WSL did not start.
-  running: z.enum(['local', 'wsl']),
+  // chosen did not start.
+  running: z.enum(['local', 'wsl', 'ssh']),
   // The distros to choose from; null when wsl.exe would not say.
   distros: z.array(z.object({ name: z.string(), version: z.union([z.literal(1), z.literal(2)]), isDefault: z.boolean() })).nullable(),
-  problem: WslBackendProblem.nullable()
+  problem: z.union([WslBackendProblem, SshBackendProblem]).nullable()
 })
 export type BackendLocationState = z.infer<typeof BackendLocationState>

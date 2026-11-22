@@ -23,20 +23,25 @@ export function useBackendLocationFeed(): void {
 }
 
 export function useBackendLocationShown(): boolean {
-  return useBackendLocation((s) => s.state?.supported ?? false)
+  return useBackendLocation((s) => (s.state?.wsl || s.state?.ssh) ?? false)
 }
 
 export function dismissBackendLocationNotice(): void {
   useBackendLocation.setState({ dismissed: true })
 }
 
-// The distro the user chose when this machine's backend runs instead, because the one there did
+// A place other than this machine.
+export type RemoteLocation = Exclude<BackendLocation, { kind: 'local' }>
+
+// The place the user chose when this machine's backend runs instead, because the one there did
 // not start: the tasks they see are not the ones they expect. Null otherwise.
-export function distroNotStarted(state: BackendLocationState | null): string | null {
-  if (!state?.supported || state.chosen.kind !== 'wsl' || state.running !== 'local' || !state.problem) return null
-  return state.chosen.distro
+export function notStarted(state: BackendLocationState | null): RemoteLocation | null {
+  if (!state || state.chosen.kind === 'local' || state.running !== 'local' || !state.problem) return null
+  return state.chosen
 }
 
 export function sameLocation(a: BackendLocation, b: BackendLocation): boolean {
-  return a.kind === 'local' ? b.kind === 'local' : b.kind === 'wsl' && a.distro === b.distro
+  if (a.kind === 'local' || b.kind === 'local') return a.kind === b.kind
+  if (a.kind === 'ssh' || b.kind === 'ssh') return a.kind === 'ssh' && b.kind === 'ssh' && a.host === b.host
+  return a.distro === b.distro
 }

@@ -34,15 +34,17 @@ const slot = new WindowSlot()
 let browserHost: BrowserHost | null = null
 let mainWindow: BrowserWindow | null = null
 let uiLocale: UiLocale = 'en'
-// Daemon and core, on this machine or in a WSL distro: asked here for where core is and how a
-// path of its reads on this machine.
+// Daemon and core, on this machine, in a WSL distro or on an SSH host: asked here for where core is
+// and how a path of its reads on this machine.
 const backend = new AppBackend({
   locationFile: join(app.getPath('userData'), 'backend.json'),
   privateHostFile: join(app.getPath('userData'), 'wsl-browser-host.json'),
   version: app.getVersion(),
   packaged: app.isPackaged,
   platform: process.platform,
-  resources: process.resourcesPath
+  resources: process.resourcesPath,
+  // From source: pack-linux-backend's output, to try a backend in WSL or on a server.
+  ...(process.env.ANTUMI_LINUX_BACKEND ? { linuxBackendFolder: process.env.ANTUMI_LINUX_BACKEND } : {})
 })
 const uiText = (en: string, zh: string): string => uiLocale === 'en' ? en : zh
 const PRELOAD = join(__dirname, '../preload/index.js')
@@ -385,12 +387,16 @@ ipcMain.on('antumi:backend-path', (event, path: unknown) => {
 })
 
 // A folder or file the user picked, as core names it. One a backend in WSL cannot reach (another
-// distro's, a network share) is said so rather than handed over as a path that leads nowhere.
+// distro's, a network share), or any on this machine for a backend on a server, is said so rather
+// than handed over as a path that leads nowhere.
 function picked(window: BrowserWindow | null, path: string | undefined): string | null {
   if (!path) return null
   const named = backend.toBackendPath(path)
   if (named) return named
-  const options = { type: 'warning' as const, message: uiText('This place cannot be reached from the WSL distro Antumi runs in', '运行 Antumi 的 WSL 发行版访问不到这个位置'), detail: path }
+  const message = backend.remote()?.kind === 'ssh'
+    ? uiText('Antumi runs on a server, which cannot reach the files of this computer', 'Antumi 运行在服务器上，访问不到这台电脑上的文件')
+    : uiText('This place cannot be reached from the WSL distro Antumi runs in', '运行 Antumi 的 WSL 发行版访问不到这个位置')
+  const options = { type: 'warning' as const, message, detail: path }
   if (window && !window.isDestroyed()) dialog.showMessageBoxSync(window, options)
   else dialog.showMessageBoxSync(options)
   return null

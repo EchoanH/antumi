@@ -2,11 +2,11 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { StateCreator } from 'zustand'
-import type { BackendLocationState, WslBackendProblem } from '../../../shared/backend-location'
-import { distroNotStarted, useBackendLocation } from '../backend-location-state'
+import type { BackendLocationState, BackendProblem } from '../../../shared/backend-location'
+import { notStarted, sameLocation, useBackendLocation } from '../backend-location-state'
 import { setLocale } from '../i18n'
 import { BackendLocationNotice } from './BackendLocationNotice'
-import { backendLocationOptions, BackendLocationSettings, confirmSwitch } from './BackendLocationSettings'
+import { backendLocationOptions, BackendLocationSettings, confirmSwitch, sshLocation } from './BackendLocationSettings'
 
 vi.mock('zustand', async (original) => {
   const actual = await original<typeof import('zustand')>()
@@ -22,8 +22,8 @@ const DISTROS = [
   { name: 'Ubuntu', version: 2 as const, isDefault: true },
   { name: 'Legacy', version: 1 as const, isDefault: false }
 ]
-const LOCAL: BackendLocationState = { supported: true, chosen: { kind: 'local' }, running: 'local', distros: DISTROS, problem: null }
-const failed = (problem: WslBackendProblem): BackendLocationState => ({ ...LOCAL, chosen: { kind: 'wsl', distro: 'Ubuntu' }, problem })
+const LOCAL: BackendLocationState = { wsl: true, ssh: false, chosen: { kind: 'local' }, running: 'local', distros: DISTROS, problem: null }
+const failed = (problem: BackendProblem): BackendLocationState => ({ ...LOCAL, chosen: { kind: 'wsl', distro: 'Ubuntu' }, problem })
 const settings = (state: BackendLocationState | null) => {
   useBackendLocation.setState({ state })
   return renderToStaticMarkup(createElement(BackendLocationSettings))
@@ -37,9 +37,9 @@ beforeEach(() => useBackendLocation.setState(useBackendLocation.getInitialState(
 afterEach(() => setLocale('zh-CN'))
 
 describe('backend location settings', () => {
-  it('shows nothing where the app cannot run its backend in WSL', () => {
+  it('shows nothing where the app cannot run its backend elsewhere', () => {
     expect(settings(null)).toBe('')
-    expect(settings({ ...LOCAL, supported: false, distros: [] })).toBe('')
+    expect(settings({ ...LOCAL, wsl: false, distros: [] })).toBe('')
   })
 
   it('offers this machine and each distro, marking the default and keeping WSL 1 out of reach', () => {
@@ -94,7 +94,7 @@ describe('backend location settings', () => {
   })
 
   it('says what to do for each problem', () => {
-    const cases: [WslBackendProblem, string[]][] = [
+    const cases: [BackendProblem, string[]][] = [
       [{ kind: 'wsl-unavailable' }, ['这台电脑没有装 WSL。', '<code>wsl --install</code>']],
       [{ kind: 'wsl-unknown', detail: 'E_ACCESSDENIED' }, ['wsl.exe 没有回答', '<pre class="backend-location-detail">E_ACCESSDENIED</pre>']],
       [{ kind: 'distro-missing', distro: 'Arch' }, ['找不到发行版「Arch」。', '改回本机']],
@@ -129,12 +129,69 @@ describe('backend location settings', () => {
   })
 })
 
+const MAC: BackendLocationState = { wsl: false, ssh: true, chosen: { kind: 'local' }, running: 'local', distros: [], problem: null }
+const sshFailed = (problem: BackendProblem): BackendLocationState => ({ ...MAC, chosen: { kind: 'ssh', host: 'dev@box' }, problem })
+
+describe('backend location on a server', () => {
+  it('offers a server beside this machine where there is no WSL', () => {
+    expect(backendLocationOptions(MAC).map((option) => [option.value, option.label])).toEqual([['local', '本机'], ['ssh', '远程服务器（SSH）…']])
+    expect(backendLocationOptions({ ...MAC, chosen: { kind: 'ssh', host: 'dev@box' }, running: 'ssh' }).at(-1)?.label).toBe('服务器 dev@box')
+    const html = settings(MAC)
+    expect(html).toContain('ssh 能不输密码登录')
+    expect(html).not.toContain('WSL 发行版')
+  })
+
+  it('shows the server it runs on, with what it does not have yet', () => {
+    const html = settings({ ...MAC, chosen: { kind: 'ssh', host: 'dev@box' }, running: 'ssh' })
+    expect(html).toContain('>服务器 dev@box</span>')
+    expect(html).toContain('value="dev@box"')
+    expect(html).toContain('后端在服务器上时暂时没有')
+  })
+
+  it('takes what ssh takes as a destination, and nothing that reads as an option', () => {
+    expect(sshLocation(' dev@box ')).toEqual({ kind: 'ssh', host: 'dev@box' })
+    expect(sshLocation('my-alias')).toEqual({ kind: 'ssh', host: 'my-alias' })
+    expect(sshLocation('-oProxyCommand=x')).toBeNull()
+    expect(sshLocation('dev@box rm')).toBeNull()
+    expect(sshLocation('')).toBeNull()
+    expect(sameLocation({ kind: 'ssh', host: 'a' }, { kind: 'ssh', host: 'a' })).toBe(true)
+    expect(sameLocation({ kind: 'ssh', host: 'a' }, { kind: 'wsl', distro: 'a' })).toBe(false)
+    expect(sameLocation({ kind: 'local' }, { kind: 'ssh', host: 'a' })).toBe(false)
+  })
+
+  it('says what to do for each problem on a server', () => {
+    const cases: [BackendProblem, string[]][] = [
+      [{ kind: 'ssh-unavailable' }, ['这台电脑上找不到 ssh。', 'OpenSSH 客户端']],
+      [{ kind: 'ssh-host-key', detail: 'Host key verification failed.' }, ['还没有确认过「dev@box」的主机密钥', '<code>ssh dev@box</code>', 'Host key verification failed.']],
+      [{ kind: 'ssh-auth', detail: 'Permission denied (publickey).' }, ['登录「dev@box」要输入密码或口令。', 'ssh-add', 'Permission denied (publickey).']],
+      [{ kind: 'ssh-unreachable', detail: 'Could not resolve hostname box' }, ['连不上「dev@box」。', 'Could not resolve hostname box']],
+      [{ kind: 'os', os: 'Darwin' }, ['「dev@box」运行的是 Darwin，后端只能运行在 Linux 上。']],
+      [{ kind: 'arch', arch: 'riscv64' }, ['「dev@box」是 riscv64，后端只有 x86_64 和 aarch64 的。']],
+      [{ kind: 'linger' }, ['ssh 断开时结束你的所有进程', '<code>sudo loginctl enable-linger $USER</code>']],
+      [{ kind: 'node-old', version: 'v20.1.0', path: '/usr/bin/node' }, ['「dev@box」上的 Node 是 v20.1.0，需要 24 以上。', '后端用服务器上的 Node']],
+      [{ kind: 'start', detail: 'exited with 1' }, ['「dev@box」上的后端没能启动。', '服务器上的', 'exited with 1']]
+    ]
+    for (const [problem, expected] of cases) {
+      const html = settings(sshFailed(problem))
+      expect(html, problem.kind).toContain('服务器「dev@box」上的后端没能启动，这次先用本机的')
+      for (const text of expected) expect(html, problem.kind).toContain(text)
+    }
+    expect(settings(sshFailed({ kind: 'os', os: 'Darwin' }))).not.toContain('重启 Antumi 再试')
+  })
+
+  it('asks before moving to a server', async () => {
+    askConfirm.mockResolvedValueOnce(true)
+    expect(await confirmSwitch({ kind: 'ssh', host: 'dev@box' })).toBe(true)
+    expect(askConfirm).toHaveBeenLastCalledWith(expect.objectContaining({ message: expect.stringMatching(/^把后端换到服务器「dev@box」？ Antumi 会立即重启。/) }))
+  })
+})
+
 describe('backend location notice', () => {
   it('shows only when a chosen distro did not start, until dismissed', () => {
     expect(notice(null)).toBe('')
     expect(notice(LOCAL)).toBe('')
     expect(notice({ ...LOCAL, chosen: { kind: 'wsl', distro: 'Ubuntu' }, running: 'wsl' })).toBe('')
-    expect(notice({ ...failed({ kind: 'node-missing' }), supported: false })).toBe('')
+    expect(notice({ ...failed({ kind: 'node-missing' }), problem: null })).toBe('')
     const html = notice(failed({ kind: 'start', detail: '' }))
     expect(html).toContain('「Ubuntu」里的后端没能启动，现在显示的是本机的任务和会话。')
     expect(html).toContain('aria-label="关闭提示"')
@@ -142,8 +199,12 @@ describe('backend location notice', () => {
     expect(renderToStaticMarkup(createElement(BackendLocationNotice))).toBe('')
   })
 
-  it('names the distro the user chose', () => {
-    expect(distroNotStarted(failed({ kind: 'login-environment' }))).toBe('Ubuntu')
-    expect(distroNotStarted({ ...LOCAL, chosen: { kind: 'wsl', distro: 'Ubuntu' } })).toBeNull()
+  it('names the place the user chose', () => {
+    expect(notStarted(failed({ kind: 'login-environment' }))).toEqual({ kind: 'wsl', distro: 'Ubuntu' })
+    expect(notStarted({ ...LOCAL, chosen: { kind: 'wsl', distro: 'Ubuntu' } })).toBeNull()
+  })
+
+  it('names the server when the one there did not start', () => {
+    expect(notice(sshFailed({ kind: 'ssh-unreachable', detail: '' }))).toContain('服务器「dev@box」上的后端没能启动，现在显示的是本机的任务和会话。')
   })
 })

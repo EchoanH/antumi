@@ -403,5 +403,7 @@
 .backend-location-command code { min-width: 0; padding: 2px 8px; border-radius: var(--radius-xs); background: var(--fill); user-select: text; }
 .backend-location-detail { align-self: stretch; max-height: 160px; overflow: auto; margin: 0; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--fill-2); color: var(--text); font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 .backend-location-running { display: inline-flex; align-items: center; gap: 6px; }
+.backend-location-host { display: flex; align-items: center; gap: 8px; }
+.backend-location-host .input { width: 220px; }
 .backend-location-running[data-fell-back] { color: var(--warning); }
 .backend-location-running svg { width: 14px; height: 14px; }
