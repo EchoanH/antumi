@@ -2398,6 +2398,10 @@ export const MESSAGES = {
     "zh": "添加图片",
     "en": "Add images"
   },
+  "ChatImages.addFiles": {
+    "zh": "添加文件",
+    "en": "Add files"
+  },
   "chatMentions.pastedText": {
     "zh": "粘贴的文本 · {lines} 行",
     "en": "Pasted text · {lines} {lines, plural, one {line} other {lines}}"

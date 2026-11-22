@@ -4,7 +4,7 @@ import { ATTACHMENT_CHUNK_BYTES, IMAGE_MIME_TYPES, MAX_ATTACHMENT_BYTES } from '
 import { bytesToBase64 } from './base64'
 import { CLIPBOARD_TYPE, heldPastePath, isHeldPaste, pathTarget, placeTargets, type Mention, type MentionedText, type MentionTarget } from './chat-mentions'
 import { useCore } from './core-store'
-import { pathForFile } from './desktop-bridge'
+import { canPathFiles, pathForFile } from './desktop-bridge'
 import { t } from './i18n'
 
 // Past this many characters a paste goes to the agent as a file it reads rather than in the
@@ -134,6 +134,20 @@ export function useComposerFiles({ conversationId, cwd, input, setValue, addImag
     if ((images || mentions) && event.dataTransfer.types.includes('Files')) event.preventDefault()
   }
 
+  // Whether anything was taken: what was not stays with the event it came in.
+  const take = (entries: readonly { file: File; directory: boolean }[], at: () => number | null): boolean => {
+    const pictures = images ? entries.filter((entry) => !entry.directory && isImage(entry.file)).map((entry) => entry.file) : []
+    const targets = mentions ? entries.flatMap((entry) => {
+      if (pictures.includes(entry.file)) return []
+      const path = pathForFile(entry.file)
+      return path ? [pathTarget(path, entry.directory ? 'directory' : 'file', cwd)] : []
+    }) : []
+    if (pictures.length === 0 && targets.length === 0) return false
+    if (pictures.length > 0) addImages(pictures)
+    if (targets.length > 0) place(targets, at())
+    return true
+  }
+
   // In capture, before the input's own drop, which would put a file's text in.
   const onDropCapture = (event: DragEvent) => {
     if (readOnly) return
@@ -141,17 +155,13 @@ export function useComposerFiles({ conversationId, cwd, input, setValue, addImag
       const file = item.kind === 'file' ? item.getAsFile() : null
       return file ? [{ file, directory: item.webkitGetAsEntry()?.isDirectory ?? false }] : []
     })
-    const pictures = images ? dropped.filter((entry) => !entry.directory && isImage(entry.file)).map((entry) => entry.file) : []
-    const targets = mentions ? dropped.flatMap((entry) => {
-      if (pictures.includes(entry.file)) return []
-      const path = pathForFile(entry.file)
-      return path ? [pathTarget(path, entry.directory ? 'directory' : 'file', cwd)] : []
-    }) : []
-    if (pictures.length === 0 && targets.length === 0) return
-    event.preventDefault()
-    if (pictures.length > 0) addImages(pictures)
-    if (targets.length > 0) place(targets, input.current?.posAtCoords({ x: event.clientX, y: event.clientY }, false) ?? null)
+    if (take(dropped, () => input.current?.posAtCoords({ x: event.clientX, y: event.clientY }, false) ?? null)) event.preventDefault()
   }
 
-  return { pasting, onPasteCapture, onDragOver, onDropCapture }
+  // Files from the ＋ menu's picker, taken as a drop is, at the caret.
+  const addPicked = (picked: readonly File[]) => {
+    if (!readOnly) take(picked.map((file) => ({ file, directory: false })), () => null)
+  }
+
+  return { pasting, onPasteCapture, onDragOver, onDropCapture, addPicked, picksFiles: mentions && canPathFiles() }
 }

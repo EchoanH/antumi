@@ -5,7 +5,7 @@ import { copyImageToClipboard, imageFilesOf, uploadImageFiles, useImageUrl } fro
 import { useCore } from '../core-store'
 import { fitChatImage } from '../image-fit'
 import { useNearView } from '../near-view'
-import { CheckIcon, CloseIcon, CopyIcon, ImageIcon, PlusIcon, SearchIcon } from './icons'
+import { CheckIcon, CloseIcon, CopyIcon, DocumentIcon, ImageIcon, PlusIcon, SearchIcon } from './icons'
 import { ImageViewer } from './ImageViewer'
 import { Popover } from './Popover'
 
@@ -56,19 +56,21 @@ export function useComposerImages(initial: readonly ChatImage[] = []) {
   return { images, uploading, add, remove, setImages, handlers }
 }
 
-// The ＋ at the start of the row under the input: a menu of what can go into the message, which
-// for now is images; the picker it opens takes several at once.
-export function ChatAddMenu({ disabled, onAdd }: { disabled?: boolean; onAdd: (files: File[]) => void }) {
+// The ＋ at the start of the row under the input: a menu of what can go into the message; the
+// picker it opens takes several at once. With `onFiles` it takes any file, images included, as a
+// drop would (useComposerFiles); without, images only.
+export function ChatAddMenu({ disabled, onAdd, onFiles }: { disabled?: boolean; onAdd: (files: File[]) => void; onFiles?: (files: File[]) => void }) {
   const [open, setOpen] = useState(false)
   const close = useCallback(() => setOpen(false), [])
   const input = useRef<HTMLInputElement>(null)
+  const label = onFiles ? t('ChatImages.addFiles') : t('ChatImages.addImages')
   return (
     <span className="menu-anchor">
       <button
         type="button"
         className="chat-add-button"
         aria-label={t('ChatImages.addContent')}
-        data-tooltip={t('ChatImages.addImages')}
+        data-tooltip={label}
         data-tooltip-side="top"
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -87,8 +89,8 @@ export function ChatAddMenu({ disabled, onAdd }: { disabled?: boolean; onAdd: (f
               input.current?.click()
             }}
           >
-            <ImageIcon />
-            <span className="menu-item-title">{t('ChatImages.addImages')}</span>
+            {onFiles ? <DocumentIcon /> : <ImageIcon />}
+            <span className="menu-item-title">{label}</span>
           </button>
           <div className="menu-label">{t('ChatImages.youCanAlsoPasteOrDragThemInto')}</div>
         </Popover>
@@ -98,12 +100,12 @@ export function ChatAddMenu({ disabled, onAdd }: { disabled?: boolean; onAdd: (f
         type="file"
         hidden
         multiple
-        accept={IMAGE_MIME_TYPES.join(',')}
+        accept={onFiles ? undefined : IMAGE_MIME_TYPES.join(',')}
         onChange={(event) => {
           const files = [...(event.target.files ?? [])]
           // Cleared so choosing the same file again still fires a change.
           event.target.value = ''
-          if (files.length > 0) onAdd(files)
+          if (files.length > 0) (onFiles ?? onAdd)(files)
         }}
       />
     </span>

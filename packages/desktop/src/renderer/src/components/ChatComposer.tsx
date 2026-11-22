@@ -559,7 +559,7 @@ export function ChatComposer({ conversation, state, compact = false }: { convers
       />
       {/* Under the input, inside its box: what goes with the message, how the agent runs, and send. */}
       <div className="chat-options">
-        {imagesSupported && <ChatAddMenu disabled={starting} onAdd={attached.add} />}
+        {(imagesSupported || files.picksFiles) && <ChatAddMenu disabled={starting} onAdd={attached.add} onFiles={files.picksFiles ? files.addPicked : undefined} />}
         {!compact && handoff.targets.length > 0 && <HandoffAgentPicker conversationId={id} handoff={handoff} disabled={busy || starting} />}
         {!compact && !handoff.target && <RouteBadge conversation={conversation} locked />}
         {handingOff ? (

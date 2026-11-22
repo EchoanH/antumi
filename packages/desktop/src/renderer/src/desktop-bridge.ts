@@ -142,6 +142,10 @@ export function canOpenFile(): boolean {
   return window.antumi?.openFile !== undefined
 }
 
+export function canPathFiles(): boolean {
+  return window.antumi?.pathForFile !== undefined
+}
+
 // A dropped file's path on disk, or null in a plain browser, from a main older than the renderer,
 // or for something dragged from no file.
 export function pathForFile(file: File): string | null {
