@@ -29,7 +29,7 @@ Windows                                   WSL 发行版
 
 ### Linux 后端包
 
-发版时多一个任务（`release.yml` 的 `wsl-backend`）：在 Linux 上按 Linux 打出 `out/backend`（`bundle-backend.mjs --platform linux --wsl`，多出转发程序和 `backend-control` 两个入口，别的安装包里都没有），再由 `pack-wsl-backend.mjs` 打成 `backend-linux-x64.tar.gz`，旁边一个写着 sha256 和版本的 json。Windows 的打包任务取来放进安装包的 `resources/wsl/`。本机 `pnpm dist:win` 打的包里没有它，「后端位置」就不给选发行版。
+发版时多一个任务（`release.yml` 的 `linux-backend`）：在 Linux 上按 Linux 打出 `out/backend`（`bundle-backend.mjs --platform linux --linux-backend`，多出转发程序和 `backend-control` 两个入口，别的安装包里都没有），再由 `pack-linux-backend.mjs` 打成 `backend-linux-x64.tar.gz`，旁边一个写着 sha256 和版本的 json。各平台的打包任务都取来放进安装包的 `resources/linux-backend/`（远程服务器也用它，另有 arm64 的一份，见 [REMOTE.md](REMOTE.md)）。本机 `pnpm dist:win` 打的包里没有它，「后端位置」就不给选发行版。
 
 - 里面是全部 `.mjs`、`plugins` 和 Linux 上编译的 node-pty，解开就是发行版里的一份后端。
 - 在 `ubuntu-22.04` 上编：node-pty 按新 glibc 编出来的，旧 glibc 的发行版加载不了。再旧的发行版在预检时报出来。
@@ -131,7 +131,7 @@ core 只认 Linux 路径，界面按路径本身的样子处理，不看自己�
 
 ```
 node wsl-smoke.mjs <发行版> [--mutate] [--tunnel <wsl-tunnel.mjs>]    # 调用 wsl.exe、登录环境、转发程序
-node wsl-smoke.mjs <发行版> --backend <pack-wsl-backend 的输出目录>    # 装上真的后端并从 Windows 调它
+node wsl-smoke.mjs <发行版> --backend <pack-linux-backend 的输出目录>    # 装上真的后端并从 Windows 调它
 node wsl-smoke.mjs <发行版> --check-backend                            # 过几分钟，从另一个进程看它还在不在
 ```
 

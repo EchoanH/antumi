@@ -4,7 +4,7 @@
 //
 //   node wsl-smoke.mjs <distro> [--mutate] [--tunnel <wsl-tunnel.mjs>]
 //   node wsl-smoke.mjs <distro> --launch, then later --check-launch
-//   node wsl-smoke.mjs <distro> --backend <folder of pack-wsl-backend's output>, then later --check-backend
+//   node wsl-smoke.mjs <distro> --backend <folder of pack-linux-backend's output>, then later --check-backend
 //
 // --mutate also appends to the distro's ~/.bashrc, to see a login shell's PATH and banner: only
 // for a throwaway distro. --tunnel runs the bundled tunnel helper in the distro and sends bytes

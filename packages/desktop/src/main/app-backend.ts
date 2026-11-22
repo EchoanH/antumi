@@ -1,14 +1,12 @@
-import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
 import type { CoreEndpoint } from '@antumi/protocol'
 import { antumiPaths, readCoreEndpoint } from '@antumi/protocol/node'
 import type { BackendLocation, BackendLocationState, WslBackendProblem } from '../shared/backend-location'
 import { ensureBackend, replaceOldDaemon } from './backend'
 import { readBackendLocation, writeBackendLocation } from './backend-location'
+import { bundledLinuxBackend } from './linux-backend/bundled-archive'
 import type { WslBackendArchive } from './wsl/wsl-backend'
 import { listDistros } from './wsl/wsl-distros'
 import { WslSession } from './wsl/wsl-session'
-import { z } from 'zod'
 
 // The backend this app talks to, wherever the user chose to run it: on this machine as ever, or in
 // a WSL distro (docs/WSL.md), with this machine's as what it falls back to when that one will not
@@ -25,8 +23,6 @@ export type AppBackendOptions = {
   resources: string
 }
 
-const Manifest = z.object({ file: z.string(), sha256: z.string().regex(/^[a-f0-9]{64}$/) })
-
 export class AppBackend {
   private chosen: BackendLocation = { kind: 'local' }
   private session: WslSession | null = null
@@ -36,16 +32,10 @@ export class AppBackend {
 
   constructor(private readonly options: AppBackendOptions) {}
 
-  // The archive pack-wsl-backend made, where the installer put it; null in a build without it.
+  // The archive a WSL distro takes, where the installer put it; null in a build without it.
   private async archive(): Promise<WslBackendArchive | null> {
     if (this.options.platform !== 'win32' || !this.options.packaged) return null
-    const folder = join(this.options.resources, 'wsl')
-    try {
-      const manifest = Manifest.parse(JSON.parse(await readFile(join(folder, 'backend-linux-x64.json'), 'utf8')))
-      return { file: join(folder, manifest.file), sha256: manifest.sha256 }
-    } catch {
-      return null
-    }
+    return bundledLinuxBackend(this.options.resources, 'x64')
   }
 
   // Starts the backend where the user chose, once. One in WSL that will not start leaves the app

@@ -84,12 +84,21 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # The backend a Windows app installs into a WSL distro (docs/WSL.md). On the oldest runner there
-  # is: node-pty compiled against a newer glibc does not load in a distro with an older one.
-  wsl-backend:
+  # The backend the app installs on another Linux machine, a WSL distro or an SSH host (docs/WSL.md,
+  # docs/REMOTE.md), for each architecture a server may have. On the oldest runners there are:
+  # node-pty compiled against a newer glibc does not load on a machine with an older one.
+  linux-backend:
     needs: verify
-    runs-on: ubuntu-22.04
+    name: Linux backend ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
+    strategy:
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-22.04-arm
     steps:
       - uses: actions/checkout@v7
         with:
@@ -101,17 +110,17 @@ jobs:
           node-version: '24'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: node packages/desktop/scripts/bundle-backend.mjs --platform linux --wsl
-      - run: node packages/desktop/scripts/pack-wsl-backend.mjs
+      - run: node packages/desktop/scripts/bundle-backend.mjs --platform linux --linux-backend
+      - run: node packages/desktop/scripts/pack-linux-backend.mjs
       - uses: actions/upload-artifact@v7
         with:
-          name: wsl-backend
-          path: packages/desktop/build/wsl/
+          name: linux-backend-${{ matrix.arch }}
+          path: packages/desktop/build/linux-backend/
           if-no-files-found: error
           retention-days: 7
 
   build:
-    needs: [verify, wsl-backend]
+    needs: [verify, linux-backend]
     name: Build ${{ matrix.platform }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
@@ -147,11 +156,11 @@ jobs:
           node-version: '24'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - if: matrix.platform == 'windows-x64'
-        uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@v8
         with:
-          name: wsl-backend
-          path: packages/desktop/build/wsl
+          pattern: linux-backend-*
+          merge-multiple: true
+          path: packages/desktop/build/linux-backend
       # electron-builder fetches Electron and its packaging tools from GitHub releases once, without
       # retrying; a 504 there failed a whole release, so the build gets a few spaced tries.
       - name: Build installer

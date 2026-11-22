@@ -17,6 +17,11 @@ extraResources:
     to: backend/plugins
   - from: out/backend/node_modules/node-pty
     to: backend/node_modules/node-pty
+  # The backend as another Linux machine runs it: a WSL distro on Windows, an SSH host anywhere
+  # (docs/WSL.md, docs/REMOTE.md), packed on Linux by pack-linux-backend. A build made without it
+  # simply offers neither.
+  - from: build/linux-backend
+    to: linux-backend
 # All native code arrives prebuilt (node-pty via bundle-backend); nothing to rebuild.
 npmRebuild: false
 # With no certificate the mac app would ship a broken signature and get no system notifications.
@@ -39,11 +44,6 @@ win:
   # the 824px plate on a 1024px canvas showed a fifth smaller than its neighbours on the taskbar.
   # electron-builder makes the .ico from it.
   icon: build/icon-win.png
-  # The backend as a WSL distro runs it (docs/WSL.md), packed on Linux by pack-wsl-backend. A build
-  # made without it simply offers no WSL.
-  extraResources:
-    - from: build/wsl
-      to: wsl
   target:
     - target: nsis
       arch:
