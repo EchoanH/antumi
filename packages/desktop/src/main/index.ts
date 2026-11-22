@@ -44,7 +44,8 @@ const backend = new AppBackend({
   platform: process.platform,
   resources: process.resourcesPath,
   // From source: pack-linux-backend's output, to try a backend in WSL or on a server.
-  ...(process.env.ANTUMI_LINUX_BACKEND ? { linuxBackendFolder: process.env.ANTUMI_LINUX_BACKEND } : {})
+  ...(process.env.ANTUMI_LINUX_BACKEND ? { linuxBackendFolder: process.env.ANTUMI_LINUX_BACKEND } : {}),
+  ...(process.env.ANTUMI_SSH_CONFIG ? { sshConfig: process.env.ANTUMI_SSH_CONFIG } : {})
 })
 const uiText = (en: string, zh: string): string => uiLocale === 'en' ? en : zh
 const PRELOAD = join(__dirname, '../preload/index.js')

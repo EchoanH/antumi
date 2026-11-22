@@ -81,7 +81,26 @@ core 只认服务器上的路径，本机的文件对它没有意义。WSL 能�
 6. [ ] 预览、拖入文件、用…打开、在访达中显示
 7. [ ] 内置浏览器经服务器上网
 8. [ ] 自带 Node
-9. [ ] 端到端：对着容器里的 sshd 从安装跑到界面连上
+9. [x] 端到端：对着容器里的 sshd 从安装跑到界面连上（见「验证」）
+
+## 验证
+
+`ssh/ssh-smoke.test.ts` 把这些模块对着真的 ssh 和一台真的 Linux 跑，不指给它服务器时跳过。本机用 Colima（或任何 Docker）起一台：
+
+1. 在 Linux 容器里编后端包：`bundle-backend.mjs --platform linux --linux-backend`，再 `pack-linux-backend.mjs`。Apple 芯片上的容器是 arm64，正好覆盖 arm64 的包。
+2. 起一个装了 `openssh-server` 和 Node 24 的容器，放进一把临时密钥的公钥，端口映射到 `127.0.0.1:2222`。
+3. 写一个临时的 ssh config（`HostName 127.0.0.1`、`Port 2222`、`IdentityFile` 指向临时密钥、`UserKnownHostsFile` 指向一个临时文件），不碰 `~/.ssh`。
+4. `ANTUMI_SSH_SMOKE=<别名> ANTUMI_SSH_SMOKE_BACKEND=<包所在目录> ANTUMI_SSH_SMOKE_CONFIG=<config> pnpm vitest run packages/desktop/src/main/ssh/ssh-smoke.test.ts`
+
+界面：从源码运行时，`ANTUMI_LINUX_BACKEND=<包所在目录>` 让开发版带上后端包，`ANTUMI_SSH_CONFIG=<config>` 代替 `~/.ssh/config`（打包的应用不认这两个）。再加 `--user-data-dir=<临时目录>`，在那里的 `backend.json` 写 `{"kind":"ssh","host":"<别名>"}`，免得改到装好的应用的选择。
+
+已验证（2026-11-23，macOS arm64 → Debian 12 arm64 容器，Node 24）：
+
+- 主机密钥没见过时报「还没有确认过主机密钥」；config 里给交互登录配的 `RemoteCommand` 和 `LocalForward` 不影响 Antumi 的连接。
+- 后端包（3.4MB）装上、daemon 和 core 启动、经转发程序调 `system.hello` 和 `system.environment`，共约 2 秒。
+- core 和 daemon 各自是一个会话的首进程，父进程是 1；断开共享的连接后同一个 core 仍在，再走一遍启动找到的是它。
+- 共享连接上一条命令不到 1.5 秒。
+- 开发版的界面连上服务器上的 core：环境里是服务器的路径，后端位置页显示「服务器 antumi-e2e」。
 
 ## 已知的限制
 

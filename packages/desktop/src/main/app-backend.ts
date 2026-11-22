@@ -1,3 +1,4 @@
+import type { SpawnOptions } from 'node:child_process'
 import { join } from 'node:path'
 import type { CoreEndpoint } from '@antumi/protocol'
 import { antumiPaths, readCoreEndpoint } from '@antumi/protocol/node'
@@ -28,6 +29,8 @@ export type AppBackendOptions = {
   // Where the Linux archives are in a build that does not carry them: one made from source, pointed
   // at pack-linux-backend's output to try a remote backend.
   linuxBackendFolder?: string
+  // An ssh config in place of ~/.ssh/config, from source only: to reach a throwaway server.
+  sshConfig?: string
 }
 
 // Where a backend runs that is not on this machine, for what main says about its paths.
@@ -78,7 +81,9 @@ export class AppBackend {
         if (!archive) return
         session = new WslSession({ distro: chosen.distro, version: this.options.version, archive })
       } else if (chosen.kind === 'ssh') {
-        const host = nodeSshHost(join(antumiPaths().home, 'ssh'))
+        const real = nodeSshHost(join(antumiPaths().home, 'ssh'))
+        const config = this.options.packaged ? undefined : this.options.sshConfig
+        const host = config ? { ...real, spawn: (file: string, args: string[], spawnOptions: SpawnOptions) => real.spawn(file, ['-F', config, ...args], spawnOptions) } : real
         session = new SshSession({ destination: chosen.host, version: this.options.version, archive: (arch) => this.linuxArchive(arch), host })
       } else {
         return

@@ -17,7 +17,12 @@ export type SshHost = {
   controlDir: string | null
 }
 
+// A socket's path is short (104 bytes on macOS), and ssh names it by a 40-character hash and, while
+// it is made, 17 more: a folder longer than this shares no connections rather than failing them all.
+const CONTROL_DIR_MAX = 45
+
 export function nodeSshHost(controlDir: string | null): SshHost {
+  const shared = process.platform !== 'win32' && controlDir !== null && controlDir.length <= CONTROL_DIR_MAX ? controlDir : null
   return {
     platform: process.platform,
     env: process.env,
@@ -29,7 +34,7 @@ export function nodeSshHost(controlDir: string | null): SshHost {
       }
     },
     spawn: (file, args, options) => spawn(file, args, options),
-    controlDir: process.platform === 'win32' ? null : controlDir
+    controlDir: shared
   }
 }
 
