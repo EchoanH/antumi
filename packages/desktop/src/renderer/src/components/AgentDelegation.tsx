@@ -1,3 +1,4 @@
+import { useTeamCalls } from '../team-calls'
 import { Fragment, useEffect, useId, useRef, useState } from 'react'
 import type { ChatItem, Conversation, DelegationTarget } from '@antumi/protocol'
 import { showAgentCalls, useAgentCalls } from '../agent-calls'
@@ -103,7 +104,7 @@ export function DelegationDialog({ conversation, onClose, onHistory, initial }: 
 }
 
 const ENDED = { completed: 'AgentProfiles.completed', failed: 'AgentProfiles.failed', cancelled: 'AgentProfiles.cancelled' } as const
-const endedText = (state: string) => state === 'completed' || state === 'failed' || state === 'cancelled' ? t(ENDED[state]) : state
+const endedText = (state: string) => state === 'review' ? t('TeamCalls.review') : state === 'completed' || state === 'failed' || state === 'cancelled' ? t(ENDED[state]) : state
 
 // Results back in the main conversation: one row for the message they came in, saying whose and
 // how each ended, opening on what the main agent was given. Each one's details open its call in
@@ -113,11 +114,13 @@ export function AgentDelegationResult({ conversationId, item }: { conversationId
   const pane = useConversationPane()
   const [open, setOpen] = useDisclosure(`delivery:${item.id}`)
   const calls = useAgentCalls(conversationId).calls
+  const teams = useTeamCalls(conversationId).calls
   const delivered = deliveredResults(item.text)
   const results = agentResultCallIds(item).flatMap((id) => {
     const given = delivered.find((each) => each.callId === id)
     const call = calls?.find((each) => each.id === id)
-    const name = given?.name ?? call?.profile.name
+    const team = teams?.find((each) => each.id === id)
+    const name = given?.name ?? call?.profile.name ?? team?.squad.name
     return name ? [{ id, name, agent: call?.profile.agent ?? null, state: given?.state ?? call?.state ?? '', result: given?.result ?? null, error: given?.error ?? null }] : []
   })
   const show = (callId: string | null) => { pane?.focus(); showAgentCalls(surface.inspector, callId) }

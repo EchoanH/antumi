@@ -1,46 +1,38 @@
-import { useEffect, useId, useState } from 'react'
+import { useId, useState } from 'react'
 import { create } from 'zustand'
-import { agentDescriptor, AgentProfileFields, DELEGATION_MODES, type AgentKind, type AgentProfile, type DelegationMode, type SkillRef, type SkillRepo } from '@antumi/protocol'
-import { useAgentCatalog } from '../agent-models'
-import { agentProfileTemplateModel, agentProfileTemplateSeed, type AgentProfileTemplate } from '../agent-profile-templates'
-import { openConversationDraft, perform, selectSquad, useCore, useProfileDelegationModeSupported } from '../core-store'
+import type { AgentProfileFields, AgentProfile } from '@antumi/protocol'
+import { agentProfileTemplateSeed, type AgentProfileTemplate } from '../agent-profile-templates'
+import { perform, selectSquad, useCore } from '../core-store'
 import { useInstalledAgents } from '../installed-agents'
 import { agentLabel } from '../labels'
-import { servingProviders } from '../model-provider-choice'
 import { t } from '../i18n'
 import { timeAgo } from '../conversation-state'
 import { AgentAvatar } from './AgentAvatar'
-import { AgentIcon, ArchiveIcon, ChannelPlatformIcon, CheckIcon, ChatIcon, GroupChatIcon, InfoIcon, PencilIcon, PersonIcon, PinIcon, PlugIcon, PlusIcon, RevertIcon, SlidersIcon } from './icons'
+import { ArchiveIcon, ChannelPlatformIcon, PencilIcon, PinIcon, PlusIcon, RevertIcon } from './icons'
 import { AgentsPageHeader } from './AgentsPageHeader'
-import { AgentModelPicker } from './AgentModelPicker'
-import { ChatPicker } from './ChatPicker'
-import { modeOptions } from './ChatOptionsBar'
-import { ProviderPicker } from './ProviderPicker'
 import { SquadsView } from './Squads'
-import { GroupedChecklist } from './GroupedChecklist'
-import type { ChecklistGroup } from '../grouped-checklist'
 import { Segmented } from './SettingsControls'
 import { AgentProfileTemplatesDialog } from './AgentProfileTemplates'
-import { AgentChannels, channelStateText } from './AgentChannels'
+import { channelStateText } from './AgentChannels'
 import { useChannels } from '../channels'
-import { AGENT_KINDS, channelPlatform, forChannels } from '@antumi/protocol'
-import { useChannelsSupported } from '../channels'
+import { channelPlatform, forChannels, allowsChannels } from '@antumi/protocol'
 import { usePreferences } from '../preferences'
 import { newAgentConversation, pinAgent } from '../pinned-agents'
+import { AgentProfileEditor } from './AgentProfileEditor'
 import './agent-profiles.css'
 
-const useProfileEditor = create<{ view: 'list' | 'editor'; templatesOpen: boolean; profile: AgentProfile | null; seed: AgentProfileFields | null; template: AgentProfileTemplate | null }>(() => ({ view: 'list', templatesOpen: false, profile: null, seed: null, template: null }))
+const useProfileEditor = create<{ editorKey: string; view: 'list' | 'editor'; templatesOpen: boolean; profile: AgentProfile | null; seed: AgentProfileFields | null; template: AgentProfileTemplate | null }>(() => ({ editorKey: crypto.randomUUID(), view: 'list', templatesOpen: false, profile: null, seed: null, template: null }))
 export function openAgentProfile(id: string): void {
   const profile = useCore.getState().agentProfiles[id]
   if (!profile) return
   selectSquad(null)
   useCore.setState({ agentProfilesTab: 'profiles' })
-  useProfileEditor.setState({ view: 'editor', templatesOpen: false, profile, seed: null, template: null })
+  useProfileEditor.setState({ editorKey: crypto.randomUUID(), view: 'editor', templatesOpen: false, profile, seed: null, template: null })
 }
 export function editAgentProfile(seed: AgentProfileFields): void {
   selectSquad(null)
   useCore.setState({ agentProfilesTab: 'profiles' })
-  useProfileEditor.setState({ view: 'editor', templatesOpen: false, profile: null, seed, template: null })
+  useProfileEditor.setState({ editorKey: crypto.randomUUID(), view: 'editor', templatesOpen: false, profile: null, seed, template: null })
 }
 export function AgentsView() {
   const supported = useCore((state) => state.rpc?.features.includes('agent-profiles') ?? false)
@@ -61,11 +53,12 @@ export function AgentsView() {
 function ProfilesView() {
   const installed = useInstalledAgents()
   const profiles = useCore((state) => state.agentProfiles)
+  const squads = useCore((state) => state.squads)
   const pinned = usePreferences((state) => state.pinnedAgentIds)
   const channels = useChannels()
   const [tab, setTab] = useState<'active' | 'archived'>('active')
   const tabsId = useId()
-  const { view, templatesOpen, profile, seed, template } = useProfileEditor()
+  const { view, templatesOpen, profile, seed, template, editorKey } = useProfileEditor()
   const editing = view === 'editor'
   const all = Object.values(profiles).sort((a, b) => b.updatedAt - a.updatedAt)
   const archived = all.filter((item) => item.archivedAt !== null)
@@ -73,9 +66,9 @@ function ProfilesView() {
   const [busy, setBusy] = useState(false)
   const now = Date.now()
   const create = () => useProfileEditor.setState({ templatesOpen: true })
-  const blank = () => useProfileEditor.setState({ view: 'editor', templatesOpen: false, profile: null, seed: null, template: null })
-  const pick = (template: AgentProfileTemplate) => useProfileEditor.setState({ view: 'editor', templatesOpen: false, profile: null, seed: agentProfileTemplateSeed(template, installed), template })
-  const edit = (profile: AgentProfile) => useProfileEditor.setState({ view: 'editor', templatesOpen: false, profile, seed: null, template: null })
+  const blank = () => useProfileEditor.setState({ editorKey: crypto.randomUUID(), view: 'editor', templatesOpen: false, profile: null, seed: null, template: null })
+  const pick = (template: AgentProfileTemplate) => useProfileEditor.setState({ editorKey: crypto.randomUUID(), view: 'editor', templatesOpen: false, profile: null, seed: agentProfileTemplateSeed(template, installed), template })
+  const edit = (profile: AgentProfile) => useProfileEditor.setState({ editorKey: crypto.randomUUID(), view: 'editor', templatesOpen: false, profile, seed: null, template: null })
   const leave = () => useProfileEditor.setState({ view: 'list', templatesOpen: false })
   const archive = async (item: AgentProfile) => {
     setBusy(true)
@@ -83,10 +76,10 @@ function ProfilesView() {
     if (saved) useCore.setState((state) => ({ agentProfiles: { ...state.agentProfiles, [saved.id]: saved } }))
     setBusy(false)
   }
-  return <section className="worktrees-page agents-page agent-profiles-page" aria-label={t('AgentProfiles.roles')}>
+  return <section className="worktrees-page agents-page agent-profiles-page" data-editing={editing || undefined} aria-label={t('AgentProfiles.roles')}>
     <AgentsPageHeader title={editing ? t(profile ? 'AgentProfiles.configure' : 'AgentProfiles.create') : t('AgentProfiles.roles')} description={editing ? null : t('AgentProfiles.roleDescription')} back={editing ? { label: t('AgentProfiles.back'), onClick: leave } : undefined}
       actions={view === 'list' && <button type="button" className="button primary" onClick={create}><PlusIcon />{t('AgentProfiles.create')}</button>} />
-    {editing ? <ProfileEditor key={profile?.id ?? JSON.stringify(seed)} profile={profile} seed={seed} template={template} onCancel={leave} onDone={() => { if (!profile) setTab('active'); useProfileEditor.setState({ view: 'list', templatesOpen: false, template: null }) }} /> : <section className="agent-profiles-section" aria-label={t('AgentProfiles.roles')}>
+    {editing ? <AgentProfileEditor key={editorKey} profile={profile} seed={seed} template={template} onSaved={(saved) => { const current = useProfileEditor.getState(); if (current.view !== 'editor' || current.editorKey !== editorKey) return; setTab('active'); useProfileEditor.setState({ profile: saved, seed: null, template: null }) }} /> : <section className="agent-profiles-section" aria-label={t('AgentProfiles.roles')}>
       <div className="squads-tabs">
         <span id={tabsId} className="visually-hidden">{t('RoutinesSection.show')}</span>
         <Segmented labelId={tabsId} value={tab} options={[{ value: 'active', label: t('Squads.inUse', { value1: all.length - archived.length }) }, { value: 'archived', label: t('Squads.archived', { value1: archived.length }) }]} onChange={setTab} />
@@ -98,7 +91,7 @@ function ProfilesView() {
             <span className="squad-card-top"><span className="squad-card-icon"><AgentAvatar id={item.id} /></span><span className="squad-card-name">{item.name}</span>{item.archivedAt !== null && <span className="squad-tag">{t('ConversationList.archived')}</span>}</span>
             <span className="squad-card-description" data-empty={!item.description || undefined}>{item.description || t('Squads.noDescription')}</span>
             <span className="squad-card-members">{!forChannels(item) && <span className="squad-card-member">{t(item.capability === 'readOnly' ? 'Squads.readOnlyAnalysis' : 'Squads.developmentTesting')}</span>}
-              {forChannels(item) && !channels.some((channel) => channel.profileId === item.id) && <span className="squad-card-member">{t('AgentProfiles.audienceChannels')}</span>}
+              {allowsChannels(item) && !channels.some((channel) => channel.profileId === item.id) && <span className="squad-card-member">{t('AgentProfiles.audienceChannels')}</span>}
               {channels.filter((channel) => channel.profileId === item.id).map((channel) => <span key={channel.id} className="squad-card-member agent-profile-channel" title={t('AgentChannels.onPlatform', { platform: channelPlatform(channel.platform).label, state: channelStateText(channel) })}>
                 <span className="agent-channel-dot" data-state={channel.enabled ? channel.state : 'off'} aria-hidden="true" /><ChannelPlatformIcon platform={channel.platform} />{channelPlatform(channel.platform).label}</span>)}</span>
             <span className="squad-card-foot"><span className="agent-profile-engine" title={[agentLabel(item.agent), item.model].filter(Boolean).join(' · ')}>{[agentLabel(item.agent), item.model].filter(Boolean).join(' · ')}</span><span className="squad-card-time">{t('SourceInboxView.updated', { value1: timeAgo(item.updatedAt, now) })}</span></span>
@@ -118,128 +111,4 @@ function ProfilesView() {
     </section>}
     {templatesOpen && <AgentProfileTemplatesDialog onPick={pick} onBlank={blank} onClose={() => useProfileEditor.setState({ templatesOpen: false })} />}
   </section>
-}
-
-// A skill as the checklist names it, and the skills of each repository as its groups.
-const skillId = (ref: SkillRef) => `${ref.repo}/${ref.skill}`
-function skillGroups(repos: readonly SkillRepo[]): ChecklistGroup[] {
-  return repos.flatMap((repo) => {
-    const items = repo.skills.filter((skill) => skill.problem === null).map((skill) => ({ id: skillId({ repo: repo.id, skill: skill.name }), label: skill.name, detail: skill.description }))
-    return items.length > 0 ? [{ id: repo.id, label: repo.plugin?.name ?? repo.id, items }] : []
-  })
-}
-
-// The skills picked, back from the checklist's names: one no longer installed keeps its reference.
-function skillRefs(ids: readonly string[], repos: readonly SkillRepo[], current: readonly SkillRef[]): SkillRef[] {
-  const known = new Map([...current, ...repos.flatMap((repo) => repo.skills.map((skill) => ({ repo: repo.id, skill: skill.name })))].map((ref) => [skillId(ref), ref]))
-  return ids.flatMap((id) => known.get(id) ?? [])
-}
-
-// The modes a developing profile can be delegated in: those of its agent's that Antumi may pick for it.
-const delegationModes = (agent: AgentKind): DelegationMode[] => DELEGATION_MODES.filter((mode) => mode in agentDescriptor(agent).modes)
-const CALLER_MODE = 'caller'
-
-function ProfileEditor({ profile, seed, template, onCancel, onDone }: { profile: AgentProfile | null; seed: AgentProfileFields | null; template: AgentProfileTemplate | null; onCancel: () => void; onDone: () => void }) {
-  const formId = useId()
-  const installed = useInstalledAgents()
-  const [fields, setFields] = useState<AgentProfileFields>(() => profile ?? seed ?? { name: '', agent: installed[0] ?? 'claude', capability: 'readOnly' })
-  const profiles = useCore((state) => state.agentProfiles)
-  const repos = useCore((state) => state.skillRepos)
-  const servers = useCore((state) => state.mcpServers)
-  const provider = useCore((state) => state.modelProviders.find((item) => item.id === fields.modelProvider) ?? null)
-  const hasProviders = useCore((state) => servingProviders(state.modelProviders, fields.agent).length > 0)
-  const modeSupported = useProfileDelegationModeSupported()
-  const channels = useChannels()
-  const readOnlyUnsupported = fields.capability !== 'develop' && agentDescriptor(fields.agent).capabilities.readOnly === false
-  const catalog = useAgentCatalog(readOnlyUnsupported ? null : fields.agent, true, provider)
-  const quickPreference = usePreferences((state) => state.quickModels[fields.agent])
-  const [modelPending, setModelPending] = useState(Boolean(template))
-  useEffect(() => {
-    if (!template || !modelPending || catalog === undefined) return
-    setFields((current) => ({ ...current, ...agentProfileTemplateModel(template, current.agent, catalog, provider?.smallModel ?? quickPreference, Boolean(provider)) }))
-    setModelPending(false)
-  }, [template, modelPending, catalog, provider, quickPreference])
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const save = async () => {
-    if (modelPending || readOnlyUnsupported || busy) return
-    const parsed = AgentProfileFields.safeParse(fields)
-    if (!parsed.success) { setError(parsed.error.issues[0]?.message ?? ''); return }
-    setBusy(true); setError(null)
-    const saved = await perform((rpc) => rpc.call('agentProfiles.save', { ...parsed.data, ...(profile ? { id: profile.id } : {}) }))
-    setBusy(false)
-    if (!saved) { setError(useCore.getState().error); return }
-    useCore.setState((state) => ({ agentProfiles: { ...state.agentProfiles, [saved.id]: saved } }))
-    // One for a chat platform has its platform still to add, below: the page stays on it.
-    if (forChannels(saved) && !channels.some((channel) => channel.profileId === saved.id)) useProfileEditor.setState({ view: 'editor', profile: saved, seed: null, template: null })
-    else onDone()
-  }
-  const agents = installed.includes(fields.agent) ? installed : [fields.agent, ...installed]
-  const onPlatform = channels.some((channel) => channel.profileId === profile?.id)
-  const channelsSupported = useChannelsSupported()
-  const audience = fields.audience ?? 'user'
-  const toChannels = audience === 'channels'
-  // An agent for a chat platform is one that can be locked down.
-  const lockable = AGENT_KINDS.filter((kind) => agentDescriptor(kind).capabilities.lockdown)
-  return <div className="squad-page-body agent-profile-form">
-  <form className="agent-profile-fields" onSubmit={(event) => { event.preventDefault(); void save() }}>
-    <fieldset className="squad-fields" disabled={busy}>
-      {!profile && <p className="squad-block-hint muted">{t('AgentProfiles.createWithAgentHint')}<button type="button" className="link-button" onClick={() => openConversationDraft()}>{t('AgentsPageHeader.openNewConversation')}</button></p>}
-      {template && <div className="agent-template-origin"><strong>{t('AgentTemplates.fromTemplate', { name: template.name })}</strong><p className="muted">{t('AgentTemplates.editHint')}</p></div>}
-      <header className="agent-hero">
-        <span className="agent-hero-avatar">{profile ? <AgentAvatar id={profile.id} /> : <AgentIcon agent={fields.agent} />}</span>
-        <span className="agent-hero-text">
-          <strong>{fields.name.trim() || t('AgentProfiles.create')}</strong>
-          <span className="muted">{[agentLabel(fields.agent), fields.model].filter(Boolean).join(' · ')}</span>
-        </span>
-      </header>
-      {channelsSupported && <div className="agent-audience" role="radiogroup" aria-label={t('AgentProfiles.audience')}>
-        {([['user', PersonIcon, 'AgentProfiles.audienceUser', 'AgentProfiles.audienceUserHint', null], ['channels', GroupChatIcon, 'AgentProfiles.audienceChannels', 'AgentProfiles.audienceChannelsHint', 'AgentProfiles.audienceChannelsDetail']] as const).map(([value, Icon, title, hint, detail]) =>
-          <button key={value} type="button" role="radio" aria-checked={audience === value} className="agent-audience-card" disabled={onPlatform && value === 'user'}
-            title={onPlatform && value === 'user' ? t('AgentProfiles.audienceLocked') : undefined} data-tooltip={detail ? t(detail) : undefined}
-            onClick={() => setFields({ ...fields, audience: value, ...(value === 'channels' && !agentDescriptor(fields.agent).capabilities.lockdown ? { agent: lockable[0] ?? fields.agent, model: null, effort: null } : {}) })}>
-            <span className="agent-audience-icon"><Icon /></span>
-            <span className="agent-audience-text"><strong>{t(title)}</strong><span>{t(hint)}</span></span>
-            <span className="agent-audience-check" aria-hidden="true"><CheckIcon /></span>
-          </button>)}
-      </div>}
-      <section className="agent-card"><header className="agent-card-head"><span className="agent-card-icon"><PersonIcon /></span><div><h3>{t('AgentProfiles.sectionIdentity')}</h3><p>{t('AgentProfiles.sectionIdentityHint')}</p></div></header>
-      <div className="squad-field"><label htmlFor={`${formId}-name`}>{t('AgentProfiles.name')}</label><input id={`${formId}-name`} className="input" required autoFocus maxLength={60} value={fields.name} onChange={(event) => setFields({ ...fields, name: event.target.value })} /></div>
-      <div className="squad-field"><label htmlFor={`${formId}-description`}>{t('AgentProfiles.expertise')}</label><textarea id={`${formId}-description`} className="input" rows={2} maxLength={2000} value={fields.description ?? ''} onChange={(event) => setFields({ ...fields, description: event.target.value })} /></div>
-      <div className="squad-field"><label htmlFor={`${formId}-instructions`}>{t('AgentProfiles.instructions')}</label><textarea id={`${formId}-instructions`} className="input" rows={6} maxLength={20000} value={fields.instructions ?? ''} onChange={(event) => setFields({ ...fields, instructions: event.target.value })} /></div>
-      </section>
-      <section className="agent-card"><header className="agent-card-head"><span className="agent-card-icon"><SlidersIcon /></span><div><h3>{t('AgentProfiles.sectionRuntime')}</h3><p>{t('AgentProfiles.sectionRuntimeHint')}</p></div></header>
-      <div className="agent-profile-options"><div className="squad-field">{t('AgentProfiles.engine')}<ChatPicker label={t('AgentProfiles.engine')} value={fields.agent} placeholder="" size="field" placement="below" options={(toChannels ? agents.filter((agent) => lockable.includes(agent)) : agents).map((agent) => ({ value: agent, label: agentLabel(agent), icon: <AgentIcon agent={agent} /> }))} onChange={(value) => { const agent = agents.find((item) => item === value); if (agent) { setFields({ ...fields, agent, model: null, effort: null, modelProvider: null, delegationMode: fields.delegationMode && delegationModes(agent).includes(fields.delegationMode) ? fields.delegationMode : null }); setModelPending(Boolean(template)) } }} /></div>
-        <div className="squad-field">{t('AgentModelPicker.model')}<AgentModelPicker catalog={catalog} choice={{ model: fields.model ?? undefined, effort: fields.effort ?? undefined }} size="field" onChange={(choice) => { setModelPending(false); setFields({ ...fields, model: choice.model ?? null, effort: choice.effort ?? null }) }} /></div>
-        {hasProviders && <div className="squad-field">{t('ProviderPicker.provider')}<ProviderPicker agent={fields.agent} value={fields.modelProvider ?? null} size="field" placement="below" onChange={(modelProvider) => { setFields({ ...fields, modelProvider, model: null, effort: null }); setModelPending(Boolean(template)) }} /></div>}
-        {!toChannels && <div className="squad-field">{t('Squads.capability_1905')}<ChatPicker label={t('Squads.capability_1905')} value={fields.capability ?? 'readOnly'} placeholder="" size="field" placement="below" options={[{ value: 'readOnly', label: t('Squads.readOnlyAnalysis') }, { value: 'develop', label: t('Squads.developmentTesting') }]} onChange={(value) => setFields({ ...fields, ...(value === 'develop' ? { capability: 'develop' } : { capability: 'readOnly', delegationMode: null }) })} /></div>}
-        {modeSupported && !toChannels && fields.capability === 'develop' && <div className="squad-field">{t('AgentProfiles.delegationMode')}<ChatPicker label={t('AgentProfiles.delegationMode')} value={fields.delegationMode ?? CALLER_MODE} placeholder="" size="field" placement="below"
-          options={[{ value: CALLER_MODE, label: t('AgentProfiles.delegationModeCaller') }, ...modeOptions(fields.agent, delegationModes(fields.agent))]}
-          onChange={(value) => setFields({ ...fields, delegationMode: delegationModes(fields.agent).find((mode) => mode === value) ?? null })} /></div>}
-      </div>
-      {template && <p className="squad-block-hint muted">{t('AgentTemplates.modelHint')}</p>}
-      {toChannels ? <p className="squad-block-hint muted">{t('AgentProfiles.channelsRunHint')}</p> : <p className="squad-block-hint muted" role={readOnlyUnsupported ? 'alert' : undefined}>{t(readOnlyUnsupported ? 'AgentTemplates.readOnlyUnsupported' : fields.capability !== 'develop' ? 'AgentTemplates.readOnlyHint'
-        : !modeSupported || !fields.delegationMode ? 'AgentTemplates.developHint' : fields.delegationMode === 'bypass' ? 'AgentTemplates.developBypassHint' : 'AgentTemplates.developModeHint')}</p>}
-      </section>
-      {!toChannels && <section className="agent-card"><header className="agent-card-head"><span className="agent-card-icon"><PlugIcon /></span><div><h3>{t('AgentProfiles.sectionTools')}</h3><p>{t('AgentTemplates.toolsHint')}</p></div></header>
-      <div className="agent-profile-resources">
-        <section className="squad-block"><h3 className="agent-profile-resource-heading">{t('AgentProfiles.callable')}<span className="agent-profile-info" tabIndex={0} aria-label={t('AgentProfiles.callableHint')} data-tooltip={t('AgentProfiles.callableHint')} data-tooltip-side="top"><InfoIcon /></span></h3>
-          {Object.values(profiles).filter((item) => item.archivedAt === null && !forChannels(item) && item.id !== profile?.id).map((item) => <label key={item.id} className="agent-profile-check"><input type="checkbox" checked={fields.callableProfiles?.includes(item.id) ?? false} onChange={(event) => setFields({ ...fields, callableProfiles: event.target.checked ? [...(fields.callableProfiles ?? []), item.id] : fields.callableProfiles?.filter((id) => id !== item.id) })} />{item.name}</label>)}
-        </section>
-        <section className="squad-block"><h3>{t('AgentProfiles.skills')}</h3>
-          <label className="agent-profile-check"><input type="checkbox" checked={fields.skills == null} onChange={(event) => setFields({ ...fields, skills: event.target.checked ? null : [] })} />{t('AgentProfiles.inherit')}</label>
-          {fields.skills != null && <GroupedChecklist groups={skillGroups(repos)} selected={fields.skills.map(skillId)} searchLabel={t('AgentProfiles.searchSkills')} onChange={(ids) => setFields({ ...fields, skills: skillRefs(ids, repos, fields.skills ?? []) })} />}
-        </section>
-        <section className="squad-block"><h3>MCP</h3>
-          <label className="agent-profile-check"><input type="checkbox" checked={fields.mcpServers == null} onChange={(event) => setFields({ ...fields, mcpServers: event.target.checked ? null : [] })} />{t('AgentProfiles.inherit')}</label>
-          {fields.mcpServers != null && <GroupedChecklist groups={[{ id: 'mcp', label: '', items: servers.map((server) => ({ id: server.name, label: server.name })) }]} selected={fields.mcpServers} searchLabel={t('AgentProfiles.searchMcp')} onChange={(mcpServers) => setFields({ ...fields, mcpServers })} />}
-        </section>
-      </div>
-      </section>}
-    </fieldset>
-    {error && <p className="modal-error" role="alert">{error}</p>}
-    <footer className="squad-editor-footer agent-save-bar"><button type="button" className="button ghost" disabled={busy} onClick={onCancel}>{t('ChatCommandSettings.cancel')}</button><button type="submit" className="button primary" disabled={busy || modelPending || readOnlyUnsupported}>{t('FileEditor.save')}</button></footer>
-  </form>
-  {toChannels && <AgentChannels profileId={profile && forChannels(profile) ? profile.id : null} agent={profile?.agent ?? fields.agent} hasProvider={Boolean(profile ? profile.modelProvider : fields.modelProvider)} />}
-  </div>
 }

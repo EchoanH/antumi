@@ -1,3 +1,6 @@
+import { SquadCallService } from './squad-call-service'
+import { SquadCallStore } from './squad-call-store'
+import { DelegationDeliveryService } from './delegation-delivery-service'
 import { investigationPermission, investigationRef, SourceInvestigationService } from './source-investigation-service'
 import { SourceInvestigationStore } from './source-investigation-store'
 import { Rejection } from './rejection'
@@ -122,6 +125,8 @@ const mobileStore = new MobileStore(paths.database)
 const channelStore = new ChannelStore(paths.database)
 // Made once what it needs is (profiles, accounts); the conversation events below reach it from then on.
 let channels: ChannelService | undefined
+let squadCalls: SquadCallService | undefined
+let delegationDelivery: DelegationDeliveryService | undefined
 let sourceInvestigations: SourceInvestigationService | undefined
 let sourceUpdates: SourceUpdates | undefined
 let server: RpcServer | null = null
@@ -179,6 +184,8 @@ const conversations = new ConversationService(
       discussions.conversationChanged(event.conversation)
       squads.conversationChanged(event.conversation)
       profiles.tick()
+      squadCalls?.tick()
+      delegationDelivery?.tick()
       refreshAwake()
     } else if (event.type === 'deleted') {
       sourceInvestigations?.deleted(event.id)
@@ -215,7 +222,7 @@ const conversations = new ConversationService(
       routines.observe(event.conversationId, event.items)
       discussions.observe(event.conversationId, event.items)
       squads.observe(event.conversationId, event.items)
-      if (event.items.some((item) => item.kind === 'turn')) profiles.tick()
+      if (event.items.some((item) => item.kind === 'turn')) { profiles.tick(); squadCalls?.tick(); delegationDelivery?.tick() }
       notifyChatItems(event.conversationId, limits.decorate(smallModels.decorate(event.items)))
     } else if (event.type === 'importedItems') {
       // Historical turns update open views without counting as new work or triggering automation.
@@ -277,12 +284,14 @@ const service = new TaskService(
   (event) => {
     if (event.type === 'changed') {
       server?.broadcast('tasks.changed', { task: event.task })
+      squadCalls?.tick()
       pullRequests.current?.taskChanged(event.task)
       queueMicrotask(() => sourceUpdates?.changed())
       if (!event.sourceOnly) schedules.taskChanged(event.task)
       refreshAwake()
     } else {
       server?.broadcast('tasks.deleted', { id: event.id })
+      squadCalls?.tick()
       schedules.taskDeleted(event.id)
       sources.tasksChanged()
     }
@@ -495,13 +504,14 @@ const discussions = new DiscussionService(paths.database, {
 
 const squads = new SquadService(new SquadStore(paths.database), service, conversations, {
   squad: (squad) => server?.broadcast('squads.changed', { squad }),
-  run: (run) => server?.broadcast('squads.runChanged', { run })
+  run: (run) => { server?.broadcast('squads.runChanged', { run }); squadCalls?.tick() }
 }, (id) => terminals.stopForConversation(id))
 const profiles = new AgentProfileService(new AgentProfileStore(paths.database), conversations, {
   profile: (profile) => server?.broadcast('agentProfiles.changed', { profile }),
   call: (call) => {
     server?.broadcast('agentCalls.changed', { call })
     conversations.refreshDelegation(call.parentId)
+    delegationDelivery?.tick()
   }
 }, (id) => terminals.stopForConversation(id), (conversation) => !conversation.taskId || !service.get(conversation.taskId).squadId,
 {
@@ -513,9 +523,13 @@ service.setSquads(squads)
 conversations.setSquadGuard((conversation) => { squads.guardMember(conversation); profiles.guard(conversation) })
 squads.setProfiles((id) => profiles.get(id))
 conversations.setCallCleanup((id) => profiles.cancelForParent(id))
-service.setDelegationBusy((id) => profiles.busy(id))
-conversations.setDelegationStatus((id) => profiles.summary(id))
-conversations.setDelegationAvailable((id) => profiles.delegates(id))
+service.setDelegationBusy((id) => profiles.busy(id) || Boolean(squadCalls?.summary(id).open))
+conversations.setDelegationStatus((id) => {
+  const agents = profiles.summary(id)
+  const teams = squadCalls?.summary(id)
+  return !agents && !teams?.open ? undefined : { open: (agents?.open ?? 0) + (teams?.open ?? 0), awaiting: (agents?.awaiting ?? 0) + (teams?.awaiting ?? 0), writing: agents?.writing ?? false }
+})
+conversations.setDelegationAvailable((id) => profiles.delegates(id) || Boolean(squadCalls?.targets(id).length))
 
 const terminals = new TerminalService(paths.database, daemon, (list) => server?.broadcast('terminals.changed', { terminals: list }), Date.now, new ShellPrompt(path.join(paths.home, 'shell')))
 // Looked for where the daemon looks: it was started with the same PATH as core.
@@ -570,6 +584,19 @@ const worktreeSetup = new WorktreeSetup(projectConfigs, terminals)
 service.setWorktreeSetup(worktreeSetup)
 conversations.setWorktreeSetup(worktreeSetup)
 profiles.setWorkspaces({ root: paths.worktrees, setup: worktreeSetup })
+squadCalls = new SquadCallService(new SquadCallStore(paths.database), service, squads, conversations, profiles, {
+  changed: (call) => { server?.broadcast('squadCalls.changed', { call }); conversations.refreshDelegation(call.parentId); delegationDelivery?.tick() },
+  disabled: () => chatSettings.current().disabledAgents ?? [],
+  quota: (member) => member.profile?.modelProvider ? { state: 'provider', window: null, stale: false } : quotaVerdict(standingUsage.list().find((usage) => usage.agent === member.agent), Date.now(), member.model),
+  trust: (projects) => worktreeSetup.requireTrusted(projects)
+})
+const teamCalls = squadCalls
+service.setWorkspaceStarts((id) => teamCalls.starts(id))
+squads.registerRunPolicy({ snapshot: (id) => teamCalls.snapshot(id), brief: (id) => teamCalls.brief(id), beforeStart: (id) => teamCalls.beforeStart(id), beforeFinish: (run) => teamCalls.beforeFinish(run), memberAllowed: (member) => teamCalls.memberAllowed(member) })
+delegationDelivery = new DelegationDeliveryService(paths.database, conversations)
+delegationDelivery.register(profiles.deliverySource())
+delegationDelivery.register(teamCalls.deliverySource())
+
 const terminalCommands = new TerminalCommandStore(paths.database, (commands) => server?.broadcast('terminalCommands.changed', { commands }))
 const bookmarks = new BookmarkStore(paths.database, (list) => server?.broadcast('bookmarks.changed', { bookmarks: list }))
 const chatCommands = new ChatCommandStore(paths.database, (commands) => server?.broadcast('chatCommands.changed', { commands }))
@@ -596,7 +623,7 @@ const chatSettings = new ChatSettingsStore(paths.chatSettings, (settings) => {
   conversations.setUserBrowser(settings.userBrowser ?? true)
   conversations.setUserTodos(settings.userTodos ?? true)
   conversations.setKnowledgeBase(settings.knowledgeBase ?? null)
-  conversations.setCapacity(settings, () => { void schedules.tick(); squads.tick(); profiles.tick(); channels?.tick(); sourceInvestigations?.changed() })
+  conversations.setCapacity(settings, () => { void schedules.tick(); squads.tick(); profiles.tick(); squadCalls?.tick(); delegationDelivery?.tick(); channels?.tick(); sourceInvestigations?.changed() })
   wire.setEnabled(settings.wireLog ?? false)
   void autoArchive.sweep()
   void worktreeAutoClean.sweep()
@@ -640,7 +667,7 @@ conversations.setTitleNaming(initialChatSettings.titleNaming)
 conversations.setUserBrowser(initialChatSettings.userBrowser)
 conversations.setUserTodos(initialChatSettings.userTodos)
 conversations.setKnowledgeBase(initialChatSettings.knowledgeBase)
-conversations.setCapacity(initialChatSettings, () => { void schedules.tick(); squads.tick(); profiles.tick(); channels?.tick(); sourceInvestigations?.changed() })
+conversations.setCapacity(initialChatSettings, () => { void schedules.tick(); squads.tick(); profiles.tick(); squadCalls?.tick(); delegationDelivery?.tick(); channels?.tick(); sourceInvestigations?.changed() })
 wire.setEnabled(initialChatSettings.wireLog)
 
 daemon.onEvent((event) => {
@@ -676,6 +703,8 @@ daemon.onConnect(() => {
       await discussions.reconcile()
       await squads.reconcile()
       await profiles.reconcile()
+      await squadCalls?.reconcile()
+      delegationDelivery?.tick()
       await conversations.tidyDelegates()
       await profiles.forgetCalls()
       void environment.check(true).catch((error: unknown) => console.error('[antumi-core] agent discovery failed', error))
@@ -752,7 +781,7 @@ server = await startRpcServer({
     uploads: new AttachmentUploads(attachments),
     sweeper: attachmentSweeper
   }, terminals, worktrees, browser, awake, terminalCommands, limits, runs, turns, chatSettings, environment, schedules, chatCommands, routines, discussions, wire, () => { server?.broadcast('git.changed', {}); profiles.tick() }, squads, todos, plugins, skills, mcpServers, smallModels, projectConfigs, modelProviders, sessionImports, accounts, cliMaintenance, analytics, automation, pets, new ProjectStar(sources), profiles, bookmarks, browserHistory, sourceUpdates,
-    { store: pullRequestStore, changed: (taskId, links) => server?.broadcast('pullRequests.changed', { taskId, links }), ready: (service) => { pullRequests.current = service } }, browserSites, mobile, channels)
+    { store: pullRequestStore, changed: (taskId, links) => server?.broadcast('pullRequests.changed', { taskId, links }), ready: (service) => { pullRequests.current = service } }, browserSites, mobile, channels, squadCalls)
 })
 await writeCoreEndpoint({ port: server.port, token, pid: process.pid, protocolVersion: PROTOCOL_VERSION, version: packageJson.version })
 mobile.seed(conversations.list(true, true, true))
@@ -800,6 +829,8 @@ async function shutdown(): Promise<void> {
   routines.stop()
   autoArchive.stop()
   worktreeAutoClean.stop()
+  await delegationDelivery?.close()
+  await squadCalls?.close()
   await profiles.close()
   await squads.close()
   discussions.close()

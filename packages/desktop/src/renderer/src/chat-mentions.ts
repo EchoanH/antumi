@@ -43,6 +43,7 @@ export function pathTarget(path: string, kind: 'file' | 'directory', cwd: string
 export function mentionText(target: MentionTarget, agent: AgentKind): string {
   if (target.kind === 'conversation') return conversationReference(target.id, target.title)
   if (target.kind === 'agent') return `@${target.name}`
+  if (target.kind === 'squad') return conversationReference(target.id, `@${target.name}`).replace('antumi://conversation/', 'antumi://squad/')
   const shown = target.relative ?? target.path
   const written = target.kind === 'directory' ? `${shown}/` : shown
   const spaced = /\s/.test(written)
@@ -69,7 +70,7 @@ export type MentionedText = { text: string; mentions: readonly Mention[] }
 
 // The name a pick shows in the input: the file's, folder's or project's own, a folder's with a slash.
 export function mentionLabel(target: MentionTarget): string {
-  if (target.kind === 'agent') return target.name
+  if (target.kind === 'agent' || target.kind === 'squad') return target.name
   if (target.kind === 'conversation') return target.title.replace(/\s+/g, ' ').trim() || target.id
   if (target.kind === 'file' && target.pasted) return t('chatMentions.pastedText', { lines: target.pasted.lines })
   const name = target.path.split(/[\\/]/).filter(Boolean).at(-1) ?? target.path

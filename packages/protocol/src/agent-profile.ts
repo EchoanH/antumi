@@ -24,17 +24,18 @@ export const AgentProfileFields = z.object({
   skills: z.array(SkillRef).max(100).nullable().default(null),
   mcpServers: z.array(z.string().min(1).max(200)).max(100).nullable().default(null),
   callableProfiles: z.array(z.string().uuid()).max(100).default([]),
-  // Who it answers. user: the user, in conversations, delegations and teams. channels: colleagues on
-  // a chat platform and nobody else (docs/CHANNELS.md): it then runs locked down, so it has no
-  // skills, MCP servers or callable agents to set, and is not offered for the user's own work.
-  // Only the user sets it: Antumi's MCP tools don't. Older cores and clients leave it out.
-  audience: z.enum(['user', 'channels']).default('user')
+  callableSquads: z.array(z.string().uuid()).max(100).default([]),
+  // Entry points share a role; channel runs always have their own restricted capabilities.
+  audience: z.enum(['user', 'channels', 'both']).default('user')
 })
 export type AgentProfileFields = z.input<typeof AgentProfileFields>
 
 // Whether an agent is set to answer from chat platforms alone.
-export function forChannels(profile: { audience?: 'user' | 'channels' }): boolean {
+export function forChannels(profile: { audience?: 'user' | 'channels' | 'both' }): boolean {
   return profile.audience === 'channels'
+}
+export function allowsChannels(profile: { audience?: 'user' | 'channels' | 'both' }): boolean {
+  return profile.audience === 'channels' || profile.audience === 'both'
 }
 export const AgentProfile = AgentProfileFields.extend({
   id: z.string().uuid(), archivedAt: z.number().nullable(), createdAt: z.number(), updatedAt: z.number()

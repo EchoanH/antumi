@@ -1,15 +1,15 @@
 import { getLocale, t, tr } from '../i18n'
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode, type RefObject, type HTMLAttributes } from 'react'
 import type { EditorView } from '@codemirror/view'
-import { forChannels } from '@antumi/protocol'
-import type { AgentKind, DelegationTarget, ProjectFileMatch } from '@antumi/protocol'
+import { forChannels, canDelegate } from '@antumi/protocol'
+import type { AgentKind, DelegationTarget, SquadCallTarget, ProjectFileMatch } from '@antumi/protocol'
 import { useCore, useFileMentionsSupported } from '../core-store'
 import { fileTarget, insertMention, matchConversations, matchProjects, mentionQuery, placeMention, type MentionedText, type MentionTarget } from '../chat-mentions'
 import type { SetText } from './ChatMentionField'
 import { projectName } from './ProjectPicker'
 import { baseName } from '../file-tree-rows'
 import { AgentAvatar } from './AgentAvatar'
-import { AgentIcon, ChatIcon, FolderIcon } from './icons'
+import { AgentIcon, ChatIcon, FolderIcon, SquadIcon } from './icons'
 import { FileTypeIcon } from './FileTypeIcon'
 import { isDarkTheme, onThemeChange } from '../appearance'
 import { agentLabel } from '../labels'
@@ -27,8 +27,8 @@ type InputProps = Pick<HTMLAttributes<HTMLDivElement>, 'aria-autocomplete' | 'ar
 }
 
 // `opens`: what Tab puts after the @ to look inside a folder, its path under its project.
-type MentionGroup = 'files' | 'projects' | 'profiles' | 'conversations'
-type MentionEntry = { key: string; group: MentionGroup; target: MentionTarget | null; name: string; detail: string; opens: string | null; icon: ReactNode }
+type MentionGroup = 'files' | 'projects' | 'profiles' | 'conversations' | 'squads'
+type MentionEntry = { key: string; group: MentionGroup; target: MentionTarget | null; name: string; detail: string; opens: string | null; icon: ReactNode; disabled?: boolean }
 const NO_FILES: readonly ProjectFileMatch[] = []
 
 function fileEntry(match: ProjectFileMatch, cwd: string | null, manyRoots: boolean, dark: boolean): MentionEntry {
@@ -56,6 +56,7 @@ function MentionOption({ entry, id, active, onHover, onPick }: {
       id={id}
       role="option"
       aria-selected={active}
+      aria-disabled={entry.disabled || undefined}
       className="chat-mention-option"
       data-detail={Boolean(entry.detail) || undefined}
       title={[entry.name, entry.detail].filter(Boolean).join('\n')}
@@ -109,8 +110,11 @@ export function useChatMentionMenu({ value, setText, setValue, roots, cwd, agent
   const supported = (fileMentions || references) && agent !== null
   const profiles = useCore((s) => s.agentProfiles)
   const conversation = useCore((s) => conversationId ? s.conversations[conversationId] : null)
-  const delegates = Boolean(rpc?.features.includes('agent-profiles') && conversation
-    && !conversation.parentConversationId && !conversation.discussionId && !conversation.squadRunId && !conversation.routineId && !conversation.helperOf)
+  const tasks = useCore((state) => state.tasks)
+  const eligible = Boolean(conversation && canDelegate(conversation, Boolean(conversation.taskId && tasks[conversation.taskId]?.squadId)))
+  const delegates = Boolean(rpc?.features.includes('agent-profiles') && eligible)
+  const teamsSupported = Boolean(rpc?.features.includes('squad-calls') && eligible)
+  const [teams, setTeams] = useState<readonly SquadCallTarget[]>([])
   const disabledAgents = usePreferences((s) => s.disabledAgents)
   const callable = Object.values(profiles).filter((profile) => delegates && profile.archivedAt === null && !forChannels(profile) && profile.id !== conversation?.profile?.id
     && !disabledAgents.includes(profile.agent) && (!conversation?.profile || conversation.profile.callableProfiles.includes(profile.id)))
@@ -170,8 +174,15 @@ export function useChatMentionMenu({ value, setText, setValue, roots, cwd, agent
     return () => { current = false }
   }, [asking, rpc, conversationId, directSupported])
 
+  useEffect(() => {
+    if (!asking || !rpc || !conversationId || !teamsSupported) return
+    let current = true
+    rpc.call('squadCalls.targets', { id: conversationId }).then((found) => { if (current) setTeams(found) }, () => { if (current) setTeams([]) })
+    return () => { current = false }
+  }, [asking, rpc, conversationId, teamsSupported])
+
   const entries = useMemo(() => {
-    if (query === null) return { profiles: [], files: [], projects: [], conversations: [] }
+    if (query === null) return { profiles: [], files: [], projects: [], conversations: [], squads: [] }
     const fileRows = rootsKey ? files.map((match) => fileEntry(match, cwd, roots.length > 1, dark)) : []
     const projectRows = matchProjects(projects ?? [], query).map((projectPath): MentionEntry => ({
       key: `project:${projectPath}`,
@@ -198,10 +209,15 @@ export function useChatMentionMenu({ value, setText, setValue, roots, cwd, agent
       detail: [agentLabel(entry.agent), ...entry.projectPaths.map(projectName), entry.archivedAt != null ? t('ConversationList.archived') : '', entry.id.slice(0, 8)].filter(Boolean).join(' · '),
       opens: null, icon: <ChatIcon />
     })) : []
-    return { profiles: [...profileRows, ...directRows], files: fileRows, projects: projectRows, conversations: conversationRows }
-  }, [query, files, projects, cwd, rootsKey, roots.length, profiles, conversation, delegates, targets, disabledAgents, display, now, conversations, conversationId, references, dark, getLocale()])
+    const squadRows = teamsSupported ? teams.filter((entry) => entry.squad.name.toLocaleLowerCase().includes(query.toLocaleLowerCase())).map((entry): MentionEntry => ({
+      key: `squad:${entry.squad.id}`, group: 'squads', target: { kind: 'squad', id: entry.squad.id, name: entry.squad.name },
+      name: entry.squad.name, disabled: entry.reason !== null, detail: entry.reason ?? [entry.squad.description, entry.squad.members.map((member) => [member.name, delegationQuotaText(entry.quotas.find((quota) => quota.memberId === member.id)?.quota ?? { state: 'unknown', window: null, stale: false }, display, now)].filter(Boolean).join(' ')).join(' · ')].filter(Boolean).join(' · '), opens: null, icon: <SquadIcon />
+    })) : []
+    return { profiles: [...profileRows, ...directRows], files: fileRows, projects: projectRows, conversations: conversationRows, squads: squadRows }
+  }, [teams, teamsSupported, query, files, projects, cwd, rootsKey, roots.length, profiles, conversation, delegates, targets, disabledAgents, display, now, conversations, conversationId, references, dark, getLocale()])
   const tabs: { id: MentionGroup; label: string; loading: boolean }[] = [
     ...(delegates ? [{ id: 'profiles' as const, label: t('AgentProfiles.title'), loading: false }] : []),
+    ...(teamsSupported ? [{ id: 'squads' as const, label: t('TeamCalls.title'), loading: false }] : []),
     { id: 'files', label: t('ChatMentionMenu.files'), loading: filesLoading },
     { id: 'projects', label: t('ChatMentionMenu.projects'), loading: projects === null },
     ...(references ? [{ id: 'conversations' as const, label: t('ChatMentionMenu.conversations'), loading: false }] : [])
@@ -222,7 +238,7 @@ export function useChatMentionMenu({ value, setText, setValue, roots, cwd, agent
   }, [query])
 
   const pick = (entry: MentionEntry, tab: boolean) => {
-    if (!range) return
+    if (!range || entry.disabled) return
     if (!entry.target) {
       const next = insertMention(text, range, `@${entry.name}`, true)
       placed.current = next.caret

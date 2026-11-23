@@ -1,3 +1,4 @@
+import { DelegationDeliveryService } from './delegation-delivery-service'
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
@@ -22,6 +23,11 @@ describe('reusable agent roles and delegated work', () => {
   let chats: ConversationService
   let store: AgentProfileStore
   let profiles: AgentProfileService
+  let delivery: DelegationDeliveryService
+  const bindDelivery = () => {
+    delivery = new DelegationDeliveryService(path.join(root, 'antumi.db'), chats)
+    delivery.register(profiles.deliverySource()); delivery.tick()
+  }
   let reviewer: AgentProfile
   let parentId: string
   let ready: ReadyAgent[]
@@ -43,15 +49,16 @@ describe('reusable agent roles and delegated work', () => {
     tasks = new TaskStore(db); conversations = new ConversationStore(db); projects = new ProjectRegistry(db)
     daemon = fakeChatDaemon(); daemon.reply = () => {}
     chats = new ConversationService(conversations, daemon, path.join(root, 'sessions'), (event) => {
-      if (event.type === 'changed' || event.type === 'chatItems') profiles.tick()
+      if (event.type === 'changed' || event.type === 'chatItems') { profiles.tick(); delivery?.tick() }
     }, projects, new AttachmentStore(path.join(root, 'attachments')))
     store = new AgentProfileStore(db)
     ready = []; disabled = []; usage = []
-    profiles = new AgentProfileService(store, chats, { profile: () => {}, call: () => {} }, undefined, undefined,
+    profiles = new AgentProfileService(store, chats, { profile: () => {}, call: () => delivery?.tick() }, undefined, undefined,
       { ready: () => ready, disabled: () => disabled, usage: () => usage })
+    bindDelivery()
     chats.setSquadGuard((conversation) => profiles.guard(conversation))
     chats.setCallCleanup((id) => profiles.cancelForParent(id))
-    chats.setCapacity({ maxConcurrentAgents: 20, agentConcurrency: { claude: 6 } }, () => profiles.tick())
+    chats.setCapacity({ maxConcurrentAgents: 20, agentConcurrency: { claude: 6 } }, () => { profiles.tick(); delivery?.tick() })
     daemon.deliver = (event) => {
       if (event.event === 'data') chats.handleData(event)
       else if (event.event === 'exit') chats.handleExit(event.sessionId, event.exitCode)
@@ -62,19 +69,33 @@ describe('reusable agent roles and delegated work', () => {
     parentId = (await chats.create('claude', [repo], false, { permissionMode: 'ask' })).id
   })
   afterEach(async () => {
-    await profiles.close(); projects.close(); conversations.close(); tasks.close()
+    await delivery.close(); await profiles.close(); projects.close(); conversations.close(); tasks.close()
     rmSync(root, { recursive: true, force: true })
   })
   it('sets an agent that answers from chat platforms apart from the user\'s own work', () => {
     const helper = profiles.save({ name: 'Slack helper', agent: 'claude', capability: 'develop', audience: 'channels', skills: [{ repo: 'r', skill: 's' }], mcpServers: ['mine'], callableProfiles: [reviewer.id] })
-    // Nothing it would not use is kept to look as if it were.
-    expect(helper).toMatchObject({ audience: 'channels', capability: 'readOnly', delegationMode: null, skills: [], mcpServers: [], callableProfiles: [] })
+    // Entry points do not destroy the configuration used when local use is enabled.
+    expect(helper).toMatchObject({ audience: 'channels', capability: 'develop', delegationMode: null, skills: [{ repo: 'r', skill: 's' }], mcpServers: ['mine'], callableProfiles: [reviewer.id] })
     expect(() => profiles.get(helper.id)).toThrow(expect.objectContaining({ reason: 'profile-for-channels' }))
     expect(profiles.available(parentId).map((profile) => profile.id)).not.toContain(helper.id)
     expect(() => profiles.save({ ...reviewer, callableProfiles: [helper.id] }, reviewer.id)).toThrow(expect.objectContaining({ reason: 'profile-for-channels' }))
     expect(profiles.save({ name: 'Codex helper', agent: 'codex', audience: 'channels' })).toMatchObject({ agent: 'codex', capability: 'readOnly', audience: 'channels' })
     expect(profiles.save({ name: 'Pi helper', agent: 'pi', audience: 'channels' })).toMatchObject({ agent: 'pi', capability: 'readOnly', audience: 'channels' })
     expect(() => profiles.save({ name: 'Cursor helper', agent: 'cursor', audience: 'channels' })).toThrow(expect.objectContaining({ reason: 'agent-no-lockdown' }))
+  })
+
+  it('uses one configured role locally and on channels without discarding local capabilities', async () => {
+    const role = profiles.save({ name: 'Both', agent: 'claude', audience: 'both', capability: 'develop', skills: [{ repo: 'r', skill: 's' }], mcpServers: ['mine'], callableProfiles: [reviewer.id] })
+    profiles.setChannelGuard((id) => id === role.id)
+    expect(profiles.get(role.id)).toEqual(role)
+    expect(profiles.available(parentId).map((profile) => profile.id)).toContain(role.id)
+    const call = await profiles.dispatch(parentId, role.id, 'Implement feature')
+    expect(call.profile.skills).toEqual(role.skills)
+    const channelOnly = profiles.save({ ...role, audience: 'channels' }, role.id)
+    expect(channelOnly.skills).toEqual(role.skills)
+    const restored = profiles.save({ ...channelOnly, audience: 'both' }, role.id)
+    expect(restored).toMatchObject({ capability: 'develop', mcpServers: ['mine'], callableProfiles: [reviewer.id] })
+    expect(() => profiles.save({ ...restored, audience: 'user' }, role.id)).toThrow(expect.objectContaining({ reason: 'profile-has-channels' }))
   })
 
   it('keeps an agent with a channel answering from chat platforms, and out of the archive', () => {
@@ -258,9 +279,10 @@ describe('reusable agent roles and delegated work', () => {
     const call = await profiles.dispatch(parentId, developer.id, 'Build later')
     profiles.archive(developer.id, true)
     expect(profiles.available(parentId).map((profile) => profile.id)).toEqual([reviewer.id])
-    await profiles.close()
+    await delivery.close(); await profiles.close()
     store = new AgentProfileStore(path.join(root, 'antumi.db'))
-    profiles = new AgentProfileService(store, chats, { profile: () => {}, call: () => {} })
+    profiles = new AgentProfileService(store, chats, { profile: () => {}, call: () => delivery?.tick() })
+    bindDelivery()
     complete(chats.get(parentId).sessionId!, 'ready')
     await profiles.reconcile()
     await waitFor(() => store.call(call.id).state === 'running')
@@ -339,19 +361,18 @@ describe('reusable agent roles and delegated work', () => {
     expect(store.call(call.id).state).toBe('running')
   })
 
-  it('stops the idle caller before starting a member that waited on its slot, in the one pass', async () => {
+  it('returns the caller slot through the delivery coordinator before starting a queued member', async () => {
     await chats.send(parentId, 'Get a review')
-    chats.setCapacity({ maxConcurrentAgents: 20, agentConcurrency: { claude: 1 } }, () => profiles.tick())
+    chats.setCapacity({ maxConcurrentAgents: 20, agentConcurrency: { claude: 1 } }, () => { profiles.tick(); delivery?.tick() })
     const call = await profiles.dispatch(parentId, reviewer.id, 'Review the module')
     // The caller's own slot is the one it waits on, so it waits on the caller's turn, not on a slot.
     await waitFor(() => store.call(call.id).waiting === 'parent')
-    // From here only the pass below runs, so the member can start in no other.
-    vi.spyOn(profiles, 'tick').mockImplementation(() => {})
     complete(chats.get(parentId).sessionId!, 'delegated')
     await waitFor(() => chats.get(parentId).chat?.turn === 'idle')
     await profiles.reconcile()
-    expect(chats.get(parentId).sessionId).toBeNull()
-    expect(store.call(call.id)).toMatchObject({ state: 'running', waiting: null })
+    await waitFor(() => chats.get(parentId).sessionId === null)
+    await waitFor(() => store.call(call.id).state === 'running')
+    expect(store.call(call.id).waiting).toBeNull()
   })
 
   it('finishes a member that leaves a command running, stopping it and saying so', async () => {
@@ -383,7 +404,7 @@ describe('reusable agent roles and delegated work', () => {
   it('says a member waits for a free slot', async () => {
     const other = await chats.create('claude', chats.get(parentId).projectPaths, false, { permissionMode: 'ask' })
     await chats.send(other.id, 'Busy elsewhere')
-    chats.setCapacity({ maxConcurrentAgents: 20, agentConcurrency: { claude: 1 } }, () => profiles.tick())
+    chats.setCapacity({ maxConcurrentAgents: 20, agentConcurrency: { claude: 1 } }, () => { profiles.tick(); delivery?.tick() })
     const call = await profiles.dispatch(parentId, reviewer.id, 'Review the module')
     await waitFor(() => store.call(call.id).waiting === 'capacity')
     expect(store.call(call.id).state).toBe('queued')
@@ -424,6 +445,7 @@ describe('reusable agent roles and delegated work', () => {
     await waitFor(() => store.call(call.id).state === 'running')
     await chats.stop(call.conversationId)
     await profiles.reconcile()
+    await waitFor(() => store.call(call.id).delivered)
     expect(store.call(call.id)).toMatchObject({ state: 'failed', delivered: true })
   })
   describe('a member in a worktree of its own', () => {
@@ -583,9 +605,10 @@ describe('reusable agent roles and delegated work', () => {
       // A new process finds the record mid-setup, with no setup of its own running. The one that
       // started it goes first: two services over one record would race to start the member.
       const ran: string[] = []
-      await profiles.close()
+      await delivery.close(); await profiles.close()
       store = new AgentProfileStore(path.join(root, 'antumi.db'))
-      profiles = new AgentProfileService(store, chats, { profile: () => {}, call: () => {} }, undefined, undefined, { ready: () => ready, disabled: () => disabled, usage: () => usage })
+      profiles = new AgentProfileService(store, chats, { profile: () => {}, call: () => delivery?.tick() }, undefined, undefined, { ready: () => ready, disabled: () => disabled, usage: () => usage })
+      bindDelivery()
       profiles.setWorkspaces({ root: path.join(root, 'worktrees'), setup: { ...setup, setUp: async (_id: string, worktrees: readonly { dir: string }[]) => { ran.push(...worktrees.map((each) => each.dir)); return ['second run failed'] } } })
       await profiles.reconcile()
       await waitFor(() => store.call(call.id).worktree?.stage === 'ready')

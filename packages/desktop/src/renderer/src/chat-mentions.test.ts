@@ -244,3 +244,12 @@ describe('a long paste kept as a file', () => {
     expect(mentionText({ ...pasted, path: '/Users/Jo Doe/p.txt' }, 'claude')).toBe('`/Users/Jo Doe/p.txt`')
   })
 })
+
+it('keeps the exact team identity through serialization and draft restore', () => {
+  const id = '11111111-1111-4111-8111-111111111111'
+  const value = { text: '@Team', mentions: [{ start: 0, end: 5, target: { kind: 'squad' as const, id, name: 'Team [special]' } }] }
+  const written = writeMentionedText(value, 'claude')
+  expect(written.text).toContain(`antumi://squad/${id}`)
+  const restored = readMentionedText(written.text, written.references)
+  expect(restored.mentions[0]?.target).toEqual(value.mentions[0]!.target)
+})

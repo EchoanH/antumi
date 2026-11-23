@@ -1,3 +1,4 @@
+import { TeamCalls } from './TeamCalls'
 import { useEffect, useRef, useState } from 'react'
 import { agentCallOpen, type AgentCall, type Conversation } from '@antumi/protocol'
 import { openGit, perform, showError, useCore } from '../core-store'
@@ -31,7 +32,7 @@ export function AgentCalls({ conversation }: { conversation: Conversation }) {
   }, [focus, calls?.length])
   const working = calls?.filter(agentCallOpen).length ?? 0
   const ordered = [...(calls ?? [])].sort((a, b) => b.createdAt - a.createdAt || a.id.localeCompare(b.id))
-  return <section className="delegation-panel" aria-label={t('AgentProfiles.calls')}>
+  return <><TeamCalls conversationId={conversation.id} /><section className="delegation-panel" aria-label={t('AgentProfiles.calls')}>
     <header className="delegation-panel-header"><strong>{t('AgentProfiles.history')}</strong><span className="muted">{calls?.length ?? 0}{working > 0 && ` · ${t('AgentProfiles.running')} ${working}`}</span></header>
     {error && <p className="inspector-empty" role="alert">{error}</p>}
     {!error && calls === null && <p className="inspector-empty muted">{t('AgentProfiles.loadingCalls')}</p>}
@@ -54,5 +55,5 @@ export function AgentCalls({ conversation }: { conversation: Conversation }) {
       </article>
     </li>)}
     </ol>}
-  </section>
+  </section></>
 }
