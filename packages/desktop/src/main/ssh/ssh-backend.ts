@@ -123,7 +123,7 @@ export function sshCoreEndpoint(host: SshHost, place: SshBackendPlace): Promise<
 }
 
 export function replaceOldSshDaemon(host: SshHost, place: SshBackendPlace, version: string): Promise<void> {
-  return replaceOldLinuxDaemon(sshTarget(host, place.destination), place, version)
+  return replaceOldLinuxDaemon(sshTarget(host, place.destination), place, version, true)
 }
 
 // ensureBackend() for the server: installs this build's backend if it is not there, asks an older
@@ -138,6 +138,7 @@ export async function ensureSshBackend(options: SshBackendOptions): Promise<SshB
     version: options.version,
     archive,
     where: ` on ${place.destination}`,
+    keepNewer: true,
     ...(options.startWaitMs === undefined ? {} : { startWaitMs: options.startWaitMs })
   })
   return started.ok ? { ok: true, place, endpoint: started.endpoint } : started

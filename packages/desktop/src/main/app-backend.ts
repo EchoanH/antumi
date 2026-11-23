@@ -1,6 +1,6 @@
 import type { SpawnOptions } from 'node:child_process'
 import { join } from 'node:path'
-import type { CoreEndpoint } from '@antumi/protocol'
+import { compareVersions, type CoreEndpoint } from '@antumi/protocol'
 import { antumiPaths, readCoreEndpoint } from '@antumi/protocol/node'
 import type { BackendLocation, BackendLocationState, BackendProblem, RemoteBackend } from '../shared/backend-location'
 import { ensureBackend, replaceOldDaemon } from './backend'
@@ -187,9 +187,16 @@ export class AppBackend {
       ssh: await this.sshSupported(),
       chosen: this.chosen,
       running: this.remote()?.kind ?? 'local',
+      newerBackend: this.newerBackend(),
       distros: listed?.status === 'ok' ? listed.distros.map(({ name, version, isDefault }) => ({ name, version, isDefault })) : wsl ? null : [],
       problem: this.problem
     }
+  }
+
+  // The version of a server's backend newer than this app, which the server kept.
+  private newerBackend(): string | null {
+    const version = this.session instanceof SshSession ? this.session.coreVersion() : null
+    return version && compareVersions(version, this.options.version) > 0 ? version : null
   }
 
   // Kept for the next start: the app talks to one backend for as long as it runs.

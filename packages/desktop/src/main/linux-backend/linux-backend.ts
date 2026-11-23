@@ -149,8 +149,9 @@ export async function linuxCoreEndpoint(target: LinuxTarget, place: LinuxBackend
 }
 
 // The daemon of another build, replaced once it runs nothing: replaceOldDaemon() for that machine.
-export async function replaceOldLinuxDaemon(target: LinuxTarget, place: LinuxBackendPlace, version: string): Promise<void> {
-  const { answer } = await control(target, place, Started, ['replace-daemon', version])
+// `keepNewer` for a machine several apps reach, whose newer daemon stays (docs/REMOTE.md 版本).
+export async function replaceOldLinuxDaemon(target: LinuxTarget, place: LinuxBackendPlace, version: string, keepNewer = false): Promise<void> {
+  const { answer } = await control(target, place, Started, ['replace-daemon', version, ...(keepNewer ? ['--keep-newer'] : [])])
   for (const name of answer?.start ?? []) launchLinuxBackend(target, place, name)
 }
 
@@ -164,6 +165,8 @@ export type LinuxBackendOptions = {
   archive: LinuxBackendArchive
   // Names the machine after the log's path when core does not come up: " in Ubuntu".
   where?: string
+  // A machine several apps reach keeps a backend newer than this app's (docs/REMOTE.md 版本).
+  keepNewer?: boolean
   startWaitMs?: number
 }
 
@@ -179,7 +182,7 @@ export async function ensureLinuxBackend(options: LinuxBackendOptions): Promise<
   if (!check.answer) return { ok: false, problem: { kind: 'start', detail: said(check.result) } }
   if (check.answer.pty !== true) return { ok: false, problem: { kind: 'pty', detail: check.answer.pty } }
 
-  const prepared = await control(target, place, Started, ['prepare', options.version])
+  const prepared = await control(target, place, Started, ['prepare', options.version, ...(options.keepNewer ? ['--keep-newer'] : [])])
   if (!prepared.answer) return { ok: false, problem: { kind: 'start', detail: said(prepared.result) } }
   for (const name of prepared.answer.start) launchLinuxBackend(target, place, name)
 

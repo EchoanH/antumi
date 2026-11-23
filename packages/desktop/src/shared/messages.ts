@@ -13437,6 +13437,7 @@ export const MESSAGES = {
   "BackendLocation.switchFailed": {"zh": "没能保存这个选择，请再试一次。", "en": "Could not save the choice. Try again."},
   "BackendLocation.notYet": {"zh": "后端在 WSL 里时暂时没有：手机在局域网里直连，以及保持电脑唤醒。", "en": "Not yet available with the backend in WSL: phones connecting directly over the local network, and keeping the computer awake."},
   "BackendLocation.restart": {"zh": "重启 Antumi 再试", "en": "Restart Antumi and retry"},
+  "BackendLocation.newerBackend": {"zh": "服务器上的后端是 {version}，比这个应用新，是另一台电脑上更新过的 Antumi 装的。把这台电脑上的 Antumi 也更新到 {version}。", "en": "The backend on the server is {version}, newer than this app: Antumi on another computer installed it after updating. Update Antumi on this computer to {version} too."},
   "BackendLocation.notice": {"zh": "「{distro}」里的后端没能启动，现在显示的是本机的任务和会话。", "en": "The backend in {distro} did not start; this machine's tasks and conversations are shown instead."},
   "BackendLocation.dismiss": {"zh": "关闭提示", "en": "Dismiss"},
   "BackendLocation.problemWslUnavailable": {"zh": "这台电脑没有装 WSL。", "en": "WSL is not installed on this computer."},

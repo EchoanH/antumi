@@ -106,6 +106,28 @@ describe.skipIf(!destination || !folder)('a backend on a real SSH host', () => {
     expect(again.ok && again.endpoint.pid).toBe(pid)
   }, 120_000)
 
+  it('keeps the backend for an older app, as two computers sharing the server would', async () => {
+    // Labels only: the core keeps reporting the version it was built as, newer than this one.
+    const older = await ensureSshBackend({ ...options, version: '0.0.1' })
+    expect(older.ok && older.endpoint.pid).toBe(pid)
+  }, 120_000)
+
+  it('hands the browser to the app before when the last one leaves', async () => {
+    const hostFile = async () => (await run('cat "$HOME/.antumi/browser/host.json" 2> /dev/null')).stdout
+    const office = new SshSession(options)
+    const home = new SshSession(options)
+    expect(await office.start()).toBeNull()
+    office.setBrowserHost({ port: 40001, token: 'office' })
+    await expect.poll(hostFile, { timeout: 15_000 }).toContain('"office"')
+    expect(await home.start()).toBeNull()
+    home.setBrowserHost({ port: 40002, token: 'home' })
+    await expect.poll(hostFile, { timeout: 15_000 }).toContain('"home"')
+    home.stop()
+    await expect.poll(hostFile, { timeout: 15_000 }).toContain('"office"')
+    office.stop()
+    await expect.poll(hostFile, { timeout: 15_000 }).toBe('')
+  }, 120_000)
+
   it('asks a shared connection quickly', async () => {
     await run('true')
     const began = Date.now()

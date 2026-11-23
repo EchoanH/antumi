@@ -77,6 +77,11 @@ export class BackendSession<O extends BackendSessionOptions, P extends LinuxBack
     return port === null ? null : { ...endpoint, port }
   }
 
+  // The version of the core last found there, when it said.
+  coreVersion(): string | null {
+    return this.known?.endpoint.version ?? null
+  }
+
   // The browser host once it listens here, which core then reaches through the tunnel.
   setBrowserHost(host: BackendLinkEnds['browserHost']): void {
     this.browserHost = host

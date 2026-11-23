@@ -148,6 +148,12 @@ describe('backend location on a server', () => {
     expect(html).toContain('后端在服务器上时暂时没有')
   })
 
+  it('asks to update this app when the server keeps a newer backend', () => {
+    const html = settings({ ...MAC, chosen: { kind: 'ssh', host: 'dev@box' }, running: 'ssh', newerBackend: '0.23.0' })
+    expect(html).toContain('服务器上的后端是 0.23.0，比这个应用新')
+    expect(settings({ ...MAC, chosen: { kind: 'ssh', host: 'dev@box' }, running: 'ssh', newerBackend: null })).not.toContain('比这个应用新')
+  })
+
   it('takes what ssh takes as a destination, and nothing that reads as an option', () => {
     expect(sshLocation(' dev@box ')).toEqual({ kind: 'ssh', host: 'dev@box' })
     expect(sshLocation('my-alias')).toEqual({ kind: 'ssh', host: 'my-alias' })

@@ -288,6 +288,11 @@ function BackendLocationRows({ state }: { state: BackendLocationState }) {
           </span>
         )}
       />
+      {state.newerBackend && state.running === 'ssh' && (
+        <div className="backend-location-block backend-location-problem" role="status">
+          <p className="backend-location-problem-title"><WarningIcon />{t('BackendLocation.newerBackend', { version: state.newerBackend })}</p>
+        </div>
+      )}
       {problem && (
         <div className="backend-location-block backend-location-problem" role="alert">
           <p className="backend-location-problem-title"><WarningIcon />{problem.title}</p>

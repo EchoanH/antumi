@@ -76,6 +76,9 @@ export const BackendLocationState = z.object({
   running: z.enum(['local', 'wsl', 'ssh']),
   // The distros to choose from; null when wsl.exe would not say.
   distros: z.array(z.object({ name: z.string(), version: z.union([z.literal(1), z.literal(2)]), isDefault: z.boolean() })).nullable(),
-  problem: z.union([WslBackendProblem, SshBackendProblem]).nullable()
+  problem: z.union([WslBackendProblem, SshBackendProblem]).nullable(),
+  // A server's backend newer than this app, kept for the other computers using it: this app is
+  // the one to update. Null otherwise. Optional only for a main of before it.
+  newerBackend: z.string().nullable().optional()
 })
 export type BackendLocationState = z.infer<typeof BackendLocationState>

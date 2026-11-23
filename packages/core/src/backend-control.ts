@@ -16,15 +16,19 @@ export type BackendControlOptions = {
   loadPty?: () => Promise<unknown>
 }
 
-export const BACKEND_CONTROL_USAGE = 'usage: backend-control prepare <version> | replace-daemon <version> | endpoint | check'
+export const BACKEND_CONTROL_USAGE = 'usage: backend-control prepare <version> [--keep-newer] | replace-daemon <version> [--keep-newer] | endpoint | check'
 
 // One command of backend-control (backend-control-main.ts): the answer to print, or why the
 // arguments make no command.
 export async function backendControl(args: string[], options: BackendControlOptions = {}): Promise<{ answer: BackendControlAnswer } | { usage: string }> {
-  const [command, ...rest] = args
-  if (command === 'prepare' && rest.length === 1 && rest[0]) return { answer: { start: await backendToStart(rest[0], options.home) } }
+  const [command, ...given] = args
+  // On a server several computers reach, a newer backend than the asking app's stays.
+  const keepNewer = (command === 'prepare' || command === 'replace-daemon') && given.at(-1) === '--keep-newer'
+  const rest = keepNewer ? given.slice(0, -1) : given
+  const rule = { keepNewer }
+  if (command === 'prepare' && rest.length === 1 && rest[0]) return { answer: { start: await backendToStart(rest[0], options.home, rule) } }
   // As replaceOldDaemon in the desktop app: a daemon to start only once an older one left.
-  if (command === 'replace-daemon' && rest.length === 1 && rest[0]) return { answer: { start: (await retireOldDaemon(rest[0], options.home)) ? ['daemon'] : [] } }
+  if (command === 'replace-daemon' && rest.length === 1 && rest[0]) return { answer: { start: (await retireOldDaemon(rest[0], options.home, rule)) ? ['daemon'] : [] } }
   if (command === 'endpoint' && rest.length === 0) return { answer: { endpoint: await runningCore(options.home) } }
   if (command === 'check' && rest.length === 0) return { answer: { node: process.version, arch: process.arch, pty: await ptyLoads(options.loadPty) } }
   return { usage: BACKEND_CONTROL_USAGE }
