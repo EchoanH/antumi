@@ -3088,6 +3088,8 @@ body.side-panel-resizing * {
 }
 
 /* The task inspector: what the agent changed, next to its chat. */
+.inspector-panel { container: inspector / inline-size; }
+
 .inspector-header {
   display: flex;
   align-items: center;
@@ -3098,8 +3100,10 @@ body.side-panel-resizing * {
 
 .inspector-tabs {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
   gap: 2px;
   margin-right: auto;
 }
@@ -3123,6 +3127,21 @@ body.side-panel-resizing * {
   background: var(--surface-muted);
   color: var(--text);
   font-weight: 600;
+}
+
+.inspector-header > .tool-button { flex-shrink: 0; }
+.inspector-tabs [role='tab'] {
+  flex-shrink: 0;
+  height: 28px;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: var(--chat-font-small, 12px);
+  white-space: nowrap;
+}
+.inspector-tabs [role='tab'] > svg { flex-shrink: 0; width: 16px; height: 16px; }
+
+@container inspector (max-width: 560px) {
+  .inspector-tab-label { display: none; }
 }
 
 .inspector-body {

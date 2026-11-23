@@ -112,7 +112,7 @@ describe('source inspector availability', () => {
       renderToStaticMarkup(createElement(ConversationInspector, { conversation, widthRatio: .35, onWidthRatioChange() {} })),
       renderToStaticMarkup(createElement(TaskInspector, { task, widthRatio: .35, onWidthRatioChange() {} }))
     ]) {
-      expect(html).toContain('aria-selected="true">来源')
+      expect(html).toMatch(/role="tab" aria-label="来源"[^>]*aria-selected="true"/)
       expect(html).toContain('data-inspector="true"')
       expect(html).toContain('YAAS-1')
       expect(html).toContain('关注新评论')

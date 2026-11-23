@@ -115,7 +115,7 @@ describe('delegation surfaces', () => {
     const conversation = renderToStaticMarkup(createElement(ConversationInspector, { conversation: parent, widthRatio: 0.35, onWidthRatioChange() {} }))
     const taskPanel = renderToStaticMarkup(createElement(TaskInspector, { task, widthRatio: 0.35, onWidthRatioChange() {} }))
     for (const html of [conversation, taskPanel]) {
-      expect(html).toContain('aria-selected="true">委派')
+      expect(html).toMatch(/role="tab" aria-label="委派"[^>]*aria-selected="true"/)
       expect(html).toContain('委派记录')
       expect(html).not.toContain('<textarea')
     }

@@ -9,7 +9,7 @@ import { useSplitDiff } from '../diff-layout'
 import type { BranchTarget } from './BranchStatus'
 import { CommentableDiff, DiffCommentConversation } from './DiffComments'
 import { DiffLines } from './DiffLines'
-import { ArrowLeftIcon, ChevronRightIcon, CloseIcon, ListIcon, RefreshIcon, TreeIcon } from './icons'
+import { ArrowLeftIcon, BranchIcon, CheckIcon, ChevronRightIcon, CloseIcon, CodeIcon, DocumentIcon, FileChangesIcon, HandoffIcon, InboxIcon, ListIcon, MergeIcon, RefreshIcon, SparkIcon, SquadIcon, TreeIcon } from './icons'
 import { PanelSeparator } from './PanelSeparator'
 
 // The pieces both inspectors are built from: a task's, beside its terminal, and a conversation's.
@@ -62,6 +62,7 @@ export function useChangedFiles(target: BranchTarget | null, updatedAt: number, 
 export type InspectorTab = 'changes' | 'branch' | 'pullRequest' | 'source' | 'plan' | 'todos' | 'wire' | 'squad' | 'helper' | 'delegation'
 
 const TAB_LABEL: Record<InspectorTab, string> = localized(() => ({ changes: t('Inspector.changes'), branch: t('GitInspector.branches_1030'), pullRequest: t('PullRequest.tab'), source: t('SourceUpdates.tab'), plan: t('chatTools.plan'), todos: t('chatTools.toDos'), wire: t('Inspector.rawData'), squad: t('ChatPlan.squad'), helper: t('HelperPanel.helper'), delegation: t('AgentProfiles.calls') }))
+const TAB_ICON: Record<InspectorTab, () => ReactNode> = { changes: FileChangesIcon, branch: BranchIcon, pullRequest: MergeIcon, source: InboxIcon, plan: DocumentIcon, todos: CheckIcon, wire: CodeIcon, squad: SquadIcon, helper: SparkIcon, delegation: HandoffIcon }
 export const GIT_TABS: readonly InspectorTab[] = ['changes', 'branch']
 
 export function InspectorPanel({ label, ratio, onRatioChange, tabs = GIT_TABS, tab, onTab, fileCount, todoCount = 0, sourceCount = 0, sourceUnread = 0, helperAwaiting = false, onRefresh, onClose, maximized = false, owner, children }: {
@@ -96,14 +97,19 @@ export function InspectorPanel({ label, ratio, onRatioChange, tabs = GIT_TABS, t
         {owner && <div className="inspector-owner">{owner}</div>}
         <header className="inspector-header">
           <div className="inspector-tabs" role="tablist" aria-label={t('ConversationView.inspector')}>
-            {tabs.map((each) => (
-              <button key={each} type="button" role="tab" aria-selected={tab === each} onClick={() => onTab(each)}>
-                {TAB_LABEL[each]}{each === 'helper' && helperAwaiting && <span className="helper-attention-dot" role="img" aria-label={t('ConversationView.helperNeedsYourResponse')} />}{each === 'changes' && fileCount > 0 && <span className="count">{fileCount}</span>}
-                {each === 'todos' && todoCount > 0 && <span className="count">{todoCount}</span>}
-                {each === 'source' && sourceCount > 0 && <span className="count">{sourceCount}</span>}
-                {each === 'source' && sourceUnread > 0 && <span className="source-updates-unread" role="img" aria-label={t('SourceUpdates.newComments', { count: sourceUnread })} />}
-              </button>
-            ))}
+            {tabs.map((each) => {
+              const Icon = TAB_ICON[each]
+              return (
+                <button key={each} type="button" role="tab" aria-label={TAB_LABEL[each]} data-tooltip={TAB_LABEL[each]} aria-selected={tab === each} onClick={() => onTab(each)}>
+                  <Icon />
+                  <span className="inspector-tab-label">{TAB_LABEL[each]}</span>
+                  {each === 'helper' && helperAwaiting && <span className="helper-attention-dot" role="img" aria-label={t('ConversationView.helperNeedsYourResponse')} />}{each === 'changes' && fileCount > 0 && <span className="count">{fileCount}</span>}
+                  {each === 'todos' && todoCount > 0 && <span className="count">{todoCount}</span>}
+                  {each === 'source' && sourceCount > 0 && <span className="count">{sourceCount}</span>}
+                  {each === 'source' && sourceUnread > 0 && <span className="source-updates-unread" role="img" aria-label={t('SourceUpdates.newComments', { count: sourceUnread })} />}
+                </button>
+              )
+            })}
           </div>
           {tab !== 'helper' && tab !== 'delegation' && tab !== 'plan' && tab !== 'wire' && tab !== 'todos' && tab !== 'source' && (
             <button type="button" className="tool-button inspector-refresh" aria-label={t('BrowserPanel.reload')} data-tooltip={t('BrowserPanel.reload')} onClick={onRefresh}>
