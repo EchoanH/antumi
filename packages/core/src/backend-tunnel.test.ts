@@ -7,12 +7,12 @@ import { PassThrough, type Readable, type Writable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { connectTunnelHelper, type TunnelHelperConfig } from '@antumi/protocol/node'
-import { parseTunnelHelperConfig, startTunnelHelper } from './wsl-tunnel'
+import { parseTunnelHelperConfig, startTunnelHelper } from './backend-tunnel'
 
 let dir = ''
 const cleanup: (() => unknown)[] = []
 beforeEach(async () => {
-  dir = await mkdtemp(path.join(tmpdir(), 'antumi-wsl-tunnel-'))
+  dir = await mkdtemp(path.join(tmpdir(), 'antumi-backend-tunnel-'))
 })
 afterEach(async () => {
   for (const each of cleanup.splice(0)) await each()
@@ -166,7 +166,7 @@ describe('tunnel helper', () => {
 // As the app will run it, minus wsl.exe: a child on plain Node with the source through tsx.
 describe('tunnel helper process', () => {
   const loader = fileURLToPath(new URL('../node_modules/tsx/dist/loader.mjs', import.meta.url))
-  const entry = fileURLToPath(new URL('./wsl-tunnel-main.ts', import.meta.url))
+  const entry = fileURLToPath(new URL('./backend-tunnel-main.ts', import.meta.url))
 
   function start(): { child: ChildProcessByStdio<Writable, Readable, Readable>; stderr: () => string; exited: Promise<number | null> } {
     const child = spawn(process.execPath, ['--import', loader, entry], { stdio: ['pipe', 'pipe', 'pipe'] })

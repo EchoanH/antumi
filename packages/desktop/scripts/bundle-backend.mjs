@@ -25,7 +25,7 @@ const banner = `import { createRequire as __antumiRequire } from 'node:module';\
 // runs there (docs/WSL.md, docs/REMOTE.md): the tunnel helper, and what tells it which of daemon
 // and core to start. No app's own backend carries them.
 const forLinuxBackend = process.argv.includes('--linux-backend')
-  ? [['wsl-tunnel', 'packages/core/src/wsl-tunnel-main.ts'], ['backend-control', 'packages/core/src/backend-control-main.ts']]
+  ? [['backend-tunnel', 'packages/core/src/backend-tunnel-main.ts'], ['backend-control', 'packages/core/src/backend-control-main.ts']]
   : []
 
 for (const [name, entry] of [

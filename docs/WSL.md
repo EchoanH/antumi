@@ -55,7 +55,7 @@ core 应答后顺手清掉别的版本的目录，仍有进程从里面运行的
 
 Antumi 自己的协议都不变，变的只是字节怎么过 Windows 和发行版之间的那道边界：两个方向都走转发程序，不走网络。
 
-转发程序（`core/src/wsl-tunnel-main.ts`，随后端包装进发行版）由桌面端经 `wsl.exe` 启动，一个进程，字节走它的标准输入输出，上面复用多条连接（`protocol/src/node/stdio-tunnel.ts`）。桌面端这头是 `wsl/wsl-link.ts`，它没了就重新启动。
+转发程序（`core/src/backend-tunnel-main.ts`，随后端包装进发行版）由桌面端经 `wsl.exe` 启动，一个进程，字节走它的标准输入输出，上面复用多条连接（`protocol/src/node/stdio-tunnel.ts`）。桌面端这头是 `wsl/wsl-link.ts`，它没了就重新启动。
 
 - **界面 → core**：桌面端在 Windows 的 `127.0.0.1` 上开一个端口，连进来的连接经转发程序接到发行版里 core 的端口。界面拿到的就是这个端口，自己不用改。Windows 直接连发行版的 `127.0.0.1` 在默认网络下也通，但换了网络模式就不一定，所以不走那条路。
 - **core → 内置浏览器**：发行版里连不到 Windows 的 `127.0.0.1`。转发程序在发行版的 `127.0.0.1` 上开一个端口，把连进来的连接转给桌面端，桌面端再连本机的浏览器 host；它把这个端口和 host 的令牌写进发行版的 `~/.antumi/browser/host.json`，core 照原样去读、去连，不用改。它在标准输入关闭时退出并删掉那个文件。
@@ -129,7 +129,7 @@ core 只认 Linux 路径，界面按路径本身的样子处理，不看自己�
 各模块的单元测试用一个假的 `wsl.exe`。真的那个只有 Windows 上有：`wsl/wsl-smoke.ts` 打成一个文件后，在装了 WSL 2 的 Windows 上用 Node 跑。
 
 ```
-node wsl-smoke.mjs <发行版> [--mutate] [--tunnel <wsl-tunnel.mjs>]    # 调用 wsl.exe、登录环境、转发程序
+node wsl-smoke.mjs <发行版> [--mutate] [--tunnel <backend-tunnel.mjs>]    # 调用 wsl.exe、登录环境、转发程序
 node wsl-smoke.mjs <发行版> --backend <pack-linux-backend 的输出目录>    # 装上真的后端并从 Windows 调它
 node wsl-smoke.mjs <发行版> --check-backend                            # 过几分钟，从另一个进程看它还在不在
 ```

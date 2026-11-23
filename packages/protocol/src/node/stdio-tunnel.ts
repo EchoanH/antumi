@@ -7,7 +7,7 @@ import type { Readable, Writable } from 'node:stream'
 // opening a stream for each; the other end dials that target's fixed port for every stream it is
 // opened. Both directions share one tunnel.
 //
-// Node built-ins only: the WSL helper (core/src/wsl-tunnel-main.ts) is bundled from this alone.
+// Node built-ins only: the tunnel helper (core/src/backend-tunnel-main.ts) is bundled from this alone.
 //
 // Each frame: type (u8), opener (u8: 0 when the sender opened the stream, 1 when the receiver
 // did), stream id (u32 BE, chosen by the opener), payload length (u32 BE), payload.
@@ -411,7 +411,7 @@ export type TunnelHelperLink = {
   closed: Promise<Error | null>
 }
 
-// The app's end of the helper (core/src/wsl-tunnel-main.ts), over the stdio of a child someone
+// The app's end of the helper (core/src/backend-tunnel-main.ts), over the stdio of a child someone
 // else started: sends the config, waits for the sentinel, then runs the tunnel with roles mirrored.
 // `appPort` is where streams the helper takes are connected here; `listenPort` (0 for any) is where
 // this end takes connections for the helper's `dial`.

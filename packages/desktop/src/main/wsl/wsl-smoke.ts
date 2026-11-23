@@ -2,7 +2,7 @@
 // Windows (argument quoting, output encodings, exit codes, what starts a distro). Bundled and run
 // by plain Node on a Windows machine with WSL 2:
 //
-//   node wsl-smoke.mjs <distro> [--mutate] [--tunnel <wsl-tunnel.mjs>]
+//   node wsl-smoke.mjs <distro> [--mutate] [--tunnel <backend-tunnel.mjs>]
 //   node wsl-smoke.mjs <distro> --launch, then later --check-launch
 //   node wsl-smoke.mjs <distro> --backend <folder of pack-linux-backend's output>, then later --check-backend
 //
@@ -211,7 +211,7 @@ async function backend(folder: string): Promise<void> {
   note('backend processes', (await runInDistro(distro, ['/bin/sh', '-c', 'ps -eo pid,ppid,etimes,args | grep -E "antumi|node" | grep -v grep'])).stdout)
 
   // The UI's way to core when 127.0.0.1 does not get through: the tunnel helper, as installed.
-  const helper = spawnInDistro(distro, [place.node, `${place.dir}/wsl-tunnel.mjs`])
+  const helper = spawnInDistro(distro, [place.node, `${place.dir}/backend-tunnel.mjs`])
   if (!helper.stdout || !helper.stdin) throw new Error('helper has no stdio')
   const link = await connectTunnelHelper({ fromHelper: helper.stdout, toHelper: helper.stdin, config: { dial: { port: endpoint.port } } })
   const tunnelled = await rpc({ port: link.localPort ?? 0, token: endpoint.token }, 'system.hello', { protocolVersion: PROTOCOL_VERSION }).catch((error: unknown) => String(error))
@@ -242,7 +242,7 @@ async function tunnel(file: string): Promise<void> {
   if (node.status !== 'found') return report('tunnel: a real node in the distro', false, JSON.stringify(node))
   note('tunnel: node', (await runInDistro(distro, [node.path, '--version'])).stdout.trim())
   const dir = '/tmp/antumi-smoke'
-  const put = await runInDistro(distro, ['/bin/sh', '-c', `mkdir -p ${dir} && cat > ${dir}/wsl-tunnel.mjs`], { input: readFileSync(file) })
+  const put = await runInDistro(distro, ['/bin/sh', '-c', `mkdir -p ${dir} && cat > ${dir}/backend-tunnel.mjs`], { input: readFileSync(file) })
   report('tunnel: helper copied in over stdin', put.code === 0, put.stderr)
 
   const windowsEcho = net.createServer((socket) => socket.pipe(socket))
@@ -253,7 +253,7 @@ async function tunnel(file: string): Promise<void> {
   const linuxPort = Number(await new Promise<string>((resolve) => linuxEcho.stdout?.once('data', (chunk: Buffer) => resolve(chunk.toString()))))
   note('tunnel: echo ports', { windowsPort, linuxPort })
 
-  const helper = spawnInDistro(distro, [node.path, `${dir}/wsl-tunnel.mjs`])
+  const helper = spawnInDistro(distro, [node.path, `${dir}/backend-tunnel.mjs`])
   let complaints = ''
   helper.stderr?.on('data', (chunk: Buffer) => { complaints += chunk.toString() })
   const exited = new Promise<number | null>((resolve) => helper.on('exit', resolve))

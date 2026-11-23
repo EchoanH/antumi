@@ -20,7 +20,7 @@ core 和 daemon 在服务器上以那台机器的用户运行，桌面端是它�
 WSL 已经把这条路走通了（[WSL.md](WSL.md)）：后端包、安装、替换旧 daemon、等 core 应答、经一个子进程的标准输入输出转发两个方向的连接。远程服务器复用这一切，只换掉「怎么在那台 Linux 上跑一条命令」：
 
 - 安装、启动、问 core 在哪，这些步骤与通道无关（`desktop/src/main/linux-backend/`），WSL 和 SSH 各给它一个「在那台 Linux 上运行」的实现。
-- 转发程序（`wsl-tunnel.mjs`）原样复用，由 `ssh host node wsl-tunnel.mjs` 启动。
+- 转发程序（`backend-tunnel.mjs`，原来叫 `wsl-tunnel.mjs`）原样复用，由 `ssh host node backend-tunnel.mjs` 启动。
 
 其他项目和工具大多也是这么做的（VS Code Remote-SSH、Zed、Claude 桌面端、t3code、orca）。不选「服务器监听网络端口、桌面端直连」，因为那要另做加密和配对，暴露面也更大。这条路留给第二阶段：复用手机的 Noise 网关。
 

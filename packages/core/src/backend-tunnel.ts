@@ -6,8 +6,8 @@ import type { Readable, Writable } from 'node:stream'
 import { writePrivateJson } from '../../protocol/src/node/private-file'
 import { listenLoopback, openStdioTunnel, readFirstLine, sentinelLine, TUNNEL_TARGETS, type TunnelHelperConfig } from '../../protocol/src/node/stdio-tunnel'
 
-// The tunnel helper the Windows app starts inside a WSL distro (wsl-tunnel-main.ts, docs/WSL.md
-// 连接). It reads its config as the first line of stdin, answers with the sentinel line on stdout,
+// The tunnel helper the app starts on the backend's machine, a WSL distro or an SSH host
+// (backend-tunnel-main.ts, docs/WSL.md 连接, docs/REMOTE.md). It reads its config as the first line of stdin, answers with the sentinel line on stdout,
 // and from then on both carry only tunnel frames.
 
 export type TunnelHelper = {

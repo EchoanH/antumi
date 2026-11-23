@@ -54,7 +54,7 @@ export class BackendLink {
     const label = this.options.label ?? 'backend'
     let child: ChildProcess
     try {
-      child = this.target.spawn([this.place.node, `${this.place.dir}/wsl-tunnel.mjs`])
+      child = this.target.spawn([this.place.node, `${this.place.dir}/backend-tunnel.mjs`])
     } catch (error) {
       log(`[antumi] the ${label} tunnel did not start: ${String(error)}`)
       this.again(run)
