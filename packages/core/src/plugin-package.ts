@@ -218,8 +218,66 @@ async function read(url: string, response: Response): Promise<Buffer> {
   return Buffer.concat(chunks)
 }
 
+// A ZIP named for its version (name-1.2.0.zip) is the same plugin as the next release's name-1.3.0.zip.
+export function assetStem(name: string): string | null {
+  return /^(.+)-v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?\.zip$/i.exec(name)?.[1] ?? null
+}
+
+function assetVersion(name: string, stem: string): string | null {
+  if (!/\.zip$/i.test(name) || !name.toLowerCase().startsWith(`${stem.toLowerCase()}-`)) return null
+  const version = valid(name.slice(stem.length + 1).replace(/\.zip$/i, '').replace(/^v/i, ''))
+  return version && !prerelease(version) ? version : null
+}
+
+const assetVersions = (release: Release, stem: string) => release.assets.flatMap((asset) => assetVersion(asset.name, stem) ?? [])
+
+// Installed from a project by its ZIP's name: the release holding the highest version of that ZIP,
+// which in a project of several plugins need not be the project's latest.
+async function releaseWithAsset(source: GitHubSource, stem: string): Promise<Release> {
+  const found: { version: string; release: Release }[] = []
+  for (let page = 1; page <= RELEASE_PAGE_LIMIT; page++) {
+    const url = `https://api.github.com/repos/${source.repository}/releases?per_page=100&page=${page}`
+    const response = await request(url, { headers: { Accept: 'application/vnd.github+json' } })
+    if (response.status === 403 || response.status === 429) return releaseWithAssetFromSite(source, stem)
+    if (response.status === 404) throw new Error(NO_RELEASE)
+    const releases = z.array(Release).parse(JSON.parse((await read(url, response)).toString('utf8')))
+    for (const release of releases) {
+      if (release.draft || release.prerelease) continue
+      for (const version of assetVersions(release, stem)) found.push({ version, release })
+    }
+    if (releases.length < 100) {
+      const latest = found.sort((a, b) => rcompare(a.version, b.version))[0]
+      if (!latest) throw new Error(`仓库的 Release 里没有 ${stem} 的插件 ZIP`)
+      return latest.release
+    }
+  }
+  throw new Error('仓库发布记录过多，请指定插件的 Release 标签')
+}
+
+// The pages list releases newest first; the first whose assets hold the ZIP is the one to install.
+async function releaseWithAssetFromSite(source: GitHubSource, stem: string): Promise<Release> {
+  const tagPath = `/${source.repository}/releases/tag/`
+  let checked = 0
+  for (let page = 1; page <= RELEASE_PAGE_LIMIT; page++) {
+    const url = `https://github.com/${source.repository}/releases?page=${page}`
+    const response = await request(url)
+    if (response.status === 404) throw new Error(NO_RELEASE)
+    const html = (await read(url, response)).toString('utf8')
+    const tags = [...new Set([...html.matchAll(/href="([^"]+)"/g)].flatMap((match) => match[1]?.startsWith(tagPath) ? [decodeURIComponent(match[1].slice(tagPath.length))] : []))]
+    for (const tag of tags) {
+      if (++checked > 20) throw new Error(`仓库最近 20 个 Release 里没有 ${stem} 的插件 ZIP`)
+      const release = await releaseFromSite({ ...source, tag })
+      if (assetVersions(release, stem).length) return release
+    }
+    if (!/<a\b[^>]*\brel="next"[^>]*>/i.test(html)) break
+  }
+  throw new Error(`仓库的 Release 里没有 ${stem} 的插件 ZIP`)
+}
+
 async function releaseOf(source: GitHubSource): Promise<Release> {
   if (!source.tag && source.tagPrefix) return prefixedRelease(source, source.tagPrefix)
+  const stem = !source.tag && source.asset ? assetStem(source.asset) : null
+  if (stem) return releaseWithAsset(source, stem)
   const endpoint = source.tag ? `tags/${encodeURIComponent(source.tag)}` : 'latest'
   const url = `https://api.github.com/repos/${source.repository}/releases/${endpoint}`
   const response = await request(url, { headers: { Accept: 'application/vnd.github+json' } })
@@ -267,7 +325,10 @@ export async function stagePlugin(source: PluginInstallSource, target: string): 
     return
   }
   const release = await releaseOf(source)
-  const assets = release.assets.filter((asset) => source.asset ? asset.name === source.asset : /\.zip$/i.test(asset.name))
+  const stem = source.asset ? assetStem(source.asset) : null
+  const named = release.assets.filter((asset) => asset.name === source.asset)
+  const assets = !source.asset ? release.assets.filter((asset) => /\.zip$/i.test(asset.name))
+    : named.length || !stem ? named : release.assets.filter((asset) => assetVersion(asset.name, stem))
   if (assets.length !== 1 || !assets[0]) throw new Error('Release 必须有一个插件 ZIP，或指定附件名称')
   const asset = assets[0]
   const url = new URL(asset.browser_download_url)

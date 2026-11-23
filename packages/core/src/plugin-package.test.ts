@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promis
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { copyPlugin, extractPlugin, githubPluginPackages, packagePath, readManifest, stagePlugin } from './plugin-package'
+import { assetStem, copyPlugin, extractPlugin, githubPluginPackages, packagePath, readManifest, stagePlugin } from './plugin-package'
 import { pluginFixture, pluginZip } from './plugin-fixtures'
 
 describe('plugin packages', () => {
@@ -179,6 +179,61 @@ describe('plugin packages', () => {
     vi.stubGlobal('fetch', fetch)
     await stagePlugin({ kind: 'github', repository: 'demo/plugins', tagPrefix: 'github-v' }, root)
     expect(fetch).toHaveBeenCalledTimes(5)
+  })
+
+  it('reads the plugin a versioned ZIP name stands for', () => {
+    expect(assetStem('antumi-plugin-meegle-0.1.0.zip')).toBe('antumi-plugin-meegle')
+    expect(assetStem('tracker-v2.3.4-beta.1.ZIP')).toBe('tracker')
+    for (const name of ['plugin.zip', 'plugin-1.2.zip', 'plugin-1.2.3.tgz']) expect(assetStem(name)).toBeNull()
+  })
+
+  // A project of several plugins: installing one by its ZIP's name records that name, version and
+  // all, and the project's latest release may belong to another plugin (flyhero/antumi#11).
+  const meegle = (tag: string, version: string, flags = {}) => ({ tag_name: tag, assets: [{ name: `antumi-plugin-meegle-${version}.zip`, browser_download_url: `https://github.com/demo/plugins/releases/download/${tag}/antumi-plugin-meegle-${version}.zip` }], ...flags })
+  const jira = { tag_name: 'jira-v2.0.0', assets: [{ name: 'antumi-plugin-jira-2.0.0.zip', browser_download_url: 'https://github.com/demo/plugins/releases/download/jira-v2.0.0/antumi-plugin-jira-2.0.0.zip' }] }
+
+  it('updates a plugin installed by a versioned ZIP name to its newest stable release, past other plugins', async () => {
+    const archive = pluginZip({ 'main.mjs': 'export {}' })
+    const fetch = vi.fn(async (url: string) => {
+      if (url === 'https://api.github.com/repos/demo/plugins/releases?per_page=100&page=1') return Response.json([
+        jira, meegle('meegle-v9.0.0', '9.0.0', { draft: true }), meegle('meegle-v0.2.0-beta.1', '0.2.0-beta.1', { prerelease: true }),
+        meegle('meegle-v0.1.1', '0.1.1'), meegle('meegle-v0.1.0', '0.1.0')
+      ])
+      if (url === 'https://github.com/demo/plugins/releases/download/meegle-v0.1.1/antumi-plugin-meegle-0.1.1.zip') return new Response(new Uint8Array(archive))
+      throw new Error(`Unexpected request ${url}`)
+    })
+    vi.stubGlobal('fetch', fetch)
+    await stagePlugin({ kind: 'github', repository: 'demo/plugins', asset: 'antumi-plugin-meegle-0.1.0.zip' }, root)
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(await readFile(path.join(root, 'main.mjs'), 'utf8')).toBe('export {}')
+  })
+
+  it('finds the newest release holding the ZIP on the release pages when the API refuses', async () => {
+    const archive = pluginZip({ 'main.mjs': 'export {}' })
+    const calls: string[] = []
+    vi.stubGlobal('fetch', async (url: string) => {
+      calls.push(url)
+      if (url.startsWith('https://api.github.com/')) return new Response('', { status: 403 })
+      if (url === 'https://github.com/demo/plugins/releases?page=1') return new Response('<a href="/demo/plugins/releases/tag/jira-v2.0.0">Jira</a><a href="/demo/plugins/releases/tag/meegle-v0.1.1">Meegle</a><a href="/demo/plugins/releases/tag/meegle-v0.1.0">Meegle</a>')
+      if (url.endsWith('expanded_assets/jira-v2.0.0')) return new Response('<a href="/demo/plugins/releases/download/jira-v2.0.0/antumi-plugin-jira-2.0.0.zip">ZIP</a>')
+      if (url.endsWith('expanded_assets/meegle-v0.1.1')) return new Response('<a href="/demo/plugins/releases/download/meegle-v0.1.1/antumi-plugin-meegle-0.1.1.zip">ZIP</a>')
+      if (url.endsWith('download/meegle-v0.1.1/antumi-plugin-meegle-0.1.1.zip')) return new Response(new Uint8Array(archive))
+      throw new Error(`Unexpected request ${url}`)
+    })
+    await stagePlugin({ kind: 'github', repository: 'demo/plugins', asset: 'antumi-plugin-meegle-0.1.0.zip' }, root)
+    expect(calls.slice(1)).toEqual([
+      'https://github.com/demo/plugins/releases?page=1', 'https://github.com/demo/plugins/releases/expanded_assets/jira-v2.0.0',
+      'https://github.com/demo/plugins/releases/expanded_assets/meegle-v0.1.1', 'https://github.com/demo/plugins/releases/download/meegle-v0.1.1/antumi-plugin-meegle-0.1.1.zip'
+    ])
+  })
+
+  it('names the ZIP no release holds, and keeps an unversioned name exact on the latest release', async () => {
+    vi.stubGlobal('fetch', async () => Response.json([jira]))
+    await expect(stagePlugin({ kind: 'github', repository: 'demo/plugins', asset: 'antumi-plugin-meegle-0.1.0.zip' }, root)).rejects.toThrow('没有 antumi-plugin-meegle 的插件 ZIP')
+    const fetch = vi.fn(async (_url: string) => Response.json({ tag_name: 'v3', assets: [{ name: 'other.zip', browser_download_url: 'https://github.com/demo/plugin/releases/download/v3/other.zip' }] }))
+    vi.stubGlobal('fetch', fetch)
+    await expect(stagePlugin({ kind: 'github', repository: 'demo/plugin', asset: 'plugin.zip' }, root)).rejects.toThrow('必须有一个插件 ZIP')
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual(['https://api.github.com/repos/demo/plugin/releases/latest'])
   })
 
   it('says which host could not be reached and why, instead of "fetch failed"', async () => {
