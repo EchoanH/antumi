@@ -36,7 +36,7 @@ export function PluginSettings() {
   const visible = recommended.filter((entry) => [entry.name, entry.id, entry.description, entry.descriptionEn, entry.repository].some((text) => text.toLocaleLowerCase().includes(query)))
   const [pending, setPending] = useState<PluginActionTarget | null>(null)
   const busy = pending !== null
-  const [kind, setKind] = useState<'local' | 'github'>('local')
+  const [kind, setKind] = useState<'local' | 'github'>('github')
   const [location, setLocation] = useState('')
   const [asset, setAsset] = useState('')
   // ZIP packages found on the latest release of the project currently typed.
@@ -138,8 +138,8 @@ export function PluginSettings() {
               <select id={`${ids}-kind`} className="input" value={kind} disabled={busy} onChange={(event) => {
                 setKind(event.target.value === 'github' ? 'github' : 'local'); setLocation(''); setPackages(null); setAsset(''); setTrusted(false)
               }}>
-                <option value="local">{t('PluginSettings.localDirectoryOrZip')}</option>
                 <option value="github">GitHub Release</option>
+                <option value="local">{t('PluginSettings.localDirectoryOrZip')}</option>
               </select>
             </div>
             <div className="settings-field">
