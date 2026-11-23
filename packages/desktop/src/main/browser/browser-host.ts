@@ -44,11 +44,27 @@ function siteUserAgents(target: Session): { own: string; chrome: string } {
 }
 
 // What a page reads as navigator.userAgent follows the site it is on, set as each navigation starts.
+// A redirect across that line (V2EX's 「Sign in with Google」) is started again instead: changing
+// the user agent mid-redirect trips a Chromium check that takes the whole app down, and changing
+// it once the redirect is under way makes Chromium reload the page it came from.
 function followSiteUserAgent(contents: WebContents): void {
   const agents = siteUserAgents(contents.session)
-  const pick = (url: string) => contents.setUserAgent(wantsChromeUserAgent(url) ? agents.chrome : agents.own)
-  contents.on('did-start-navigation', (details) => { if (details.isMainFrame && !details.isSameDocument) pick(details.url) })
-  contents.on('did-redirect-navigation', (details) => { if (details.isMainFrame) pick(details.url) })
+  const agentFor = (url: string) => wantsChromeUserAgent(url) ? agents.chrome : agents.own
+  contents.on('did-start-navigation', (details) => {
+    if (!details.isMainFrame || details.isSameDocument) return
+    const agent = agentFor(details.url)
+    if (contents.getUserAgent() !== agent) contents.setUserAgent(agent)
+  })
+  contents.on('will-redirect', (details) => {
+    const agent = agentFor(details.url)
+    if (!details.isMainFrame || contents.getUserAgent() === agent) return
+    details.preventDefault()
+    setImmediate(() => {
+      if (contents.isDestroyed()) return
+      contents.setUserAgent(agent)
+      contents.loadURL(details.url).catch(() => {})
+    })
+  })
 }
 
 export type BrowserHost = {
