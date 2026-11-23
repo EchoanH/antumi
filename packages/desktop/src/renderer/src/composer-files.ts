@@ -4,7 +4,7 @@ import { ATTACHMENT_CHUNK_BYTES, IMAGE_MIME_TYPES, MAX_ATTACHMENT_BYTES } from '
 import { bytesToBase64 } from './base64'
 import { CLIPBOARD_TYPE, heldPastePath, isHeldPaste, pathTarget, placeTargets, type Mention, type MentionedText, type MentionTarget } from './chat-mentions'
 import { useCore } from './core-store'
-import { pathForFile, putDroppedOnServer } from './desktop-bridge'
+import { pathForFile, putDropped } from './desktop-bridge'
 import { t } from './i18n'
 
 // Past this many characters a paste goes to the agent as a file it reads rather than in the
@@ -143,13 +143,13 @@ export function useComposerFiles({ conversationId, cwd, input, setValue, addImag
     })
     const pictures = images ? dropped.filter((entry) => !entry.directory && isImage(entry.file)).map((entry) => entry.file) : []
     const targets: MentionTarget[] = []
-    // A server reads none of this machine's files: those go up to it first (docs/REMOTE.md).
+    // A backend with no path to this machine's files (a server) gets them put there first (docs/REMOTE.md).
     const puts: Promise<MentionTarget | null>[] = []
     for (const entry of mentions ? dropped : []) {
       if (pictures.includes(entry.file)) continue
       const kind = entry.directory ? 'directory' : 'file'
       const path = pathForFile(entry.file)
-      const put = path ? null : putDroppedOnServer(entry.file)
+      const put = path ? null : putDropped(entry.file)
       if (path) targets.push(pathTarget(path, kind, cwd))
       else if (put) puts.push(put.then((answer) => {
         if ('path' in answer) return pathTarget(answer.path, kind, cwd)

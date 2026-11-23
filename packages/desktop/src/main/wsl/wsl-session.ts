@@ -1,4 +1,5 @@
-import type { WslBackendProblem } from '../../shared/backend-location'
+import type { RemoteBackend, WslBackendProblem } from '../../shared/backend-location'
+import type { BackendElsewhere } from '../linux-backend/backend-elsewhere'
 import { BackendSession, type BackendSessionParts } from '../linux-backend/backend-session'
 import type { FetchNode } from '../linux-backend/managed-node'
 import { ensureWslBackend, replaceOldWslDaemon, wslCoreEndpoint, type WslBackendArchive, type WslBackendPlace } from './wsl-backend'
@@ -7,7 +8,7 @@ import { WslLink } from './wsl-link'
 import { linuxPathForBackend, windowsPathForLinux, wslUncPath } from './wsl-paths'
 
 // The app's side of a backend in a WSL distro: a backend session whose Linux paths are told from
-// this machine's.
+// this machine's, which reaches the distro's files and network itself.
 
 export type WslSessionOptions = { distro: string; version: string; archive: WslBackendArchive; fetchNode?: FetchNode | null; log?: (line: string) => void }
 
@@ -24,7 +25,7 @@ const realParts: WslSessionParts = {
   now: () => Date.now()
 }
 
-export class WslSession extends BackendSession<WslSessionOptions, WslBackendPlace, WslBackendProblem> {
+export class WslSession extends BackendSession<WslSessionOptions, WslBackendPlace, WslBackendProblem> implements BackendElsewhere {
   constructor(options: WslSessionOptions, parts: WslSessionParts = realParts) {
     super(options, parts)
   }
@@ -33,21 +34,30 @@ export class WslSession extends BackendSession<WslSessionOptions, WslBackendPlac
     return this.place?.distro ?? this.options.distro
   }
 
+  get where(): RemoteBackend {
+    return { kind: 'wsl', distro: this.distro }
+  }
+
   // A path chosen on this machine as core names it; null for one the distro cannot reach.
-  linuxPath(windowsPath: string): string | null {
+  toBackendPath(windowsPath: string): string | null {
     return linuxPathForBackend(this.distro, windowsPath)
   }
 
   // A path core named as this machine opens it, `~` being the distro's home; null for one with no
   // spelling here.
-  windowsPath(linuxPath: string): string | null {
+  fromBackendPath(linuxPath: string): string | null {
     const home = this.place?.home
     const absolute = home && (linuxPath === '~' || linuxPath.startsWith('~/')) ? `${home}${linuxPath.slice(1)}` : linuxPath
     return windowsPathForLinux(this.distro, absolute)
   }
 
   // Where a folder dialog starts: the distro's home, as Windows reaches it.
-  homeFolder(): string | null {
-    return this.place ? wslUncPath(this.place.distro, this.place.home) : null
+  dialogStart(): string | undefined {
+    return (this.place ? wslUncPath(this.place.distro, this.place.home) : null) ?? undefined
+  }
+
+  // Windows opens the distro's files by their \\wsl.localhost paths.
+  files(): null {
+    return null
   }
 }

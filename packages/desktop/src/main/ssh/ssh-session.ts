@@ -1,4 +1,5 @@
-import type { SshBackendProblem } from '../../shared/backend-location'
+import type { RemoteBackend, SshBackendProblem } from '../../shared/backend-location'
+import type { BackendElsewhere, BackendFiles } from '../linux-backend/backend-elsewhere'
 import { BackendLink } from '../linux-backend/backend-link'
 import type { LinuxArch } from '../linux-backend/bundled-archive'
 import type { LinuxBackendArchive } from '../linux-backend/linux-backend'
@@ -6,6 +7,7 @@ import type { FetchNode } from '../linux-backend/managed-node'
 import { BackendSession, type BackendSessionParts } from '../linux-backend/backend-session'
 import { ensureSshBackend, replaceOldSshDaemon, sshCoreEndpoint, sshTarget, type SshBackendPlace } from './ssh-backend'
 import type { SshHost } from './ssh-command'
+import { sshFiles } from './ssh-files'
 
 // The app's side of a backend on an SSH host. Its paths are the server's, which nothing on this
 // machine opens: what a path would be used for here goes through core instead (docs/REMOTE.md 路径和文件).
@@ -31,21 +33,32 @@ function realParts(host: SshHost): SshSessionParts {
   }
 }
 
-export class SshSession extends BackendSession<SshSessionOptions, SshBackendPlace, SshBackendProblem> {
+export class SshSession extends BackendSession<SshSessionOptions, SshBackendPlace, SshBackendProblem> implements BackendElsewhere {
+  private readonly serverFiles: BackendFiles
+
   constructor(options: SshSessionOptions, parts: SshSessionParts = realParts(options.host)) {
     super(options, parts)
+    this.serverFiles = sshFiles(options.host, options.destination, () => this.place?.home ?? null)
   }
 
-  get destination(): string {
-    return this.options.destination
+  get where(): RemoteBackend {
+    return { kind: 'ssh', host: this.options.destination }
   }
 
-  get host(): SshHost {
-    return this.options.host
+  // No path of this machine's is one the server reads, nor the other way round.
+  toBackendPath(_local: string): null {
+    return null
   }
 
-  // The user's home on the server, once the backend there was found.
-  get home(): string | null {
-    return this.place?.home ?? null
+  fromBackendPath(_path: string): null {
+    return null
+  }
+
+  dialogStart(): undefined {
+    return undefined
+  }
+
+  files(): BackendFiles {
+    return this.serverFiles
   }
 }

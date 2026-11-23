@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { lstat, readdir, readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { envValue } from '@antumi/protocol/node'
+import type { BackendFilePut, BackendFileRead, BackendFiles, PutArea } from '../linux-backend/backend-elsewhere'
 import { runOverSsh, runOverSshBytes, type SshHost } from './ssh-command'
 
 // The server's files where this machine needs them, and this machine's where the server does
@@ -10,7 +11,6 @@ import { runOverSsh, runOverSshBytes, type SshHost } from './ssh-command'
 // the composer is put on the server. Main is as trusted as on this machine, where it reads any file
 // the user can; only the user's own server account is reached.
 
-export type ServerFile = { kind: 'file'; real: string; bytes: Buffer } | { kind: 'missing' } | { kind: 'not-a-file' } | { kind: 'too-large' } | { kind: 'unreachable'; detail: string }
 
 // $1 is the path, $2 the most bytes taken. The real path goes first, on a line of its own, so a link
 // is served under its target's type; then the bytes.
@@ -24,7 +24,7 @@ const READ_SCRIPT = [
 
 const READ_TIMEOUT_MS = 120_000
 
-export async function readServerFile(host: SshHost, destination: string, file: string, maxBytes: number): Promise<ServerFile> {
+export async function readServerFile(host: SshHost, destination: string, file: string, maxBytes: number): Promise<BackendFileRead> {
   if (!file.startsWith('/') || file.includes('\0')) return { kind: 'missing' }
   const result = await runOverSshBytes(host, destination, ['/bin/sh', '-c', READ_SCRIPT, 'sh', file, String(maxBytes)], { timeoutMs: READ_TIMEOUT_MS })
   if (result.code === 3) return { kind: 'missing' }
@@ -45,7 +45,6 @@ export async function serverIsDirectory(host: SshHost, destination: string, file
 // and a small project, not a disk.
 export const MAX_DROP_BYTES = 100 * 1024 * 1024
 
-export type Dropped = { kind: 'ok'; path: string } | { kind: 'too-large' } | { kind: 'failed'; detail: string }
 
 // $1 is the folder made for this drop, $2 the name inside it. A file comes as itself, a folder as a
 // tar of it.
@@ -95,7 +94,7 @@ function tarOf(host: SshHost, folder: string, limit: number): Promise<Buffer | n
 // Puts a file or folder of this machine on the server under ~/.antumi/<area>/<id>/ (what was
 // dropped into the composer, what the built-in browser downloaded), for the agent to read by the
 // path this answers. Each gets a folder of its own, so two of the same name do not collide.
-export async function putOnServer(host: SshHost, destination: string, home: string, local: string, area: 'drops' | 'downloads' = 'drops'): Promise<Dropped> {
+export async function putOnServer(host: SshHost, destination: string, home: string, local: string, area: PutArea = 'drops'): Promise<BackendFilePut> {
   const name = path.basename(local)
   const folder = `${home}/.antumi/${area}/${randomUUID()}`
   try {
@@ -116,8 +115,8 @@ export async function putOnServer(host: SshHost, destination: string, home: stri
   }
 }
 
-// Editors that open a folder or file on an SSH host themselves, by the URL each registers.
-export const REMOTE_EDITORS: Readonly<Record<string, 'vscode' | 'cursor' | 'zed'>> = { vscode: 'vscode', cursor: 'cursor', zed: 'zed' }
+// Editors that open a folder or file on an SSH host themselves, by the open-with app's id.
+const REMOTE_EDITORS: Readonly<Record<string, 'vscode' | 'cursor' | 'zed'>> = { vscode: 'vscode', cursor: 'cursor', zed: 'zed' }
 
 // The URL that opens `file` on the server in that editor: VS Code's Remote-SSH and its forks
 // resolve the destination as ssh does, an alias of ~/.ssh/config included; a file is opened at its
@@ -126,4 +125,22 @@ export function remoteEditorUrl(editor: 'vscode' | 'cursor' | 'zed', destination
   const encodedPath = file.split('/').map(encodeURIComponent).join('/')
   if (editor === 'zed') return `zed://ssh/${destination.split('@').map(encodeURIComponent).join('@')}${encodedPath}`
   return `${editor}://vscode-remote/ssh-remote+${encodeURIComponent(destination)}${encodedPath}${isFile ? ':1:1' : ''}`
+}
+
+// A server's files as main reaches them: over the same ssh. `home` is the user's there, null until
+// the backend was found, when nothing can be put.
+export function sshFiles(host: SshHost, destination: string, home: () => string | null): BackendFiles {
+  return {
+    read: (file, maxBytes) => readServerFile(host, destination, file, maxBytes),
+    isDirectory: (file) => serverIsDirectory(host, destination, file),
+    put: async (local, area) => {
+      const there = home()
+      return there ? putOnServer(host, destination, there, local, area) : { kind: 'failed', detail: 'the server is not reached yet' }
+    },
+    editors: Object.keys(REMOTE_EDITORS),
+    editorUrl: (app, file, isFile) => {
+      const editor = REMOTE_EDITORS[app]
+      return editor ? remoteEditorUrl(editor, destination, file, isFile) : null
+    }
+  }
 }

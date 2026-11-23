@@ -65,6 +65,12 @@ export const RemoteBackend = z.discriminatedUnion('kind', [
 ])
 export type RemoteBackend = z.infer<typeof RemoteBackend>
 
+// What the renderer knows of where the backend runs: the place, null for this machine, and whether
+// this machine reaches its files by a path (here, or a distro's through \\wsl.localhost) or only
+// through the backend (a server), which decides the folder dialog, Finder and dropped files.
+export const BackendAccess = z.object({ where: RemoteBackend.nullable(), filesHere: z.boolean() })
+export type BackendAccess = z.infer<typeof BackendAccess>
+
 export const BackendLocationState = z.object({
   // Whether this app can run its backend in WSL at all: Windows, installed, carrying the archive.
   wsl: z.boolean(),

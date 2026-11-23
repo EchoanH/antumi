@@ -24,6 +24,16 @@ WSL 已经把这条路走通了（[WSL.md](WSL.md)）：后端包、安装、替
 
 其他项目和工具大多也是这么做的（VS Code Remote-SSH、Zed、Claude 桌面端、t3code、orca）。不选「服务器监听网络端口、桌面端直连」，因为那要另做加密和配对，暴露面也更大。这条路留给第二阶段：复用手机的 Noise 网关。
 
+## 代码结构
+
+主进程和界面只问后端「能做什么」，从不问它是哪一种（`linux-backend/backend-elsewhere.ts`）：
+
+- `BackendElsewhere`：WSL 和 SSH 的会话各自实现。路径怎么换算、选目录对话框从哪开、浏览器有没有代理、后端的版本，都由它回答；`AppBackend` 只在按用户的选择创建会话时看一次类型。
+- `files()`：这台电脑能不能按路径打开后端的文件。WSL 能（经 `\\wsl.localhost`），给 `null`；SSH 不能，给一套经 ssh 的读、写、判断目录，和能自己打开那边文件的编辑器（`ssh/ssh-files.ts`）。预览、用默认应用打开、拖入文件、浏览器下载、「用…打开」、「在访达中显示」都只看它。
+- 界面拿到的是 `BackendAccess`（在哪、`filesHere`），选目录、访达、拖入、账号页的说明都按 `filesHere`。
+
+以后经中转连另一台电脑时，再实现一个 `BackendElsewhere`：文件经 core 的 RPC 读写，其余照旧。
+
 ## 连接
 
 - **用系统的 `ssh`**，不自己实现 SSH：用户的 `~/.ssh/config`、ssh-agent、跳板机、known_hosts 都照常生效。「服务器」一栏填的就是 `ssh` 认得的目标（`user@host`，或 config 里的别名）。

@@ -2,22 +2,22 @@ import type { SpawnOptions } from 'node:child_process'
 import { join } from 'node:path'
 import { compareVersions, type CoreEndpoint } from '@antumi/protocol'
 import { antumiPaths, readCoreEndpoint } from '@antumi/protocol/node'
-import type { BackendLocation, BackendLocationState, BackendProblem, RemoteBackend } from '../shared/backend-location'
+import type { BackendAccess, BackendLocation, BackendLocationState, BackendProblem } from '../shared/backend-location'
 import { ensureBackend, replaceOldDaemon } from './backend'
 import { readBackendLocation, writeBackendLocation } from './backend-location'
+import { backendAccess, type BackendElsewhere, type BackendFiles } from './linux-backend/backend-elsewhere'
 import { bundledLinuxBackend, type LinuxArch } from './linux-backend/bundled-archive'
 import type { LinuxBackendArchive } from './linux-backend/linux-backend'
 import { fetchNodeInto } from './linux-backend/managed-node'
 import { nodeSshHost, sshExecutable } from './ssh/ssh-command'
-import { putOnServer, readServerFile, serverIsDirectory, type Dropped, type ServerFile } from './ssh/ssh-files'
 import { SshSession } from './ssh/ssh-session'
 import { listDistros } from './wsl/wsl-distros'
 import { WslSession } from './wsl/wsl-session'
 
 // The backend this app talks to, wherever the user chose to run it: on this machine as ever, in a
 // WSL distro (docs/WSL.md) or on a server over SSH (docs/REMOTE.md), with this machine's as what it
-// falls back to when the chosen one will not start. The rest of main asks here rather than which
-// it is.
+// falls back to when the chosen one will not start. The rest of main asks here what the backend
+// can do (BackendElsewhere), never which kind it is.
 
 export type AppBackendOptions = {
   // The user's choice, beside the app's other preferences.
@@ -40,7 +40,7 @@ export type AppBackendOptions = {
 
 export class AppBackend {
   private chosen: BackendLocation = { kind: 'local' }
-  private session: WslSession | SshSession | null = null
+  private session: BackendElsewhere | null = null
   private problem: BackendProblem | null = null
   private decided: Promise<void> | null = null
   private started: Promise<void> | null = null
@@ -77,7 +77,7 @@ export class AppBackend {
     this.decided ??= (async () => {
       this.chosen = await readBackendLocation(this.options.locationFile)
       const chosen = this.chosen
-      let session: WslSession | SshSession
+      let session: BackendElsewhere
       if (chosen.kind === 'wsl') {
         const archive = await this.archive()
         if (!archive) return
@@ -124,58 +124,39 @@ export class AppBackend {
     this.session?.setBrowserHost(host)
   }
 
-  // Where the backend runs when not on this machine; null when it does.
-  remote(): RemoteBackend | null {
-    if (this.session instanceof WslSession) return { kind: 'wsl', distro: this.session.distro }
-    if (this.session instanceof SshSession) return { kind: 'ssh', host: this.session.destination }
-    return null
+  // Where the backend runs, and whether this machine reaches its files, for the renderer.
+  access(): BackendAccess {
+    return backendAccess(this.session)
   }
 
-  // A path chosen on this machine as core names it; null for one core cannot reach, which on a
-  // server is every one.
+  // A path chosen on this machine as core names it; null for one core cannot reach.
   toBackendPath(path: string): string | null {
-    if (this.session instanceof WslSession) return this.session.linuxPath(path)
-    return this.session ? null : path
+    return this.session ? this.session.toBackendPath(path) : path
   }
 
   // A path core named as this machine opens it; null for one with no spelling here.
   fromBackendPath(path: string): string | null {
-    if (this.session instanceof WslSession) return this.session.windowsPath(path)
-    return this.session ? null : path
+    return this.session ? this.session.fromBackendPath(path) : path
+  }
+
+  // Where a folder dialog opens when the renderer names no place; the system's own choice when
+  // undefined.
+  dialogStart(): string | undefined {
+    return this.session?.dialogStart()
+  }
+
+  // The backend's files where this machine has no path to them, read and put through its way
+  // there; null where it opens them by path (this machine, WSL).
+  files(): BackendFiles | null {
+    return this.session?.files() ?? null
   }
 
   // The proxy the built-in browser goes out through, so a page reaches what the backend's machine
   // does (a dev server on its localhost); null where it goes out from here.
   async browserProxy(): Promise<string | null> {
     await this.decide()
-    const port = this.session instanceof SshSession ? await this.session.socksPort() : null
+    const port = this.session ? await this.session.socksPort() : null
     return port === null ? null : `socks5://127.0.0.1:${port}`
-  }
-
-  // A file of a backend on a server, read over ssh; null when the backend is not on one, and the
-  // path is read here (or through WSL) instead.
-  readServerFile(path: string, maxBytes: number): Promise<ServerFile> | null {
-    const session = this.session
-    return session instanceof SshSession ? readServerFile(session.host, session.destination, path, maxBytes) : null
-  }
-
-  serverIsDirectory(path: string): Promise<boolean | null> | null {
-    const session = this.session
-    return session instanceof SshSession ? serverIsDirectory(session.host, session.destination, path) : null
-  }
-
-  // A file or folder of this machine put on the server, for core to name; null when the backend is
-  // not on one.
-  putOnServer(local: string, area: 'drops' | 'downloads' = 'drops'): Promise<Dropped> | null {
-    const session = this.session
-    const home = session instanceof SshSession ? session.home : null
-    return session instanceof SshSession && home ? putOnServer(session.host, session.destination, home, local, area) : null
-  }
-
-  // Where a folder dialog opens when the renderer names no place: the distro's home, or the
-  // system's own choice.
-  dialogStart(): string | undefined {
-    return this.session instanceof WslSession ? this.session.homeFolder() ?? undefined : undefined
   }
 
   async state(): Promise<BackendLocationState> {
@@ -186,16 +167,16 @@ export class AppBackend {
       wsl,
       ssh: await this.sshSupported(),
       chosen: this.chosen,
-      running: this.remote()?.kind ?? 'local',
+      running: this.session?.where.kind ?? 'local',
       newerBackend: this.newerBackend(),
       distros: listed?.status === 'ok' ? listed.distros.map(({ name, version, isDefault }) => ({ name, version, isDefault })) : wsl ? null : [],
       problem: this.problem
     }
   }
 
-  // The version of a server's backend newer than this app, which the server kept.
+  // The version of a backend newer than this app, which a server several apps reach keeps.
   private newerBackend(): string | null {
-    const version = this.session instanceof SshSession ? this.session.coreVersion() : null
+    const version = this.session?.coreVersion() ?? null
     return version && compareVersions(version, this.options.version) > 0 ? version : null
   }
 

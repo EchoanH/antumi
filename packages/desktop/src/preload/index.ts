@@ -31,7 +31,7 @@ contextBridge.exposeInMainWorld('antumi', {
   localPathForFile: (file: File): string => webUtils.getPathForFile(file),
   putDropped: (path: string): Promise<unknown> => ipcRenderer.invoke('antumi:put-dropped', path),
   backendLocation: (): Promise<unknown> => ipcRenderer.invoke('antumi:backend-location'),
-  backendRemote: (): Promise<unknown> => ipcRenderer.invoke('antumi:backend-remote'),
+  backendAccess: (): Promise<unknown> => ipcRenderer.invoke('antumi:backend-access'),
   setBackendLocation: (location: unknown): Promise<unknown> => ipcRenderer.invoke('antumi:backend-location-set', location),
   openWithApps: (): Promise<unknown> => ipcRenderer.invoke('antumi:open-with-apps'),
   openWith: (path: string, app: string): Promise<unknown> => ipcRenderer.invoke('antumi:open-with', path, app),

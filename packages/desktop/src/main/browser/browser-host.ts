@@ -65,12 +65,12 @@ export type BrowserHost = {
 // remote: when the backend runs on a server (docs/REMOTE.md 内置浏览器), where tabs go out, so a page
 // reaches what that machine does, its localhost included (plugin pages keep this machine's way
 // out), and how a finished download is put there for core to read.
-export type BrowserServer = { proxy: string; mirror: DownloadMirror }
+export type BrowserServer = { proxy: string | null; mirror: DownloadMirror | null }
 
 export async function startBrowserHost(slot: WindowSlot, hostFile: string, confirmLeave: () => boolean, remote: BrowserServer | null = null): Promise<BrowserHost> {
   const tabSession = session.fromPartition(PARTITION)
   // Chromium sends loopback addresses past any proxy unless told not to.
-  if (remote) await tabSession.setProxy({ proxyRules: remote.proxy, proxyBypassRules: '<-loopback>' })
+  if (remote?.proxy) await tabSession.setProxy({ proxyRules: remote.proxy, proxyBypassRules: '<-loopback>' })
   siteUserAgents(tabSession)
   const views = new Map<string, WebContentsView>()
   const captures = new Map<string, BrowserCapture>()
