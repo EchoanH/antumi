@@ -118,6 +118,31 @@ describe('tunnel helper', () => {
     expect(JSON.parse(await readFile(endpointFile, 'utf8'))).toMatchObject({ pid: 4343 })
   })
 
+  it('hands the file to the app before it when the last one leaves, as two computers share a server', async () => {
+    const endpointFile = path.join(dir, 'browser', 'host.json')
+    const alive = new Set([1001, 1002])
+    const start = async (pid: number, token: string) => {
+      const { helper, app } = stdio()
+      const starting = startTunnelHelper({ ...helper, pid, alive: (each) => alive.has(each) })
+      const link = await connectTunnelHelper({ ...app, appPort: 1, config: { listen: { endpointFile, endpoint: { token } } } })
+      return { link, running: await starting }
+    }
+    const office = await start(1001, 'office')
+    // Apart in time, so the newer entry is the newer one by its file's time too.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    const home = await start(1002, 'home')
+    expect(JSON.parse(await readFile(endpointFile, 'utf8'))).toMatchObject({ token: 'home', pid: 1002 })
+
+    home.link.close()
+    await home.running.stopped
+    alive.delete(1002)
+    expect(JSON.parse(await readFile(endpointFile, 'utf8'))).toMatchObject({ token: 'office', pid: 1001 })
+
+    office.link.close()
+    await office.running.stopped
+    expect(await exists(endpointFile)).toBe(false)
+  })
+
   it('stops on request and tells the app', async () => {
     const { helper, app } = stdio()
     const starting = startTunnelHelper(helper)

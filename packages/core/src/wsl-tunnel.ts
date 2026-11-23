@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { Readable, Writable } from 'node:stream'
 // Relative, not '@antumi/protocol/node': the helper is bundled alone, and the package index would
@@ -49,9 +49,21 @@ export function parseTunnelHelperConfig(text: string): TunnelHelperConfig {
   return config
 }
 
+// Whether a process still exists: only ESRCH says it does not (EPERM is one of someone else's).
+function running(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return !(error instanceof Error && 'code' in error && error.code === 'ESRCH')
+  }
+}
+
 // Throws on a config it cannot read or a file it cannot write; nothing has reached stdout then.
-export async function startTunnelHelper(options: { stdin: Readable; stdout: Writable; pid?: number }): Promise<TunnelHelper> {
+// `alive` says whether another helper's process still runs; tests stand theirs in.
+export async function startTunnelHelper(options: { stdin: Readable; stdout: Writable; pid?: number; alive?: (pid: number) => boolean }): Promise<TunnelHelper> {
   const pid = options.pid ?? process.pid
+  const alive = options.alive ?? running
   const { line, rest } = await readFirstLine(options.stdin, { maxBytes: 64 * 1024 })
   const config = parseTunnelHelperConfig(line)
   const server = config.listen ? await listenLoopback(0) : null
@@ -73,13 +85,12 @@ export async function startTunnelHelper(options: { stdin: Readable; stdout: Writ
 
   const stopped = tunnel.closed.then(async (reason) => {
     server?.close()
-    if (endpointFile) await removeOwnEndpoint(endpointFile, pid).catch(() => {})
+    if (endpointFile) await withdrawEndpoint(endpointFile, pid, alive).catch(() => {})
     return reason
   })
   if (endpointFile && port !== null) {
     try {
-      await mkdir(path.dirname(endpointFile), { recursive: true, mode: 0o700 })
-      await writePrivateJson(endpointFile, { ...config.listen?.endpoint, port, pid })
+      await publishEndpoint(endpointFile, pid, { ...config.listen?.endpoint, port, pid })
     } catch (error) {
       tunnel.close()
       await stopped
@@ -96,15 +107,46 @@ export async function startTunnelHelper(options: { stdin: Readable; stdout: Writ
   }
 }
 
-// A successor helper may already have replaced the file; only the one that wrote it removes it.
-async function removeOwnEndpoint(file: string, pid: number): Promise<void> {
-  let current: unknown
+// Several apps may reach one backend: a server two computers use (docs/REMOTE.md). Each helper
+// keeps its endpoint in hosts/<pid>.json beside the file, and the file names the newest one: core
+// uses the app that came last, and the one before when that one leaves.
+const registryOf = (file: string) => path.join(path.dirname(file), 'hosts')
+
+async function publishEndpoint(file: string, pid: number, endpoint: Record<string, unknown>): Promise<void> {
+  await mkdir(registryOf(file), { recursive: true, mode: 0o700 })
+  await writePrivateJson(path.join(registryOf(file), `${pid}.json`), endpoint)
+  await writePrivateJson(file, endpoint)
+}
+
+async function readJson(file: string): Promise<unknown> {
   try {
-    current = JSON.parse(await readFile(file, 'utf8'))
+    return JSON.parse(await readFile(file, 'utf8'))
   } catch {
-    return
+    return null
   }
-  if (isObject(current) && current.pid === pid) await rm(file, { force: true })
+}
+
+// Takes this helper's entry away; the file, if still this helper's, then names the newest helper
+// still running, or goes. One a successor has taken is left as it is.
+async function withdrawEndpoint(file: string, pid: number, alive: (pid: number) => boolean): Promise<void> {
+  const registry = registryOf(file)
+  await rm(path.join(registry, `${pid}.json`), { force: true })
+  const current = await readJson(file)
+  if (!isObject(current) || current.pid !== pid) return
+  let newest: { endpoint: Record<string, unknown>; at: number } | null = null
+  for (const name of await readdir(registry).catch(() => [])) {
+    const entry = path.join(registry, name)
+    const endpoint = await readJson(entry)
+    if (!isObject(endpoint) || typeof endpoint.pid !== 'number' || !alive(endpoint.pid)) {
+      // What a helper that was killed left behind.
+      await rm(entry, { force: true })
+      continue
+    }
+    const at = (await stat(entry).catch(() => null))?.mtimeMs ?? 0
+    if (!newest || at > newest.at) newest = { endpoint, at }
+  }
+  if (newest) await writePrivateJson(file, newest.endpoint)
+  else await rm(file, { force: true })
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
