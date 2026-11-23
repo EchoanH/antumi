@@ -145,14 +145,14 @@ describe('plugin installation and activation', () => {
     return fetch
   }
 
-  it('lists four GitHub recommendations and makes no downloads or installations at startup', async () => {
+  it('lists five GitHub recommendations and makes no downloads or installations at startup', async () => {
     const fetch = vi.fn(() => { throw new Error('No startup downloads') })
     vi.stubGlobal('fetch', fetch)
     await plugins.close()
     plugins = createService(app.version)
     await plugins.load()
     expect(plugins.recommended().map((entry) => ({ repository: entry.repository, tagPrefix: entry.tagPrefix }))).toEqual(
-      ['github', 'jira', 'linear', 'zentao'].map((slug) => ({ repository: 'flyhero/antumi-plugins', tagPrefix: `${slug}-v` }))
+      ['github', 'jira', 'linear', 'zentao', 'meegle'].map((slug) => ({ repository: 'flyhero/antumi-plugins', tagPrefix: `${slug}-v` }))
     )
     expect(plugins.list()).toEqual([])
     expect(fetch).not.toHaveBeenCalled()

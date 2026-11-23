@@ -42,5 +42,13 @@
       "flyhero/antumi-plugin-zentao"
     ],
     "tagPrefix": "zentao-v"
+  },
+  {
+    "id": "antumi.meegle",
+    "name": "飞书项目 / Meegle",
+    "description": "用 MCP Token 同步飞书项目或 Meegle 空间的工作项，按 MQL 条件筛选。",
+    "descriptionEn": "Sync Feishu Project or Meegle work items with an MCP token, filtered by MQL.",
+    "repository": "flyhero/antumi-plugins",
+    "tagPrefix": "meegle-v"
   }
 ]
