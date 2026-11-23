@@ -3,7 +3,7 @@ import { useSyncExternalStore, type MouseEventHandler, type ReactNode } from 're
 import { isDarkTheme, onThemeChange } from '../appearance'
 import { isHeldPaste, mentionLabel } from '../chat-mentions'
 import { shortLink } from '../text-links'
-import { selectConversation, useCore } from '../core-store'
+import { selectConversation, selectSquad, useCore } from '../core-store'
 import { revealFile } from '../desktop-bridge'
 import { showChatFile } from '../file-actions'
 import { t } from '../i18n'
@@ -11,7 +11,7 @@ import { useChatFiles } from './ChatContextMenu'
 import { openAgentProfile } from './AgentProfiles'
 import { AgentAvatar } from './AgentAvatar'
 import { FileTypeIcon } from './FileTypeIcon'
-import { AgentIcon, ChatIcon, FolderIcon, GlobeIcon } from './icons'
+import { AgentIcon, ChatIcon, FolderIcon, GlobeIcon, SquadIcon } from './icons'
 import './chat-reference.css'
 
 // The icon the mention menu showed for it: an agent's own mark, a file's type.
@@ -19,6 +19,7 @@ export function ReferenceIcon({ target }: { target: ChatReferenceTarget }) {
   const agent = useCore((state) => target.kind === 'agent' ? state.agentProfiles[target.id]?.agent ?? null : null)
   const dark = useSyncExternalStore(onThemeChange, isDarkTheme, () => false)
   if (target.kind === 'conversation') return <ChatIcon />
+  if (target.kind === 'squad') return <SquadIcon />
   // A saved agent's face; one no longer saved keeps the plain agent mark.
   if (target.kind === 'agent') return agent ? <AgentAvatar id={target.id} /> : <AgentIcon agent={null} />
   if (target.kind === 'project') return <FolderIcon />
@@ -36,7 +37,7 @@ export function ReferenceMark({ target, children, title, disabled, onClick, onMo
 }) {
   const label = children ?? mentionLabel(target)
   const content = <><span className="chat-reference-icon" aria-hidden="true"><ReferenceIcon target={target} /></span><span className="chat-reference-name">{label}</span></>
-  const hint = title ?? (target.kind === 'conversation' ? target.title : target.kind === 'agent' ? target.name : isHeldPaste(target) ? mentionLabel(target) : target.path)
+  const hint = title ?? (target.kind === 'conversation' ? target.title : target.kind === 'agent' || target.kind === 'squad' ? target.name : isHeldPaste(target) ? mentionLabel(target) : target.path)
   return onClick ? <button type="button" className="chat-reference" data-reference-kind={target.kind}
     data-file-path={target.kind === 'file' || target.kind === 'directory' || target.kind === 'project' ? target.path : undefined}
     data-conversation-id={target.kind === 'conversation' ? target.id : undefined}
@@ -53,6 +54,7 @@ export function useOpenReference(): (target: ChatReferenceTarget) => void {
     if (target.kind === 'conversation') {
       if (useCore.getState().conversations[target.id]) selectConversation(target.id)
     }
+    else if (target.kind === 'squad') selectSquad(target.id)
     else if (target.kind === 'agent') openAgentProfile(target.id)
     else if (target.kind === 'file' && scope) void showChatFile(scope, { path: target.path, line: null })
     else void revealFile([target.path])
@@ -61,7 +63,7 @@ export function useOpenReference(): (target: ChatReferenceTarget) => void {
 
 export function ChatReferenceLink({ target, children }: { target: ChatReferenceTarget; children?: ReactNode }) {
   const open = useOpenReference()
-  const available = useCore((state) => target.kind === 'conversation' ? Boolean(state.conversations[target.id]) : target.kind === 'agent' ? Boolean(state.agentProfiles[target.id]) : true)
+  const available = useCore((state) => target.kind === 'conversation' ? Boolean(state.conversations[target.id]) : target.kind === 'agent' ? Boolean(state.agentProfiles[target.id]) : target.kind === 'squad' ? Boolean(state.squads[target.id]) : true)
   return <ReferenceMark target={target} disabled={!available} title={target.kind === 'conversation' && !available ? t('ConversationReference.unavailable') : undefined} onClick={() => open(target)}>{children}</ReferenceMark>
 }
 

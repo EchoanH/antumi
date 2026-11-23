@@ -8,6 +8,7 @@ import {
   MAX_ATTACHMENT_BYTES,
   MAX_CHANNEL_IMAGES,
   agentDescriptor,
+  allowsChannels,
   channelPlatform,
   type AgentKind,
   type AgentProfile,
@@ -187,7 +188,7 @@ export class ChannelService {
     if (existing && (existing.profileId !== fields.profileId || existing.platform !== fields.platform)) throw new Rejection('invalid-params', 'a channel keeps its agent and its platform')
     const profile = this.options.profile(fields.profileId)
     if (!profile || profile.archivedAt != null) throw new Rejection('agent-profile-not-found', 'the agent is gone')
-    if (profile.audience !== 'channels') throw new Rejection('profile-not-for-channels', 'the agent is not set to answer from chat platforms')
+    if (!allowsChannels(profile)) throw new Rejection('profile-not-for-channels', 'the agent is not set to answer from chat platforms')
     if (!agentDescriptor(profile.agent).capabilities.lockdown) throw new Rejection('agent-no-lockdown', `${agentDescriptor(profile.agent).label} cannot answer from a chat platform`)
     // One it already reads stays though it has fallen out of the recent list, or every later save would fail.
     const recent = new Set([...this.options.recentProjects(), ...(existing?.projectPaths ?? [])])
@@ -504,7 +505,7 @@ export class ChannelService {
       const created = await conversations.create(profile.agent, [], false, {
         deferStart: true, title, modelProvider: profile.modelProvider ?? undefined, model: profile.model ?? undefined, effort: profile.effort ?? undefined,
         // As the agent is, without what it would bring from the user's side.
-        profile: { ...profile, capability: 'readOnly', skills: [], mcpServers: [], callableProfiles: [], delegationMode: null },
+        profile: { ...profile, capability: 'readOnly', skills: [], mcpServers: [], callableProfiles: [], callableSquads: [], delegationMode: null },
         channel: { channelId: channel.id, platform: channel.platform, asker: queued.asker, place: queued.place }
       })
       conversationId = created.id

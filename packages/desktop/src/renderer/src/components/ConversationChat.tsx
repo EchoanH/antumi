@@ -1,3 +1,5 @@
+import { TeamCallCard } from './TeamCalls'
+import { useTeamCalls } from '../team-calls'
 import { getLocale, t, tr } from '../i18n'
 import { HelperTurnCost } from './HelperTurnCost'
 import { addQuote } from '../chat-quotes'
@@ -22,7 +24,7 @@ import { usePreferences } from '../preferences'
 import { ChatDock } from './ChatDock'
 import { AgentDelegationResult } from './AgentDelegation'
 import { isAgentCallResult, useAgentCalls, useAgentCallsSupported } from '../agent-calls'
-import { withDelegations } from '../delegation-timeline'
+import { withDelegations, withTeamDelegations } from '../delegation-timeline'
 import { ChatDelegationGroup } from './ChatDelegationGroup'
 import { ProjectRunNotice } from './ProjectRunNotice'
 import { ChatImageStrip } from './ChatImages'
@@ -582,6 +584,7 @@ function ActivityBlock({ next, ...props }: Parameters<typeof Block>[0] & { next:
 function Block({ conversationId, block, task, replies, fresh }: { conversationId: string; block: ChatBlock; task: boolean; replies: ReadonlyMap<string, number>; fresh?: boolean }) {
   const compact = useContext(ChatVariant) === 'compact'
   const entering = fresh || undefined
+  if (block.kind === 'teamDelegation') return <div className="chat-entry" data-entry-key={block.key}>{block.calls.map((call) => <TeamCallCard key={call.id} call={call} />)}</div>
   if (block.kind === 'delegation') return <div className="chat-entry" data-entry-key={block.key}><ChatDelegationGroup calls={block.calls} fresh={fresh} /></div>
   if (compact && block.kind === 'changes') return null
   if (block.kind === 'browser') return <ChatCopyRegion text={block.tools.map(copyTextForItem).join('\n\n')}><div className="chat-entry" data-fresh={entering}><ChatBrowserRun tools={block.tools} /></div></ChatCopyRegion>
@@ -693,10 +696,12 @@ export function ConversationChat({ conversation, surface, onHandoff, variant = '
   const foldTurns = usePreferences((s) => s.foldTurns)
   const delegationSupported = useAgentCallsSupported(conversation)
   const { calls } = useAgentCalls(delegationSupported ? id : null)
+  const { calls: teamCalls } = useTeamCalls(id)
   const blocks = useMemo(() => {
     const grouped = chatBlocks(entries, { foldTurns: variant === 'compact' || foldTurns })
-    return page && calls?.length ? withDelegations(grouped, calls, Boolean(page.before)) : grouped
-  }, [entries, foldTurns, variant, calls, page?.before, Boolean(page), getLocale()])
+    const agents = page && calls?.length ? withDelegations(grouped, calls, Boolean(page.before)) : grouped
+    return page && teamCalls?.length ? withTeamDelegations(agents, teamCalls, Boolean(page.before)) : agents
+  }, [entries, foldTurns, variant, calls, teamCalls, page?.before, Boolean(page), getLocale()])
   for (const key of freshKeys(seen.current, blocks.map((block) => block.key), olderLoaded.current)) entered.current.add(key)
   useEffect(() => {
     if (!page) return

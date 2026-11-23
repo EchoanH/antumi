@@ -48,7 +48,7 @@ export async function committedHead(source: string): Promise<string> {
   } catch (error) {
     throw new Rejection('delegation-dirty', `读不到 ${source} 的 Git 状态：${error instanceof Error ? error.message : String(error)}`)
   }
-  if (changes > 0) throw new Rejection('delegation-dirty', `${source} 有 ${changes} 个未提交的改动（含未跟踪文件），先提交再派 worktree 委派，或改用 shared`)
+  if (changes > 0) throw new Rejection('delegation-dirty', `${source} 有 ${changes} 个未提交的改动（含未跟踪文件），请先提交，再创建独立工作区委派`)
   return head
 }
 

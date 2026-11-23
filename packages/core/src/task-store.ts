@@ -446,7 +446,11 @@ export const MIGRATIONS = [
   `ALTER TABLE discussion_members ADD COLUMN model_provider TEXT;`,
   // Keep the origin and deduplication with the task, beyond the channel record's retention.
   `ALTER TABLE tasks ADD COLUMN channel_source TEXT;
-   CREATE UNIQUE INDEX tasks_channel_message ON tasks(json_extract(channel_source, '$.channelId'), json_extract(channel_source, '$.tenant'), json_extract(channel_source, '$.place'), json_extract(channel_source, '$.messageId')) WHERE channel_source IS NOT NULL;`
+   CREATE UNIQUE INDEX tasks_channel_message ON tasks(json_extract(channel_source, '$.channelId'), json_extract(channel_source, '$.tenant'), json_extract(channel_source, '$.place'), json_extract(channel_source, '$.messageId')) WHERE channel_source IS NOT NULL;`,
+  `CREATE TABLE squad_calls (id TEXT PRIMARY KEY, parent_id TEXT NOT NULL, ref TEXT NOT NULL,
+     task_id TEXT NOT NULL UNIQUE, data TEXT NOT NULL, UNIQUE(parent_id, ref));
+   CREATE TABLE delegation_deliveries (id TEXT PRIMARY KEY, parent_id TEXT NOT NULL, data TEXT NOT NULL, sent INTEGER NOT NULL DEFAULT 0);
+   CREATE INDEX delegation_deliveries_parent ON delegation_deliveries(parent_id, sent);`
 ]
 
 
@@ -569,6 +573,9 @@ function groupBy<T extends { taskId: string }>(rows: T[]): Map<string, T[]> {
   rows.forEach((row) => groups.set(row.taskId, [...(groups.get(row.taskId) ?? []), row]))
   return groups
 }
+
+// A source writes its linkage in the task transaction, using the same connection.
+export type TaskCreationLink = { id: string; write(db: DatabaseSync): void }
 
 export class TaskStore {
   private readonly db: DatabaseSync
@@ -714,16 +721,17 @@ export class TaskStore {
     return this.many(`${SELECT} WHERE json_extract(channel_source, '$.channelId') = ? AND json_extract(channel_source, '$.tenant') = ? AND json_extract(channel_source, '$.place') = ? AND json_extract(channel_source, '$.messageId') = ?`, source.channelId, source.tenant, source.place, source.messageId)[0] ?? null
   }
 
-  create(title: string, initial: Pick<TaskPatch, 'details' | 'repos' | 'channelSource'> = {}): Task {
-    const id = randomUUID()
+  create(title: string, initial: Pick<TaskPatch, 'details' | 'repos' | 'channelSource' | 'images' | 'agent' | 'squadId'> = {}, link?: TaskCreationLink): Task {
+    const id = link?.id ?? randomUUID()
     const at = this.now()
     this.transaction(() => {
-      this.db.prepare(`INSERT INTO tasks (id, title, details, channel_source, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, 'pending', ?, ?)`).run(id, title, initial.details ?? '', initial.channelSource ? JSON.stringify(initial.channelSource) : null, at, at)
+      this.db.prepare(`INSERT INTO tasks (id, title, details, channel_source, status, created_at, updated_at, agent, squad_id, images)
+        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)`).run(id, title, initial.details ?? '', initial.channelSource ? JSON.stringify(initial.channelSource) : null, at, at, initial.agent ?? null, initial.squadId ?? null, JSON.stringify(initial.images ?? []))
       for (const [position, repo] of (initial.repos ?? []).entries()) {
-        this.db.prepare('INSERT INTO task_repos (task_id, position, path, worktree_path, branch, start_ref) VALUES (?, ?, ?, ?, ?, ?)')
-          .run(id, position, repo.path, repo.worktreePath, repo.branch, repo.startRef)
+        this.db.prepare('INSERT INTO task_repos (task_id, position, path, worktree_path, branch, start_ref, is_reference) VALUES (?, ?, ?, ?, ?, ?, ?)')
+          .run(id, position, repo.path, repo.worktreePath, repo.branch, repo.startRef, repo.reference ? 1 : 0)
       }
+      link?.write(this.db)
     })
     return this.require(id)
   }

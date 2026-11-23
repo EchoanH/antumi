@@ -177,7 +177,8 @@ export async function prepareWorkspace(
   task: Pick<Task, 'id' | 'title' | 'repos' | 'source'> & Partial<Pick<Task, 'slug'>>,
   dependencies: readonly Pick<Task, 'repos'>[],
   worktreesRoot: string,
-  at = Date.now()
+  at = Date.now(),
+  pinnedStarts: ReadonlyMap<string, string> = new Map()
 ): Promise<Workspace> {
   const shortId = shortTaskId(task.id)
   // An issue key in the branch name is how Jira links the branch to the issue.
@@ -231,7 +232,8 @@ export async function prepareWorkspace(
         if (await branchExists(topLevel, repoBranch)) {
           await addWorktree(topLevel, worktreePath, [worktreePath, repoBranch])
         } else {
-          const resolved = await resolveStart(topLevel, startRef, base, at)
+          const pinned = pinnedStarts.get(repo.path)
+          const resolved = pinned ? { commit: pinned, start: { ref: 'HEAD', commit: pinned, note: null, at } } : await resolveStart(topLevel, startRef, base, at)
           // --no-track: the branch is the task's own, not a copy of the one it started from.
           await addWorktree(topLevel, worktreePath, ['--no-track', '-b', repoBranch, worktreePath, resolved.commit])
           start = resolved.start

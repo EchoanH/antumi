@@ -1,3 +1,4 @@
+import type { TaskCreationLink } from './task-store'
 import type { AgentProfile } from '@antumi/protocol'
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
@@ -156,6 +157,15 @@ export class TaskService {
     const repo = this.get(id).repos.find((each) => each.path === repoPath)
     if (!repo) throw new Rejection('repo-not-found', `${repoPath} is not one of the task's repos`)
     return fileDiff(repo, file)
+  }
+
+  private workspaceStarts: (taskId: string) => ReadonlyMap<string, string> = () => new Map()
+  setWorkspaceStarts(starts: (taskId: string) => ReadonlyMap<string, string>): void { this.workspaceStarts = starts }
+  async createLinkedTask(fields: Pick<Task, 'title' | 'details' | 'repos' | 'agent' | 'squadId'> & { images?: string[] }, link: TaskCreationLink): Promise<Task> {
+    const images = await this.resolveImages((fields.images ?? []).map((id) => ({ id, name: 'image' })))
+    const task = this.store.create(fields.title, { ...fields, images }, link)
+    this.projects.remember(fields.repos.map((repo) => repo.path))
+    return this.named(this.changed(task))
   }
 
   create({ title, details, repos, dependsOn, agent, squadId }: RpcParsedParams<'tasks.create'>): Task {
@@ -539,7 +549,7 @@ export class TaskService {
       }
       checkDependenciesNow()
       // The worktrees are kept before the agent starts, so a failed start is retried in the same trees.
-      const workspace = await prepareWorkspace(await this.withSlug(task), dependencies, this.worktreesRoot)
+      const workspace = await prepareWorkspace(await this.withSlug(task), dependencies, this.worktreesRoot, Date.now(), this.workspaceStarts(task.id))
       checkDependenciesNow()
       this.store.update(task.id, { repos: workspace.repos })
       const conversation = await chats.startForTask({ id: task.id, title: task.title, agent }, {
@@ -634,7 +644,7 @@ export class TaskService {
         return kept()
       }
       const setups = await this.trustedSetups(task)
-      const workspace = await prepareWorkspace(await this.withSlug(task), dependencies, this.worktreesRoot)
+      const workspace = await prepareWorkspace(await this.withSlug(task), dependencies, this.worktreesRoot, Date.now(), this.workspaceStarts(task.id))
       this.store.update(task.id, { repos: workspace.repos })
       const conversation = await chats.startForTask({ id: task.id, title: task.title, agent }, {
         cwd: workspace.cwd, extraDirs: workspace.extraDirs, referenceDirs: workspace.referenceDirs, planOnly: false, session: 'resume', readable: images.readable, allowBypass, handoffNote, ...choice

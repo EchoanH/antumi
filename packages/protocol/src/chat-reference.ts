@@ -6,7 +6,8 @@ export const ChatReferenceTarget = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('directory'), path: z.string(), relative: z.string().nullable() }),
   z.object({ kind: z.literal('project'), path: z.string(), relative: z.string().nullable() }),
   z.object({ kind: z.literal('conversation'), id: z.string().uuid(), title: z.string() }),
-  z.object({ kind: z.literal('agent'), id: z.string().uuid(), name: z.string() })
+  z.object({ kind: z.literal('agent'), id: z.string().uuid(), name: z.string() }),
+  z.object({ kind: z.literal('squad'), id: z.string().uuid(), name: z.string() })
 ])
 export type ChatReferenceTarget = z.infer<typeof ChatReferenceTarget>
 

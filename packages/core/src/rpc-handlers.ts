@@ -1,3 +1,4 @@
+import type { SquadCallService } from './squad-call-service'
 import { homedir } from 'node:os'
 import type { AgentProfileService } from './agent-profile-service'
 import type { AgentCliMaintenance } from './agent-cli-maintenance'
@@ -123,13 +124,14 @@ export function createRpcHandlers(
   pullRequestStore?: { store: PullRequestStore; changed: (taskId: string, links: PullRequestLink[]) => void; ready?: (service: PullRequestService) => void },
   browserSites?: BrowserSiteStore,
   mobile?: MobileService,
-  channels?: ChannelService
+  channels?: ChannelService,
+  squadCalls?: SquadCallService
 ): RpcHandlers {
   const mobileService = (): MobileService => {
     if (!mobile) throw new Rejection('mobile-unavailable')
     return mobile
   }
-  const hello = () => ({ protocolVersion: PROTOCOL_VERSION, serverVersion: packageJson.version, home: { path: homedir(), windows: process.platform === 'win32' }, features: CORE_FEATURES.filter((feature) => (feature !== 'agent-profiles' || Boolean(profiles)) && (feature !== 'project-star' || Boolean(projectStar)) && (feature !== 'bookmarks' || Boolean(bookmarks)) && (feature !== 'browser-history' || Boolean(browserHistory)) && (feature !== 'browser-sites' || Boolean(browserSites)) && (feature !== 'pets' || Boolean(pets)) && (feature !== 'squads' || Boolean(squads)) && (!['plugins', 'plugin-recommendations', 'plugin-packages', 'plugin-pages'].includes(feature) || Boolean(plugins)) && (!['skills-library', 'skills-search', 'skills-activation'].includes(feature) || Boolean(skills)) && (feature !== 'mcp-servers' || Boolean(mcpServers)) && (feature !== 'small-model-stats' || Boolean(smallModels)) && (!['model-providers', 'model-provider-models'].includes(feature) || Boolean(modelProviders)) && (feature !== 'agent-accounts' || Boolean(accounts)) && (feature !== 'pull-requests' || Boolean(pullRequests)) && (feature !== 'mobile' || Boolean(mobile)) && (!['channels', 'channel-readiness', 'channel-tasks'].includes(feature) || Boolean(channels)) && (feature !== 'attachment-sweep' || Boolean(attachments.sweeper))) })
+  const hello = () => ({ protocolVersion: PROTOCOL_VERSION, serverVersion: packageJson.version, home: { path: homedir(), windows: process.platform === 'win32' }, features: CORE_FEATURES.filter((feature) => (feature !== 'agent-profiles' || Boolean(profiles)) && (feature !== 'project-star' || Boolean(projectStar)) && (feature !== 'bookmarks' || Boolean(bookmarks)) && (feature !== 'browser-history' || Boolean(browserHistory)) && (feature !== 'browser-sites' || Boolean(browserSites)) && (feature !== 'pets' || Boolean(pets)) && (feature !== 'squads' || Boolean(squads)) && (feature !== 'squad-calls' || Boolean(squadCalls)) && (!['plugins', 'plugin-recommendations', 'plugin-packages', 'plugin-pages'].includes(feature) || Boolean(plugins)) && (!['skills-library', 'skills-search', 'skills-activation'].includes(feature) || Boolean(skills)) && (feature !== 'mcp-servers' || Boolean(mcpServers)) && (feature !== 'small-model-stats' || Boolean(smallModels)) && (!['model-providers', 'model-provider-models'].includes(feature) || Boolean(modelProviders)) && (feature !== 'agent-accounts' || Boolean(accounts)) && (feature !== 'pull-requests' || Boolean(pullRequests)) && (feature !== 'mobile' || Boolean(mobile)) && (!['channels', 'channel-readiness', 'channel-tasks'].includes(feature) || Boolean(channels)) && (feature !== 'attachment-sweep' || Boolean(attachments.sweeper))) })
   const channelService = (): ChannelService => {
     if (!channels) throw new Rejection('channels-unavailable')
     return channels
@@ -145,6 +147,7 @@ export function createRpcHandlers(
     const recent = new Set(projects.recent())
     if (!paths.every((each) => recent.has(each))) throw new Rejection('mobile-project-not-recent', 'pick a recent project')
   }
+  const teamCalls = () => { if (!squadCalls) throw new Rejection('squad-calls-unavailable'); return squadCalls }
   const profileService = () => {
     if (!profiles) throw new Rejection('profile-unavailable')
     return profiles
@@ -332,6 +335,10 @@ export function createRpcHandlers(
     'agentCalls.cancel': ({ id, callId }) => profileService().cancel(id, callId),
     'agentCalls.resumeCheck': ({ id, callId }) => profileService().resumeCheck(id, callId),
     'agentCalls.resume': ({ id, callId, note }) => profileService().resume(id, callId, note),
+    'squadCalls.targets': ({ id }) => teamCalls().targets(id),
+    'squadCalls.dispatch': ({ id, squadId, instruction, ref, images }) => teamCalls().dispatch(id, squadId, instruction, ref, images),
+    'squadCalls.list': ({ id, read }) => teamCalls().list(id, read),
+    'squadCalls.cancel': ({ id, callId }) => teamCalls().cancel(id, callId),
     'squads.list': () => squadService().list(),
     'squads.create': (fields) => squadService().create(fields),
     'squads.update': ({ id, ...fields }) => squadService().update(id, fields),

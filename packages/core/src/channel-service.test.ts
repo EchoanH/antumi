@@ -201,6 +201,21 @@ describe('ChannelService', () => {
     expect(conversations.list(true, true, true)).toEqual([])
   })
 
+  it('keeps a dual-entry developer restricted on the channel and leaves its local settings intact', async () => {
+    const both = AgentProfile.parse({ ...profile, audience: 'both', capability: 'develop', delegationMode: 'bypass',
+      skills: [{ repo: 'local', skill: 'dangerous' }], mcpServers: ['local-only'], callableProfiles: [profile.id], callableSquads: [profile.id] })
+    profiles = [both]
+    await channels.save({ ...channel })
+    await ask()
+    const request = channels.requests(channel.id, null, 10).items[0]!
+    const conversation = conversations.get(request.conversationId!)
+    expect(conversation).toMatchObject({ workspaceReadOnly: true, projectPaths: [], profile: { capability: 'readOnly', delegationMode: null, skills: [], mcpServers: [], callableProfiles: [], callableSquads: [] } })
+    expect(profiles[0]).toEqual(both)
+    const command = daemon.spawns[0]!
+    expect(command.args).toContain('--restricted')
+    expect(command.args[command.args.indexOf('--tools') + 1]).toBe('')
+  })
+
   it('takes an event once, however often it is delivered', async () => {
     const asked = await ask()
     fromGateway({ type: 'event', ...asked })

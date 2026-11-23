@@ -6,7 +6,9 @@
 
 不引入新的实体。智能体提供「是谁」（名称、工作指令、模型）；接入（代码里叫 channel）提供「在哪、谁能问、能看什么」。
 
-一个智能体要么自己用，要么接到聊天平台，二选一（`AgentProfile.audience`：`user` 或 `channels`）。接到聊天平台的智能体是锁死运行的，技能、MCP、可调用的智能体对它都不起作用，所以配置页在选了「接到聊天平台」后不显示这三项，core 保存时也把它们清空、能力固定为只读；它不能用来开会话、接受委派或放进团队（`AgentProfileService.get` 抛 `profile-for-channels`）。反过来，「我自己用」的智能体不能添加接入（`profile-not-for-channels`）。这样不会出现配了却没用上的设置。有接入的智能体改回自己用之前，要先移除接入；不带 `audience` 的旧客户端保存它时同样被拒，不会把它从平台上摘下来。
+智能体的两个入口可独立开启（`AgentProfile.audience`：`user`、`channels` 或 `both`），至少启用一个。`both` 在本地会话、委派和团队中使用同一份身份、模型和工作指令，也能绑定聊天平台。仅 `channels` 的智能体不出现在本地入口；仅 `user` 的智能体不能添加接入。已有配置保留原用途，升级不自动开放另一个入口。
+
+本地能力始终保存在角色配置里，切换入口不清空技能、MCP、开发能力和调用名单。`ChannelService` 在创建渠道会话时另生成受限快照：只读，技能和用户 MCP 为空，`callableProfiles` 与 `callableSquads` 为空，不能继续委派。执行限制由 `Conversation.channel`、外部智能体的 lockdown 和限定连接共同决定，与角色是否也在本地使用无关。两个入口不共享会话历史。有接入时不能关闭渠道入口、归档或改成不能 lockdown 的外部智能体；须先移除接入。
 
 哪些外部智能体能接由它的 descriptor 说了算（`capabilities.lockdown`，见「外部会话」），目前有 Claude Code、Codex（CLI 0.160.1 起）和 Pi（CLI 1.3.0 起）。
 

@@ -1,3 +1,4 @@
+import { teamToolsOverCore } from './mcp-team-tools'
 import { agentToolsOverCore } from './mcp-agent-tools'
 import { bookmarkToolsOverCore } from './mcp-bookmark-tools'
 import { squadToolsOverCore, type SquadTools } from './mcp-squad-tools'
@@ -8,7 +9,7 @@ import readline from 'node:readline'
 import { readFile, stat } from 'node:fs/promises'
 import { extname, isAbsolute } from 'node:path'
 import { z } from 'zod'
-import { connectRpc, coreUrl, imageMarker, isPreviewImage, PREVIEW_EXTENSIONS, PREVIEW_FILES_MAX, PREVIEW_LAYOUTS, previewLayout, PreviewInput, SHOW_PREVIEW_TOOL, type ChatImage, type Conversation, type PreviewLayout, type RpcConnection } from '@antumi/protocol'
+import { connectRpc, coreUrl, canDelegate, imageMarker, isPreviewImage, PREVIEW_EXTENSIONS, PREVIEW_FILES_MAX, PREVIEW_LAYOUTS, previewLayout, PreviewInput, SHOW_PREVIEW_TOOL, type ChatImage, type Conversation, type PreviewLayout, type RpcConnection } from '@antumi/protocol'
 import { readCoreEndpoint, antumiPaths } from '@antumi/protocol/node'
 import { AttachmentStore } from './attachment-store'
 import { BROWSER_ARGUMENTS, BROWSER_TOOL_SPECS, browserToolsOverCore, type BrowserTools, type ToolOutcome } from './mcp-browser-tools'
@@ -88,6 +89,7 @@ export type McpTools = {
   terminal?: TerminalTools
   // The user's conversations, tasks and group chats, read-only; there unless turned off.
   history?: HistoryTools
+  teams?: ReturnType<typeof teamToolsOverCore>
   agents?: ReturnType<typeof agentToolsOverCore>
   squad?: SquadTools
   management?: Awaited<ReturnType<typeof managementToolsOverCore>>
@@ -123,7 +125,7 @@ const describe = (error: unknown) => (error instanceof Error ? error.message : S
 // arguments are the model's to fix, so they come back as a tool error it can read.
 type ToolEntry = { spec: object & { name: string }; run(args: Record<string, unknown>): Promise<McpResult> }
 
-function toolTable({ preview, browser, bookmarks, terminal, history, squad, agents, management, todo, pullRequests, planOnly }: McpTools): ToolEntry[] {
+function toolTable({ preview, browser, bookmarks, terminal, history, squad, agents, teams, management, todo, pullRequests, planOnly }: McpTools): ToolEntry[] {
   const entries: ToolEntry[] = [
     {
       spec: PREVIEW_TOOL,
@@ -196,6 +198,7 @@ function toolTable({ preview, browser, bookmarks, terminal, history, squad, agen
   }
   if (squad) entries.push(...squad)
   if (agents) entries.push(...agents)
+  if (teams) entries.push(...teams)
   if (management) entries.push(...management.filter((entry) => !planOnly || entry.spec.annotations.readOnlyHint))
   // Antumi's list, not the checkout: a planning agent writes to it too.
   if (todo) entries.push(...todo)
@@ -305,13 +308,14 @@ export async function serveMcp(home: string | undefined, conversationId?: string
   const scope = conversationId ? await withCore(async (rpc) => {
     const conversation = await rpc.call('conversations.get', { id: conversationId })
     const run = rpc.features.includes('squads') ? await rpc.call('squads.roster', { id: conversationId }) : null
-    return { ...conversationToolLimits(conversation), run, features: rpc.features, delegate: !run && rpc.features.includes('agent-profiles') && !conversation.parentConversationId && !conversation.discussionId && !conversation.squadRunId && !conversation.routineId && !conversation.helperOf }
+    return { ...conversationToolLimits(conversation), run, features: rpc.features, delegate: rpc.features.includes('agent-profiles') && canDelegate(conversation, Boolean(run)) }
   }) : null
   const attachments = new AttachmentStore(antumiPaths(home).attachments)
   const handle = createMcpHandler({
     planOnly: planOnly || scope?.readOnly,
     ...(conversationId ? { management: await managementToolsOverCore(withCore, conversationId, planOnly) } : {}),
     ...(conversationId && scope?.run ? { squad: squadToolsOverCore(withCore, conversationId, scope.run) } : {}),
+    ...(conversationId && scope?.delegate && scope.features.includes('squad-calls') ? { teams: teamToolsOverCore(withCore, conversationId) } : {}),
     ...(conversationId && scope?.delegate ? { agents: agentToolsOverCore(withCore, conversationId, scope.features) } : {}),
     initialized,
     ...(listed ? { listed } : {}),

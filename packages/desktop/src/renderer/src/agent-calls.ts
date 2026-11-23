@@ -1,3 +1,4 @@
+import { conversationRecordFeed } from './conversation-record-feed'
 import { useMemo, useSyncExternalStore } from 'react'
 import type { AgentCall, ChatItem, Conversation, RpcConnection } from '@antumi/protocol'
 import { perform, selectConversation, useCore } from './core-store'
@@ -16,30 +17,7 @@ const EMPTY_FEED = { getSnapshot: () => EMPTY, subscribe: (_listener: () => void
 const feeds = new WeakMap<RpcConnection, Map<string, ReturnType<typeof createCallsFeed>>>()
 
 function createCallsFeed(rpc: RpcConnection, id: string) {
-  let snapshot = EMPTY
-  const listeners = new Set<() => void>()
-  let stop = () => {}
-  const publish = (next: CallsSnapshot) => { snapshot = next; for (const listener of listeners) listener() }
-  return {
-    getSnapshot: () => snapshot,
-    subscribe(listener: () => void) {
-      listeners.add(listener)
-      if (listeners.size === 1) {
-        let current = true
-        const changes = new Map<string, AgentCall>()
-        const off = rpc.on('agentCalls.changed', ({ call }) => {
-          if (call.parentId !== id) return
-          changes.set(call.id, call)
-          publish({ calls: [...(snapshot.calls ?? []).filter((item) => item.id !== call.id), call], error: null })
-        })
-        void rpc.call('agentCalls.list', { id }).then((calls) => {
-          if (current) publish({ calls: [...new Map([...calls, ...changes.values()].map((call) => [call.id, call])).values()], error: null })
-        }).catch((reason: unknown) => { if (current) publish({ ...snapshot, error: String(reason) }) })
-        stop = () => { current = false; off() }
-      }
-      return () => { listeners.delete(listener); if (listeners.size === 0) stop() }
-    }
-  }
+  return conversationRecordFeed(() => rpc.call('agentCalls.list', { id }), (receive) => rpc.on('agentCalls.changed', ({ call }) => { if (call.parentId === id) receive(call) }))
 }
 
 // Chat cards and the inspector share one subscription; late list replies cannot undo live updates.
