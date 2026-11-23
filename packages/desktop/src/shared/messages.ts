@@ -6896,6 +6896,10 @@ export const MESSAGES = {
     "zh": "检查并更新",
     "en": "Check and update"
   },
+  "PluginSettings.checkingAndUpdating": {
+    "zh": "正在检查并更新…",
+    "en": "Checking and updating…"
+  },
   "PluginSettings.checkedAndAppliedAvailableUpdates": {
     "zh": "已检查并应用可用更新",
     "en": "Checked and applied available updates"

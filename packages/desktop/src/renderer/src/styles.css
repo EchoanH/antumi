@@ -11030,6 +11030,9 @@ button.squad-member-main { cursor: pointer; }
 .plugin-install > .button { align-self: flex-start; }
 .plugin-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .plugin-actions > .input { width: auto; }
+.plugin-update { display: inline-flex; align-items: center; gap: 8px; }
+.plugin-update .chat-spinner { width: 14px; height: 14px; border-color: color-mix(in srgb, currentColor 35%, transparent); border-top-color: currentColor; }
+.plugin-update-status { margin: 8px 0 0; }
 .plugin-trust { display: flex; align-items: center; gap: 8px; color: var(--text-muted); }
 .plugin-row { padding: 16px 0; border-top: 1px solid var(--border); }
 .plugin-row:first-child { border-top: 0; }

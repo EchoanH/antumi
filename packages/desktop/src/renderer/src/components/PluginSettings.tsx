@@ -20,6 +20,8 @@ function pluginName(plugin: PluginInfo): string {
   return names.join('、') || plugin.id
 }
 
+type PluginActionTarget = 'top' | 'install' | { pluginId: string }
+
 export function PluginSettings() {
   const ids = useId()
   const [tab, setTab] = useState<'installed' | 'recommended' | null>(null)
@@ -32,7 +34,8 @@ export function PluginSettings() {
   const activeTab = recommended.length === 0 ? 'installed' : tab ?? (plugins?.length === 0 ? 'recommended' : 'installed')
   const query = filter.trim().toLocaleLowerCase()
   const visible = recommended.filter((entry) => [entry.name, entry.id, entry.description, entry.descriptionEn, entry.repository].some((text) => text.toLocaleLowerCase().includes(query)))
-  const [busy, setBusy] = useState(false)
+  const [pending, setPending] = useState<PluginActionTarget | null>(null)
+  const busy = pending !== null
   const [kind, setKind] = useState<'local' | 'github'>('local')
   const [location, setLocation] = useState('')
   const [asset, setAsset] = useState('')
@@ -41,8 +44,7 @@ export function PluginSettings() {
   const [looking, setLooking] = useState(false)
   const [trusted, setTrusted] = useState(false)
   const [remove, setRemove] = useState<string | null>(null)
-  // Keep manual installation feedback beside its submit button.
-  const [status, setStatus] = useState<{ text: string, at: 'top' | 'install' } | null>(null)
+  const [status, setStatus] = useState<{ text: string, at: PluginActionTarget } | null>(null)
 
   useEffect(() => {
     setRecommended([])
@@ -54,9 +56,9 @@ export function PluginSettings() {
     return () => { active = false }
   }, [rpc])
 
-  const run = async (action: Parameters<typeof perform>[0], message: string, at: 'top' | 'install' = 'top', done?: () => void) => {
+  const run = async (action: Parameters<typeof perform>[0], message: string, at: PluginActionTarget = 'top', done?: () => void) => {
     if (busy) return
-    setBusy(true)
+    setPending(at)
     setStatus(null)
     try {
       const result = await perform(action)
@@ -66,7 +68,7 @@ export function PluginSettings() {
         const updated = await perform((connection) => connection.call('plugins.list', {}))
         if (updated) receivePlugins(updated)
       }
-    } finally { setBusy(false) }
+    } finally { setPending(null) }
   }
 
   const repository = kind === 'github' ? githubRepository(location) : null
@@ -162,7 +164,7 @@ export function PluginSettings() {
             <p className="settings-note">{t('PluginSettings.pluginsRunLocalCodeAndReceiveCredentialsFor')}</p>
             <label className="plugin-trust">{tr('PluginSettings.iTrustThisPluginAndItsSource', { value1: <input type="checkbox" checked={trusted} disabled={busy} onChange={(event) => setTrusted(event.target.checked)} /> })}</label>
             <div className="plugin-actions">
-              <button className="button primary" type="submit" disabled={busy || looking || !location.trim() || !trusted || (packages?.repository === repository && packages.names.length > 1 && !packages.names.includes(asset))}>{busy || looking ? t('PluginSettings.processing') : t('PluginSettings.installPlugin')}</button>
+              <button className="button primary" type="submit" disabled={busy || looking || !location.trim() || !trusted || (packages?.repository === repository && packages.names.length > 1 && !packages.names.includes(asset))}>{pending === 'install' || looking ? t('PluginSettings.processing') : t('PluginSettings.installPlugin')}</button>
               {status?.at === 'install' && <p className="settings-status" role="status" data-ok>{status.text}</p>}
             </div>
           </form>
@@ -192,8 +194,9 @@ export function PluginSettings() {
         </SettingsGroup>
       </>}
       {activeTab === 'installed' && <SettingsGroup title={t('PluginSettings.installedPlugins')} icon={<PuzzleIcon />}>
-        {plugins === null ? <p className="muted">{t('PluginSettings.loadingPlugins')}</p> : plugins.length === 0 ? <p className="muted">{t('PluginSettings.noPluginsInstalledYet')}</p> : plugins.map((plugin) => (
-          <div key={plugin.id} className="plugin-row">
+        {plugins === null ? <p className="muted">{t('PluginSettings.loadingPlugins')}</p> : plugins.length === 0 ? <p className="muted">{t('PluginSettings.noPluginsInstalledYet')}</p> : plugins.map((plugin) => {
+          const updating = typeof pending === 'object' && pending?.pluginId === plugin.id
+          return <div key={plugin.id} className="plugin-row">
             <div className="settings-row">
               <div className="settings-row-text">
                 <span id={`${ids}-${plugin.id}`} className="settings-row-label">{pluginName(plugin)}</span>
@@ -204,20 +207,21 @@ export function PluginSettings() {
             </div>
             {plugin.problem && <p className="settings-status" role="status">{plugin.problem}</p>}
             <div className="plugin-actions">
-              {(plugin.origin.kind !== 'bundled' || recommended.some((entry) => entry.id === plugin.id)) && <button className="button" disabled={busy} onClick={() => { void run((connection) => connection.call('plugins.update', { id: plugin.id }), t('PluginSettings.checkedAndAppliedAvailableUpdates')) }}>{t('PluginSettings.checkAndUpdate')}</button>}
+              {(plugin.origin.kind !== 'bundled' || recommended.some((entry) => entry.id === plugin.id)) && <button className="button plugin-update" disabled={busy} aria-busy={updating} onClick={() => { void run((connection) => connection.call('plugins.update', { id: plugin.id }), t('PluginSettings.checkedAndAppliedAvailableUpdates'), { pluginId: plugin.id }) }}>{updating && <span className="chat-spinner" aria-hidden="true" />}{updating ? t('PluginSettings.checkingAndUpdating') : t('PluginSettings.checkAndUpdate')}</button>}
               {plugin.problem && <button className="button" disabled={busy} onClick={() => { void run((connection) => connection.call('plugins.setEnabled', { id: plugin.id, enabled: true }), t('PluginSettings.pluginReloaded')) }}>{t('PluginSettings.retryLoading')}</button>}
               {plugin.versions.length > 1 && <ChatPicker label={t('PluginSettings.switchVersion', { value1: plugin.id })} value={plugin.version} placeholder={t('PluginSettings.chooseVersion')} size="large" placement="below" disabled={busy}
                 options={plugin.versions.map((version) => ({ value: version, label: `${version}${version === plugin.version ? t('PluginSettings.current') : ''}` }))}
                 onChange={(version) => { void run((connection) => connection.call('plugins.rollback', { id: plugin.id, version }), t('PluginSettings.pluginVersionSwitched')) }} />}
               <button className="button ghost" disabled={busy} onClick={() => setRemove(plugin.id)}>{t('PluginSettings.uninstall')}</button>
             </div>
+            {typeof status?.at === 'object' && status.at.pluginId === plugin.id && <p className="settings-status plugin-update-status" role="status" data-ok>{status.text}</p>}
             {remove === plugin.id && <div className="plugin-actions">
               <span className="settings-note">{t('PluginSettings.sourceSettingsCredentialsAndImportedTasksAreKept')}</span>
               <button className="button" disabled={busy} onClick={() => { void run((connection) => connection.call('plugins.uninstall', { id: plugin.id }), t('PluginSettings.pluginUninstalled')); setRemove(null) }}>{t('PluginSettings.confirmUninstall')}</button>
               <button className="button ghost" disabled={busy} onClick={() => setRemove(null)}>{t('ChatCommandSettings.cancel')}</button>
             </div>}
           </div>
-        ))}
+        })}
       </SettingsGroup>}
     </div>
   )
