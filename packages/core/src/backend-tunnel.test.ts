@@ -7,12 +7,12 @@ import { PassThrough, type Readable, type Writable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { connectTunnelHelper, type TunnelHelperConfig } from '@antumi/protocol/node'
-import { parseTunnelHelperConfig, startTunnelHelper } from './wsl-tunnel'
+import { parseTunnelHelperConfig, startTunnelHelper } from './backend-tunnel'
 
 let dir = ''
 const cleanup: (() => unknown)[] = []
 beforeEach(async () => {
-  dir = await mkdtemp(path.join(tmpdir(), 'antumi-wsl-tunnel-'))
+  dir = await mkdtemp(path.join(tmpdir(), 'antumi-backend-tunnel-'))
 })
 afterEach(async () => {
   for (const each of cleanup.splice(0)) await each()
@@ -62,6 +62,7 @@ describe('parseTunnelHelperConfig', () => {
       dial: { port: 51234 }
     })
     expect(parseTunnelHelperConfig('{"listen":{}}')).toEqual({ listen: {} })
+    expect(parseTunnelHelperConfig('{"dial":{"port":1},"connect":true}')).toEqual({ dial: { port: 1 }, connect: true })
   })
 
   it.each([
@@ -72,7 +73,8 @@ describe('parseTunnelHelperConfig', () => {
     ['{"dial":{"port":"1"}}', /port/],
     ['{"listen":{"endpointFile":"host.json","endpoint":{}}}', /absolute/],
     ['{"listen":{"endpointFile":"/x/host.json"}}', /together/],
-    ['{"listen":{"endpointFile":"/x/host.json","endpoint":"t"}}', /endpoint is not/]
+    ['{"listen":{"endpointFile":"/x/host.json","endpoint":"t"}}', /endpoint is not/],
+    ['{"connect":"yes"}', /connect is not true/]
   ])('refuses %s', (text, message) => {
     expect(() => parseTunnelHelperConfig(text)).toThrow(message)
   })
@@ -116,6 +118,31 @@ describe('tunnel helper', () => {
     expect(JSON.parse(await readFile(endpointFile, 'utf8'))).toMatchObject({ pid: 4343 })
   })
 
+  it('hands the file to the app before it when the last one leaves, as two computers share a server', async () => {
+    const endpointFile = path.join(dir, 'browser', 'host.json')
+    const alive = new Set([1001, 1002])
+    const start = async (pid: number, token: string) => {
+      const { helper, app } = stdio()
+      const starting = startTunnelHelper({ ...helper, pid, alive: (each) => alive.has(each) })
+      const link = await connectTunnelHelper({ ...app, appPort: 1, config: { listen: { endpointFile, endpoint: { token } } } })
+      return { link, running: await starting }
+    }
+    const office = await start(1001, 'office')
+    // Apart in time, so the newer entry is the newer one by its file's time too.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    const home = await start(1002, 'home')
+    expect(JSON.parse(await readFile(endpointFile, 'utf8'))).toMatchObject({ token: 'home', pid: 1002 })
+
+    home.link.close()
+    await home.running.stopped
+    alive.delete(1002)
+    expect(JSON.parse(await readFile(endpointFile, 'utf8'))).toMatchObject({ token: 'office', pid: 1001 })
+
+    office.link.close()
+    await office.running.stopped
+    expect(await exists(endpointFile)).toBe(false)
+  })
+
   it('stops on request and tells the app', async () => {
     const { helper, app } = stdio()
     const starting = startTunnelHelper(helper)
@@ -139,7 +166,7 @@ describe('tunnel helper', () => {
 // As the app will run it, minus wsl.exe: a child on plain Node with the source through tsx.
 describe('tunnel helper process', () => {
   const loader = fileURLToPath(new URL('../node_modules/tsx/dist/loader.mjs', import.meta.url))
-  const entry = fileURLToPath(new URL('./wsl-tunnel-main.ts', import.meta.url))
+  const entry = fileURLToPath(new URL('./backend-tunnel-main.ts', import.meta.url))
 
   function start(): { child: ChildProcessByStdio<Writable, Readable, Readable>; stderr: () => string; exited: Promise<number | null> } {
     const child = spawn(process.execPath, ['--import', loader, entry], { stdio: ['pipe', 'pipe', 'pipe'] })

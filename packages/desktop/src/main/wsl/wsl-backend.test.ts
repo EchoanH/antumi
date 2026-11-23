@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { describe, expect, it } from 'vitest'
 import { backendFolder, ensureWslBackend, findWslBackendPlace, nodeIsNewEnough, replaceOldWslDaemon } from './wsl-backend'
+import { MANAGED_NODE } from '../linux-backend/managed-node'
 import type { WslHost } from './wsl-command'
 
 type Reply = { code?: number; stdout?: string; stderr?: string }
@@ -118,8 +119,20 @@ describe('findWslBackendPlace', () => {
     expect(await problem('Ubuntu', (call) => (call.argv[0] === '--list' ? { code: 1, stdout: 'broken' } : undefined))).toMatchObject({ kind: 'wsl-unknown' })
     expect(await problem('Ubuntu', (call) => (call.argv[0] === '/bin/uname' ? { stdout: 'aarch64\n' } : undefined))).toEqual({ kind: 'arch', arch: 'aarch64' })
     expect(await problem('Ubuntu', (call) => (call.argv[2]?.includes('getent passwd') ? { stdout: 'nothing' } : undefined))).toEqual({ kind: 'login-environment' })
-    expect(await problem('Ubuntu', (call) => (call.argv[2] === 'command -v "$1"' ? { code: 127 } : undefined))).toEqual({ kind: 'node-missing' })
-    expect(await problem('Ubuntu', (call) => (call.argv[1] === '--version' ? { stdout: 'v18.19.1\n' } : undefined))).toEqual({ kind: 'node-old', version: 'v18.19.1', path: NODE })
+    // Without a Node new enough, the one Antumi installs; here it could not be.
+    expect(await problem('Ubuntu', (call) => (call.argv[2] === 'command -v "$1"' ? { code: 127 } : undefined))).toMatchObject({ kind: 'node-download' })
+    expect(await problem('Ubuntu', (call) => (call.argv[1] === '--version' ? { stdout: 'v18.19.1\n' } : undefined))).toMatchObject({ kind: 'node-download' })
+  })
+
+  it('runs on the Node it installs where the distro has none new enough', async () => {
+    const managed = `/home/me/.antumi/node/${MANAGED_NODE.version}/node`
+    const { host } = distro((call) => {
+      if (call.argv[2] === 'command -v "$1"') return { code: 127 }
+      if (call.argv[2]?.includes('.archive.')) return { stdout: `${managed}\n` }
+      return undefined
+    })
+    const found = await findWslBackendPlace('Ubuntu', 'x', host)
+    expect(found.ok && found.place.node).toBe(managed)
   })
 
   it('is unavailable without wsl.exe', async () => {
@@ -155,7 +168,7 @@ describe('ensureWslBackend', () => {
     // Other builds' folders are cleared once core answers, this one's named to be kept.
     const tidy = calls.at(-1)
     expect(tidy?.argv[2]).toContain('/proc/[0-9]*/cmdline')
-    expect(tidy?.argv.slice(3)).toEqual(['sh', folder])
+    expect(tidy?.argv.slice(3)).toEqual(['sh', folder, MANAGED_NODE.version])
   })
 
   it('leaves a whole install as it is and starts nothing a current backend does not need', async () => {

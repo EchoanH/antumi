@@ -865,7 +865,7 @@ const BACKEND_LOCATION_SECTION: Section = localized(() => ({
   group: t('ChatFontPicker.other'),
   title: t('BackendLocation.title'),
   description: t('BackendLocation.description'),
-  keywords: ['wsl', 'wsl 2', 'linux', 'ubuntu', 'debian', 'node', 'nvm', 'distro', 'backend', '后端', '发行版', 'Windows', t('BackendLocation.local'), t('BackendLocation.choose'), t('BackendLocation.running')],
+  keywords: ['wsl', 'wsl 2', 'linux', 'ubuntu', 'debian', 'node', 'nvm', 'distro', 'backend', '后端', '发行版', 'Windows', 'ssh', 'server', 'remote', '服务器', '远程', t('BackendLocation.local'), t('BackendLocation.choose'), t('BackendLocation.running')],
   Icon: LaptopIcon,
   Body: BackendLocationSettings
 }))

@@ -3,6 +3,7 @@ import { useCallback, useRef, useState, type FormEvent } from 'react'
 import { AGENT_KINDS, DEFAULT_ACCOUNT, accountUsage, accountsSupported, activeAccount, agentDescriptor, type AccountKey, type AgentAccount, type AgentKind } from '@antumi/protocol'
 import { activateAccount, addAccount, removeAccount, renameAccount, setAccountAutoSwitch, setAccountKey, setSettingsOpen, signInAccount, useAccountKeysSupported, useCore } from '../core-store'
 import { accountName, accountsOf } from '../agent-accounts'
+import { filesHere } from '../desktop-bridge'
 import { agentLabel } from '../labels'
 import { SettingsQuotaReadout } from './SettingsQuotaReadout'
 import { accountDetail } from './AccountPicker'
@@ -181,9 +182,13 @@ export function AgentAccountSettings() {
   const agents = AGENT_KINDS.filter((agent) => accountsSupported(agent)
     && environment.checks.some((check) => check.tool === agent && check.status !== 'missing')
     && accounts.accounts.some((account) => account.agent === agent))
-  if (!agents.length) return <SettingsEmptyState icon={<PersonIcon />} title={t('SettingsPage.noAccountAgents')} actions={<button type="button" className="button" onClick={() => setSettingsOpen(true, 'agents')}>{t('SettingsPage.viewAgents')}</button>}>{t('SettingsPage.noAccountAgentsHint')}</SettingsEmptyState>
+  // Where accounts sign in, which on a machine this one has no path to (a server) is not this
+  // computer: said before there are any too.
+  const serverNote = !filesHere() ? <p className="settings-note">{t('AgentAccounts.onServer')}</p> : null
+  if (!agents.length) return <>{serverNote}<SettingsEmptyState icon={<PersonIcon />} title={t('SettingsPage.noAccountAgents')} actions={<button type="button" className="button" onClick={() => setSettingsOpen(true, 'agents')}>{t('SettingsPage.viewAgents')}</button>}>{t('SettingsPage.noAccountAgentsHint')}</SettingsEmptyState></>
   return (
     <div className="account-settings">
+      {serverNote}
       <SettingsGroup>
         <SettingsRow
           label={t('AgentAccounts.autoSwitch')}

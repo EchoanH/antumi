@@ -63,6 +63,12 @@ describe('backendControl', () => {
     expect(await backendControl(['replace-daemon', '3.0.0'], { home })).toEqual({ answer: { start: ['daemon'] } })
   })
 
+  it.skipIf(process.platform === 'win32')('keeps a newer daemon with --keep-newer, as a shared server does', async () => {
+    await fakeDaemon('3.0.0')
+    expect(await backendControl(['replace-daemon', '2.0.0', '--keep-newer'], { home })).toEqual({ answer: { start: [] } })
+    expect(await backendControl(['prepare', '2.0.0', '--keep-newer'], { home })).toEqual({ answer: { start: ['daemon', 'core'] } })
+  })
+
   it('gives the running core, or null', async () => {
     expect(await backendControl(['endpoint'], { home })).toEqual({ answer: { endpoint: null } })
     const port = await fakeCore('2.0.0', process.pid)
@@ -76,7 +82,7 @@ describe('backendControl', () => {
   })
 
   it('refuses anything else', async () => {
-    for (const args of [[], ['prepare'], ['prepare', ''], ['prepare', '1', '2'], ['replace-daemon'], ['replace-daemon', '1', '2'], ['endpoint', 'x'], ['check', 'x'], ['start']]) {
+    for (const args of [[], ['prepare'], ['prepare', ''], ['prepare', '1', '2'], ['prepare', '--keep-newer'], ['endpoint', '--keep-newer'], ['replace-daemon'], ['replace-daemon', '1', '2'], ['endpoint', 'x'], ['check', 'x'], ['start']]) {
       expect(await backendControl(args, { home })).toEqual({ usage: BACKEND_CONTROL_USAGE })
     }
   })

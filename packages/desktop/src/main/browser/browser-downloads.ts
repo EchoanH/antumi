@@ -29,13 +29,19 @@ export function reserveDownloadPath(directory: string, filename: string): string
   throw new Error('无法为下载文件分配名称')
 }
 
+// A finished download put where core runs, when that is a server: the path core names it by there,
+// or null when it could not be put (docs/REMOTE.md 内置浏览器).
+export type DownloadMirror = (local: string) => Promise<string | null>
+
 // DownloadItems belong to the app's browser session, independently of a tab or panel's lifetime.
 export class BrowserDownloads {
   private readonly records = new Map<string, BrowserDownload>()
   private readonly items = new Map<string, DownloadSource>()
+  // Where each file is here, when the record names it as core reads it elsewhere.
+  private readonly localPaths = new Map<string, string>()
   private timer: NodeJS.Timeout | null = null
 
-  constructor(private readonly directory: string, private readonly changed: (downloads: BrowserDownload[]) => void) {}
+  constructor(private readonly directory: string, private readonly changed: (downloads: BrowserDownload[]) => void, private readonly mirror: DownloadMirror | null = null) {}
 
   list(): BrowserDownload[] { return [...this.records.values()].reverse().map((record) => ({ ...record })) }
 
@@ -63,11 +69,24 @@ export class BrowserDownloads {
     item.once('done', (_event, state) => {
       record.receivedBytes = Math.max(0, item.getReceivedBytes())
       record.totalBytes = Math.max(0, item.getTotalBytes())
-      record.state = state; record.paused = false; record.finishedAt = Date.now()
+      record.paused = false
       this.items.delete(record.id)
       // The name reserved at the start stays empty when nothing came: no stray file is left behind.
       if (state !== 'completed') void stat(record.path).then((info) => info.size === 0 ? rm(record.path) : undefined).catch(() => {})
-      this.publish()
+      const finish = (final: BrowserDownload['state']) => {
+        record.state = final; record.finishedAt = Date.now()
+        this.publish()
+      }
+      if (state !== 'completed' || !this.mirror) return finish(state)
+      // Completed only once it is where core reads it: an agent told so reads it at once.
+      const local = record.path
+      void this.mirror(local).catch(() => null).then((there) => {
+        if (there) {
+          this.localPaths.set(record.id, local)
+          record.path = there
+        }
+        finish(there ? 'completed' : 'interrupted')
+      })
     })
     this.publish()
   }
@@ -79,12 +98,14 @@ export class BrowserDownloads {
     item.cancel()
   }
 
+  // The finished file as this machine opens it.
   async completedPath(id: string): Promise<string> {
     const record = this.get(id)
     if (record.state !== 'completed') throw new HostError('browser-download-incomplete', '文件尚未下载完成')
-    const info = await stat(record.path).catch(() => null)
+    const here = this.localPaths.get(id) ?? record.path
+    const info = await stat(here).catch(() => null)
     if (!info?.isFile()) throw new HostError('browser-download-missing', '下载文件已移动或删除')
-    return record.path
+    return here
   }
 
   dispose(): void { if (this.timer) clearTimeout(this.timer); this.timer = null }
@@ -99,7 +120,10 @@ export class BrowserDownloads {
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
     const finished = [...this.records.values()].filter((record) => record.finishedAt !== null)
-    for (const record of finished.slice(0, Math.max(0, finished.length - 100))) this.records.delete(record.id)
+    for (const record of finished.slice(0, Math.max(0, finished.length - 100))) {
+      this.records.delete(record.id)
+      this.localPaths.delete(record.id)
+    }
     this.changed(this.list())
   }
 }

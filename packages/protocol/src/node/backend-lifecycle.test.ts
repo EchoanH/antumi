@@ -11,6 +11,7 @@ import { antumiPaths } from './paths'
 
 const APP = '2.0.0'
 const OLD = '1.0.0'
+const NEWER = '2.1.0-beta.1'
 
 let home = ''
 const cleanup: (() => unknown)[] = []
@@ -184,6 +185,13 @@ describe.skipIf(process.platform === 'win32')('backend lifecycle', () => {
     it('is false without a daemon', async () => {
       expect(await retireOldDaemon(APP, home)).toBe(false)
     })
+
+    it('replaces a newer daemon here, and keeps it on a server', async () => {
+      const daemon = await fakeDaemon({ version: NEWER, pid: 104 })
+      expect(await retireOldDaemon(APP, home, { keepNewer: true })).toBe(false)
+      expect(daemon.asked).toEqual(['info'])
+      expect(await retireOldDaemon(APP, home)).toBe(true)
+    })
   })
 
   describe('backendToStart', () => {
@@ -217,6 +225,23 @@ describe.skipIf(process.platform === 'win32')('backend lifecycle', () => {
       await fakeDaemon({ version: APP, pid: 204 })
       await fakeCore(OLD, core.pid)
       expect(await backendToStart(APP, home)).toEqual(['daemon', 'core'])
+      expect(await gone(core.proc)).toBe(true)
+    })
+
+    it('on a server, keeps a newer daemon and core and starts nothing, but still replaces older ones', async () => {
+      const core = await child()
+      const daemon = await fakeDaemon({ version: NEWER, pid: 205 })
+      await fakeCore(NEWER, core.pid)
+      expect(await backendToStart(APP, home, { keepNewer: true })).toEqual([])
+      expect(daemon.asked).toEqual(['info'])
+      expect(await gone(core.proc)).toBe(false)
+    })
+
+    it('on a server, replaces an older core as anywhere', async () => {
+      const core = await child()
+      await fakeDaemon({ version: APP, pid: 206 })
+      await fakeCore(OLD, core.pid)
+      expect(await backendToStart(APP, home, { keepNewer: true })).toEqual(['daemon', 'core'])
       expect(await gone(core.proc)).toBe(true)
     })
 

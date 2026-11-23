@@ -3,7 +3,8 @@ import { z } from 'zod'
 import { AgentKind, BookmarkFields, type PluginPageFiles } from '@antumi/protocol'
 import type { ActionableTarget, Notice } from './attention'
 import { ShortcutAction, type ShortcutSettings } from '../../shared/keyboard-shortcuts'
-import { BackendLocationState, type BackendLocation } from '../../shared/backend-location'
+import { BackendAccess, BackendLocationState, type BackendLocation } from '../../shared/backend-location'
+import { askServerFolder } from './server-folder-dialog'
 import type { PanelBrowserContext, PanelCommand, PanelDockPayload, PanelHandoff, PanelKind } from '../../shared/panel-window'
 
 // What the Electron preload exposes; absent when the UI runs in a plain browser.
@@ -85,6 +86,9 @@ declare global {
       // Where the backend runs (main's app-backend.ts); setting it restarts the app. Absent from a
       // main older than the renderer.
       backendLocation?(): Promise<unknown>
+      backendAccess?(): Promise<unknown>
+      localPathForFile?(file: File): string
+      putDropped?(path: string): Promise<unknown>
       setBackendLocation?(location: unknown): Promise<unknown>
     }
   }
@@ -119,6 +123,43 @@ export async function backendLocation(): Promise<BackendLocationState | null> {
   return parsed.success ? parsed.data : null
 }
 
+// This machine, and its files reached by path, where main does not say otherwise (outside Electron).
+const HERE: BackendAccess = { where: null, filesHere: true }
+
+// Where the backend runs, and whether this machine reaches its files by a path.
+export async function backendAccess(): Promise<BackendAccess> {
+  const found = await window.antumi?.backendAccess?.().catch(() => null)
+  const parsed = BackendAccess.safeParse(found)
+  knownAccess = parsed.success ? parsed.data : HERE
+  return knownAccess
+}
+
+// The same, for what must be known at once (whether to offer a file manager): asked as the window
+// opens, and the backend's place does not change while the app runs.
+let knownAccess: BackendAccess = HERE
+if (typeof window !== 'undefined' && window.antumi?.backendAccess) void backendAccess()
+
+// Whether this machine reaches the backend's files by a path (here, or WSL's): false where they are
+// only reached through the backend (a server), which the folder dialog, Finder and drops follow.
+export function filesHere(): boolean {
+  return knownAccess.filesHere
+}
+
+const Dropped = z.union([z.object({ path: z.string() }), z.object({ error: z.string() })])
+
+// A file or folder dropped on the window, put where the backend runs when this machine has no path
+// to its files: its path there, or why not. Null where it is read where it is (this machine, or
+// WSL through /mnt).
+export function putDropped(file: File): Promise<z.infer<typeof Dropped>> | null {
+  const local = filesHere() ? undefined : window.antumi?.localPathForFile?.(file)
+  const put = window.antumi?.putDropped
+  if (!local || !put) return null
+  return put(local).then((answer) => {
+    const parsed = Dropped.safeParse(answer)
+    return parsed.success ? parsed.data : { error: t('desktopBridge.putDroppedFailed') }
+  }, () => ({ error: t('desktopBridge.putDroppedFailed') }))
+}
+
 // Saves the choice and restarts the app, so a true answer is seldom seen.
 export async function setBackendLocation(location: BackendLocation): Promise<boolean> {
   const done = await window.antumi?.setBackendLocation?.(location).catch(() => false)
@@ -129,13 +170,17 @@ export function canPickFolder(): boolean {
   return window.antumi !== undefined
 }
 
+// The system's folder dialog where core reads this machine's files (or WSL's, which Windows
+// reaches), the server's folders listed through core where it runs on one. Paths are core's.
 export async function pickFolder(defaultPath?: string, title?: string): Promise<string | null> {
+  if (!(await backendAccess()).filesHere) return askServerFolder({ ...(title ? { title } : {}), ...(defaultPath ? { start: defaultPath } : {}) })
   const picked = await window.antumi?.pickFolder(defaultPath, title)
   return typeof picked === 'string' && picked !== '' ? picked : null
 }
 
+// Files this machine has no path to are in no file manager here.
 export function canRevealFile(): boolean {
-  return window.antumi?.revealFile !== undefined
+  return window.antumi?.revealFile !== undefined && filesHere()
 }
 
 export function canOpenFile(): boolean {
@@ -369,6 +414,7 @@ export function setNativeTheme(theme: 'system' | 'light' | 'dark'): void {
 }
 
 export async function pickPlugin(kind: 'directory' | 'zip'): Promise<string | null> {
+  if (!(await backendAccess()).filesHere) return askServerFolder(kind === 'zip' ? { files: ['zip'] } : {})
   const picked = await window.antumi?.pickPlugin?.(kind)
   return typeof picked === 'string' && picked ? picked : null
 }

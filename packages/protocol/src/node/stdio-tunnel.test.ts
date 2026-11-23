@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { createConnection, createServer, type Server, type Socket } from 'node:net'
 import { PassThrough } from 'node:stream'
 import { afterEach, describe, expect, it } from 'vitest'
-import { connectTunnelHelper, listenLoopback, openStdioTunnel, readFirstLine, sentinelLine, TUNNEL_TARGETS, type StdioTunnel, type StdioTunnelOptions } from './stdio-tunnel'
+import { connectTarget, connectTunnelHelper, listenLoopback, openStdioTunnel, readFirstLine, sentinelLine, TUNNEL_TARGETS, type StdioTunnel, type StdioTunnelOptions } from './stdio-tunnel'
 
 const cleanup: (() => void)[] = []
 afterEach(() => {
@@ -281,5 +281,39 @@ describe('connectTunnelHelper', () => {
 
   it('gives up on a helper that says nothing', async () => {
     await expect(connectTunnelHelper({ fromHelper: new PassThrough(), toHelper: new PassThrough(), config: { dial: { port: 1 } }, timeoutMs: 30 })).rejects.toThrow(/within/)
+  })
+})
+
+describe('connect streams', () => {
+  // A socket of ours, its far end handed to the tunnel as a browser's connection would be.
+  async function heldSocket(): Promise<{ ours: Socket; theirs: Socket }> {
+    const server = track(await listenLoopback(0))
+    const accepted = new Promise<Socket>((resolve) => server.once('connection', resolve))
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('no port')
+    const ours = await connect(address.port)
+    return { ours, theirs: await accepted }
+  }
+
+  it('connects a stream to the host and port it names, where the other end runs', async () => {
+    const { port } = await echoServer()
+    const { a, b } = pipes()
+    const app = track(await openStdioTunnel(a))
+    track(await openStdioTunnel({ ...b, connects: true }))
+    const { ours, theirs } = await heldSocket()
+    app.open(connectTarget('localhost', port), theirs)
+    ours.end('through the server')
+    expect((await collect(ours)).toString()).toBe('through the server')
+  })
+
+  it('refuses one the other end was not told to connect', async () => {
+    const { port } = await echoServer()
+    const { a, b } = pipes()
+    const app = track(await openStdioTunnel(a))
+    track(await openStdioTunnel(b))
+    const { ours, theirs } = await heldSocket()
+    const closed = closeOf(ours)
+    app.open(connectTarget('127.0.0.1', port), theirs)
+    await closed
   })
 })

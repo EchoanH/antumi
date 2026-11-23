@@ -5,6 +5,18 @@ import type { CoreEndpoint } from '../rpc'
 import { readCoreEndpoint } from './core-endpoint'
 import { daemonSchemas } from './daemon-protocol'
 import { antumiPaths } from './paths'
+import { compareVersions } from '../version-order'
+
+// How an app treats a backend of another build. One app per home (this machine, a WSL distro)
+// replaces any. A server several computers reach keeps one newer than the asking app: replacing
+// it would have two apps of different versions take turns at it (docs/REMOTE.md 版本).
+export type ReplaceRule = { keepNewer?: boolean }
+
+// Whether the app of `version` replaces what runs at `running`.
+function replaces(running: string | undefined, version: string, rule: ReplaceRule): boolean {
+  if (running === version) return false
+  return !rule.keepNewer || running === undefined || compareVersions(running, version) < 0
+}
 
 // The rules for replacing a running daemon and core with an app's own, on plain Node: the desktop
 // app runs them on this machine, and backend-control inside a WSL distro.
@@ -79,9 +91,9 @@ function daemonReachable(home?: string): Promise<boolean> {
 // something stays, and is asked again later (replaceOldDaemon); one from before info and retire
 // stays until it ends (a restart of the computer). True when it left.
 let reportedBusy: unknown = null
-export async function retireOldDaemon(version: string, home?: string): Promise<boolean> {
+export async function retireOldDaemon(version: string, home?: string, rule: ReplaceRule = {}): Promise<boolean> {
   const info = await daemonCall('info', home)
-  if (!info || info.version === version) return false
+  if (!info || !replaces(typeof info.version === 'string' ? info.version : undefined, version, rule)) return false
   const answer = await daemonCall('retire', home)
   if (answer?.retired !== true) {
     // Asked every few minutes: say so once per daemon, not each time.
@@ -125,14 +137,15 @@ async function exited(pid: number, ms = 10_000): Promise<boolean> {
 }
 
 // Which of daemon and core to start for an app of this version, after asking any older one to leave.
-export async function backendToStart(version: string, home?: string): Promise<('daemon' | 'core')[]> {
-  const daemonReplaced = await retireOldDaemon(version, home)
+export async function backendToStart(version: string, home?: string, rule: ReplaceRule = {}): Promise<('daemon' | 'core')[]> {
+  const daemonReplaced = await retireOldDaemon(version, home, rule)
   const running = await runningCore(home)
-  const coreCurrent = running?.version === version
-  if (coreCurrent && !daemonReplaced) return []
-  if (running && !coreCurrent) await retireCore(running, version)
-  // A core of this build stays: it reconnects to the new daemon by itself.
-  return coreCurrent ? ['daemon'] : ['daemon', 'core']
+  // A core of this build stays, and a newer one where the rule keeps it: it reconnects to a new
+  // daemon by itself.
+  const coreKept = running !== null && !replaces(running.version, version, rule)
+  if (coreKept && !daemonReplaced) return []
+  if (running && !coreKept) await retireCore(running, version)
+  return coreKept ? ['daemon'] : ['daemon', 'core']
 }
 
 // Whether a daemon serves the socket. Only a refused connection or no socket at all proves none

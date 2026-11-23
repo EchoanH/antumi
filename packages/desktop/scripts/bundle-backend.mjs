@@ -21,11 +21,11 @@ cpSync(path.join(repo, 'packages/dsh-runtime/dist/runtime.tgz'), path.join(out, 
 // Some bundled CJS dependencies call require() at runtime; give the ESM output one.
 const banner = `import { createRequire as __antumiRequire } from 'node:module';\nconst require = __antumiRequire(import.meta.url);\n`
 
-// With --wsl, the two programs only a backend inside a WSL distro has, which a Windows app runs
-// there (docs/WSL.md): the tunnel helper, and what tells it which of daemon and core to start. No
-// app's own backend carries them.
-const forWsl = process.argv.includes('--wsl')
-  ? [['wsl-tunnel', 'packages/core/src/wsl-tunnel-main.ts'], ['backend-control', 'packages/core/src/backend-control-main.ts']]
+// With --linux-backend, the two programs only a backend on another Linux machine has, which the app
+// runs there (docs/WSL.md, docs/REMOTE.md): the tunnel helper, and what tells it which of daemon
+// and core to start. No app's own backend carries them.
+const forLinuxBackend = process.argv.includes('--linux-backend')
+  ? [['backend-tunnel', 'packages/core/src/backend-tunnel-main.ts'], ['backend-control', 'packages/core/src/backend-control-main.ts']]
   : []
 
 for (const [name, entry] of [
@@ -39,7 +39,7 @@ for (const [name, entry] of [
   ['channel-gateway', 'packages/core/src/channel-gateway-main.ts'],
   // CodeArts' bridge, which an agent stage runs (codearts-bridge-command.ts).
   ['codearts-bridge', 'packages/core/src/codearts-bridge-main.ts'],
-  ...forWsl
+  ...forLinuxBackend
 ]) {
   await build({
     entryPoints: [path.join(repo, entry)],

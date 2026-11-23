@@ -15,7 +15,7 @@ import { applyViewport } from './viewport'
 import type { WindowSlot } from './window-slot'
 import { bindBrowserShortcuts } from './browser-shortcuts'
 import { BrowserCapture } from './browser-capture'
-import { BrowserDownloads } from './browser-downloads'
+import { BrowserDownloads, type DownloadMirror } from './browser-downloads'
 import { UserInputs } from './user-input'
 import { pluginSessionRequest } from './plugin-session-request'
 
@@ -62,8 +62,15 @@ export type BrowserHost = {
 // over each tab's own CDP proxy, and shown to the user by the window slot. Core connects over the
 // host server, finding it through the host file, and keeps every policy; this only does.
 // confirmLeave: asks the user, there and then, whether to leave a page that asks before it is left.
-export async function startBrowserHost(slot: WindowSlot, hostFile: string, confirmLeave: () => boolean): Promise<BrowserHost> {
+// remote: when the backend runs on a server (docs/REMOTE.md 内置浏览器), where tabs go out, so a page
+// reaches what that machine does, its localhost included (plugin pages keep this machine's way
+// out), and how a finished download is put there for core to read.
+export type BrowserServer = { proxy: string | null; mirror: DownloadMirror | null }
+
+export async function startBrowserHost(slot: WindowSlot, hostFile: string, confirmLeave: () => boolean, remote: BrowserServer | null = null): Promise<BrowserHost> {
   const tabSession = session.fromPartition(PARTITION)
+  // Chromium sends loopback addresses past any proxy unless told not to.
+  if (remote?.proxy) await tabSession.setProxy({ proxyRules: remote.proxy, proxyBypassRules: '<-loopback>' })
   siteUserAgents(tabSession)
   const views = new Map<string, WebContentsView>()
   const captures = new Map<string, BrowserCapture>()
@@ -73,7 +80,7 @@ export async function startBrowserHost(slot: WindowSlot, hostFile: string, confi
   let closing = false
 
   const registry = new TabRegistry(() => server?.emit({ event: 'tabs', tabs: registry.list() }))
-  const downloads = new BrowserDownloads(path.join(app.getPath('downloads'), 'Antumi'), (downloads) => server?.emit({ event: 'downloads', downloads }))
+  const downloads = new BrowserDownloads(path.join(app.getPath('downloads'), 'Antumi'), (downloads) => server?.emit({ event: 'downloads', downloads }), remote?.mirror ?? null)
   const tabOf = (webContentsId: number) => registry.all().find((tab) => views.get(tab.id)?.webContents.id === webContentsId) ?? null
   const onDownload = (_event: Event, item: DownloadItem, contents: WebContents) => {
     const tab = tabOf(contents.id)

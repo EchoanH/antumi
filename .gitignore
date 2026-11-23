@@ -1,6 +1,6 @@
 node_modules/
 out/
-packages/desktop/build/wsl/
+packages/desktop/build/linux-backend/
 dist/
 *.log
 .DS_Store

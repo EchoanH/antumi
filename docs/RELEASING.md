@@ -37,7 +37,7 @@ pnpm dist:win    # → packages/desktop/dist/Antumi-<版本>-windows-x64.exe（m
 pnpm dist:linux  # → packages/desktop/dist/Antumi-<版本>-linux-x86_64.AppImage 和 -linux-amd64.deb（只能在 Linux 上打，要有 C++ 编译器和 python3）
 ```
 
-Windows 包里给 WSL 用的后端（`resources/wsl/`，见 [WSL.md](WSL.md)）要在 Linux 上编，只有 Release 工作流打的包带着；本机 `dist:win` 打出来的没有，设置里也就不出现「后端位置」。
+给 WSL 和远程服务器用的 Linux 后端（`resources/linux-backend/`，见 [WSL.md](WSL.md)、[REMOTE.md](REMOTE.md)）要在 Linux 上编，只有 Release 工作流打的包带着；本机 `dist:*` 打出来的没有，设置里也就不出现「后端位置」。
 
 `<版本>` 取自 `packages/desktop/package.json`。耗时约 1–3 分钟。日志里出现 `skipped macOS application code signing … 0 valid identities found` 是正常的：没有 Apple 证书，App 走 ad-hoc 签名。
 

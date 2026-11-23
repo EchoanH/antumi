@@ -7,7 +7,7 @@ import type { Readable, Writable } from 'node:stream'
 // opening a stream for each; the other end dials that target's fixed port for every stream it is
 // opened. Both directions share one tunnel.
 //
-// Node built-ins only: the WSL helper (core/src/wsl-tunnel-main.ts) is bundled from this alone.
+// Node built-ins only: the tunnel helper (core/src/backend-tunnel-main.ts) is bundled from this alone.
 //
 // Each frame: type (u8), opener (u8: 0 when the sender opened the stream, 1 when the receiver
 // did), stream id (u32 BE, chosen by the opener), payload length (u32 BE), payload.
@@ -31,10 +31,27 @@ export const TUNNEL_TARGETS = { app: 'app', helper: 'helper' } as const
 
 // The helper's first line on stdin. `listen`: take connections on the distro's 127.0.0.1 for the
 // app, naming the port in `endpointFile` as `{ ...endpoint, port, pid }`. `dial`: connect each
-// stream the app opens to this port in the distro.
+// stream the app opens to this port in the distro. `connect`: also connect streams the app opens
+// to `connect:<port>:<host>` to that host and port from there, the built-in browser's way out
+// through a server (docs/REMOTE.md 内置浏览器).
 export type TunnelHelperConfig = {
   listen?: { endpointFile?: string; endpoint?: Record<string, unknown> }
   dial?: { port: number }
+  connect?: true
+}
+
+// The stream a `connect` helper connects to `host`:`port` where it runs.
+export function connectTarget(host: string, port: number): string {
+  return `${CONNECT_PREFIX}${port}:${host}`
+}
+
+const CONNECT_PREFIX = 'connect:'
+
+function connectAddress(target: string): { host: string; port: number } | null {
+  const match = /^connect:(\d{1,5}):(.{1,255})$/s.exec(target)
+  const port = Number(match?.[1])
+  const host = match?.[2]
+  return host && port > 0 && port < 65536 ? { host, port } : null
 }
 
 // A server handed in should be created with allowHalfOpen, or a half-close ends both directions.
@@ -48,11 +65,15 @@ export type StdioTunnelOptions = {
   offers?: TunnelOffer[]
   // Port on 127.0.0.1 each target's streams are connected to.
   dials?: Record<string, number>
+  // Whether a `connect:<port>:<host>` stream is connected to that host and port.
+  connects?: boolean
 }
 
 export type StdioTunnel = {
   // The listening port of each offered target.
   ports: Record<string, number>
+  // Opens a stream to the other end's target over a socket this end already holds.
+  open(target: string, socket: Socket): void
   close(): void
   // Settles once torn down: null when closed or the peer ended, else what broke the tunnel.
   closed: Promise<Error | null>
@@ -65,6 +86,10 @@ type Stream = {
   sentEnd: boolean
   gotEnd: boolean
   gone: boolean
+  // What came for a socket still connecting, null for its end: a socket trying one address family
+  // after another loses an end() made meanwhile (Node 24, autoSelectFamily), so nothing is handed
+  // to it before it connects.
+  held?: (Buffer | null)[]
 }
 
 export async function openStdioTunnel(options: StdioTunnelOptions): Promise<StdioTunnel> {
@@ -179,14 +204,30 @@ function runTunnel(options: StdioTunnelOptions, listening: { target: string; ser
 
   const opened = (id: number, target: string) => {
     const port = dials[target]
-    const socket = port === undefined ? null : createConnection({ host: '127.0.0.1', port, allowHalfOpen: true })
+    const address = options.connects && target.startsWith(CONNECT_PREFIX) ? connectAddress(target) : null
+    const socket = port !== undefined
+      ? createConnection({ host: '127.0.0.1', port, allowHalfOpen: true })
+      // Both families tried, as a browser does: `localhost` may name ::1 where a dev server took 127.0.0.1.
+      : address ? createConnection({ host: address.host, port: address.port, allowHalfOpen: true, autoSelectFamily: true }) : null
     if (!socket || theirs.has(id)) {
       // An unknown target, or an id still in use: refuse the stream without touching the old one.
       send(FRAME.reset, { id, mine: false })
       if (socket) abort(socket)
       return
     }
-    attach({ id, mine: false, socket, sentEnd: false, gotEnd: false, gone: false })
+    const stream: Stream = { id, mine: false, socket, sentEnd: false, gotEnd: false, gone: false }
+    if (address) {
+      stream.held = []
+      socket.once('connect', () => {
+        const held = stream.held ?? []
+        delete stream.held
+        for (const piece of held) {
+          if (piece === null) socket.end()
+          else socket.write(piece)
+        }
+      })
+    }
+    attach(stream)
   }
 
   const deliver = (type: number, opener: number, id: number, payload: Buffer) => {
@@ -198,14 +239,16 @@ function runTunnel(options: StdioTunnelOptions, listening: { target: string; ser
     // Frames for a stream already gone are late, not wrong.
     const stream = (opener === 0 ? theirs : mine).get(id)
     if (type === FRAME.data) {
-      if (stream && !stream.gotEnd && !stream.socket.write(payload)) {
+      if (stream?.held && !stream.gotEnd) stream.held.push(Buffer.from(payload))
+      else if (stream && !stream.gotEnd && !stream.socket.write(payload)) {
         stalled.add(stream)
         input.pause()
       }
     } else if (type === FRAME.end) {
       if (stream && !stream.gotEnd) {
         stream.gotEnd = true
-        stream.socket.end()
+        if (stream.held) stream.held.push(null)
+        else stream.socket.end()
       }
     } else if (type === FRAME.reset) {
       if (stream) {
@@ -291,7 +334,7 @@ function runTunnel(options: StdioTunnelOptions, listening: { target: string; ser
   if (options.head?.length) onData(options.head)
   if (!finished) input.resume()
 
-  return { ports, close: () => finish(null), closed }
+  return { ports, open: (target, socket) => offerConnection(target)(socket), close: () => finish(null), closed }
 }
 
 // A reset rather than a FIN: a client that allows half-open sockets would wait on a FIN forever.
@@ -362,11 +405,13 @@ export type TunnelHelperLink = {
   remotePort: number | null
   // Where this end listens for the helper's dial target, with `dial`.
   localPort?: number
+  // A socket of this end's connected to `host`:`port` where the helper runs, with `connect`.
+  connect(host: string, port: number, socket: Socket): void
   close(): void
   closed: Promise<Error | null>
 }
 
-// The app's end of the helper (core/src/wsl-tunnel-main.ts), over the stdio of a child someone
+// The app's end of the helper (core/src/backend-tunnel-main.ts), over the stdio of a child someone
 // else started: sends the config, waits for the sentinel, then runs the tunnel with roles mirrored.
 // `appPort` is where streams the helper takes are connected here; `listenPort` (0 for any) is where
 // this end takes connections for the helper's `dial`.
@@ -391,7 +436,7 @@ export async function connectTunnelHelper(options: {
     dials: config.listen && options.appPort !== undefined ? { [TUNNEL_TARGETS.app]: options.appPort } : {}
   })
   const localPort = tunnel.ports[TUNNEL_TARGETS.helper]
-  return { remotePort, ...(localPort === undefined ? {} : { localPort }), close: tunnel.close, closed: tunnel.closed }
+  return { remotePort, ...(localPort === undefined ? {} : { localPort }), connect: (host, port, socket) => tunnel.open(connectTarget(host, port), socket), close: tunnel.close, closed: tunnel.closed }
 }
 
 export function sentinelLine(port: number | null): string {

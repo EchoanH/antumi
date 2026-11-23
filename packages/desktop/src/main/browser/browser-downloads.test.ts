@@ -55,6 +55,32 @@ describe('browser downloads', () => {
     expect(() => downloads.cancel(id)).toThrow('下载已经结束')
   })
 
+  it('on a server, completes once the file is there and names it by its path there', async () => {
+    const mirrored: string[] = []
+    let release: (path: string | null) => void = () => {}
+    const remote = new BrowserDownloads(directory, (records) => events.push(records), (local) => {
+      mirrored.push(local)
+      return new Promise((resolve) => { release = resolve })
+    })
+    const item = new Download()
+    remote.start(item, tab)
+    const id = remote.list()[0]!.id
+    item.received = 100; writeFileSync(item.savePath, 'downloaded'); item.emit('done', {}, 'completed')
+    expect(mirrored).toEqual([item.savePath])
+    expect(remote.list()[0]).toMatchObject({ state: 'progressing', finishedAt: null })
+    release('/home/dev/.antumi/downloads/x/report.csv')
+    await vi.waitFor(() => expect(remote.list()[0]).toMatchObject({ state: 'completed', path: '/home/dev/.antumi/downloads/x/report.csv' }))
+    // Opened here from the copy here.
+    expect(await remote.completedPath(id)).toBe(item.savePath)
+
+    const failed = new Download()
+    remote.start(failed, tab)
+    failed.received = 100; writeFileSync(failed.savePath, 'x'); failed.emit('done', {}, 'completed')
+    release(null)
+    await vi.waitFor(() => expect(remote.list()[0]).toMatchObject({ state: 'interrupted' }))
+    remote.dispose()
+  })
+
   it('cancels active downloads and retains their records', () => {
     const item = new Download()
     downloads.start(item, tab)

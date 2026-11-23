@@ -25,22 +25,22 @@ Windows                                   WSL 发行版
 
 ## 第一版的范围
 
-选好发行版就能用：桌面端自己把后端装进发行版、启动它、跟着应用升级，内置浏览器可用。用户要自己准备的只有发行版里的 Node（24 以上）和各 Agent 的 CLI。
+选好发行版就能用：桌面端自己把后端装进发行版、启动它、跟着应用升级，内置浏览器可用。用户要自己准备的只有各 Agent 的 CLI；发行版里没有 24 以上的 Node 时，Antumi 自己装一份（见 [REMOTE.md](REMOTE.md) 自带 Node）。
 
 ### Linux 后端包
 
-发版时多一个任务（`release.yml` 的 `wsl-backend`）：在 Linux 上按 Linux 打出 `out/backend`（`bundle-backend.mjs --platform linux --wsl`，多出转发程序和 `backend-control` 两个入口，别的安装包里都没有），再由 `pack-wsl-backend.mjs` 打成 `backend-linux-x64.tar.gz`，旁边一个写着 sha256 和版本的 json。Windows 的打包任务取来放进安装包的 `resources/wsl/`。本机 `pnpm dist:win` 打的包里没有它，「后端位置」就不给选发行版。
+发版时多一个任务（`release.yml` 的 `linux-backend`）：在 Linux 上按 Linux 打出 `out/backend`（`bundle-backend.mjs --platform linux --linux-backend`，多出转发程序和 `backend-control` 两个入口，别的安装包里都没有），再由 `pack-linux-backend.mjs` 打成 `backend-linux-x64.tar.gz`，旁边一个写着 sha256 和版本的 json。各平台的打包任务都取来放进安装包的 `resources/linux-backend/`（远程服务器也用它，另有 arm64 的一份，见 [REMOTE.md](REMOTE.md)）。本机 `pnpm dist:win` 打的包里没有它，「后端位置」就不给选发行版。
 
 - 里面是全部 `.mjs`、`plugins` 和 Linux 上编译的 node-pty，解开就是发行版里的一份后端。
 - 在 `ubuntu-22.04` 上编：node-pty 按新 glibc 编出来的，旧 glibc 的发行版加载不了。再旧的发行版在预检时报出来。
 - 只有 x64。ARM 的 Windows 上发行版是 arm64，预检时报不支持。
-- 不带 Node，用发行版里的，要 24 以上：后端是按 Electron 自带的 Node 24 写和测的，22 上 core 一启动就缺 `node:zlib` 的 zstd。Ubuntu 24.04 用 apt 装到的是 18，不够。
+- 不带 Node。后端是按 Electron 自带的 Node 24 写和测的，22 上 core 一启动就缺 `node:zlib` 的 zstd，Ubuntu 24.04 用 apt 装到的是 18，不够：发行版里有 24 以上的就用它，没有就装一份固定版本的官方 Node（`linux-backend/managed-node.ts`，见 REMOTE.md）。
 
 ### 安装和启动
 
 应用启动时由 `desktop/src/main/app-backend.ts` 看「后端位置」：选了发行版就走下面这几步（`wsl/wsl-backend.ts` 的 `ensureWslBackend`），哪一步不成就说清缺什么、怎么补，并退回本机后端。
 
-1. **预检**：发行版存在、是 WSL 2、x64，登录 shell 的 PATH 上有 24 以上的 Node。登录 shell 的 PATH 只取这一次，后面每次启动都显式带上。
+1. **预检**：发行版存在、是 WSL 2、x64，找登录 shell 的 PATH 上 24 以上的 Node，没有就装一份。登录 shell 的 PATH 只取这一次，后面每次启动都显式带上。
 2. **安装**：`~/.antumi/backend/<版本>-<包的哈希前 12 位>/` 里没有就绪标记时，把后端包经标准输入送进发行版，校验 sha256，解开，最后才改成这个名字。同一版本重新打的包哈希不同，所以也会装。
 3. **检查 node-pty**：让装好的 `backend-control.mjs check` 试着加载它。发行版的 glibc 太旧时在这里报出来。
 4. **替换**：`backend-control.mjs prepare <版本>` 在发行版里跑和本机同一套规矩（`protocol/src/node/backend-lifecycle.ts`）：别的版本的 core 请它退出，daemon 只在不跑东西时才换，答回要启动哪几个。
@@ -55,7 +55,7 @@ core 应答后顺手清掉别的版本的目录，仍有进程从里面运行的
 
 Antumi 自己的协议都不变，变的只是字节怎么过 Windows 和发行版之间的那道边界：两个方向都走转发程序，不走网络。
 
-转发程序（`core/src/wsl-tunnel-main.ts`，随后端包装进发行版）由桌面端经 `wsl.exe` 启动，一个进程，字节走它的标准输入输出，上面复用多条连接（`protocol/src/node/stdio-tunnel.ts`）。桌面端这头是 `wsl/wsl-link.ts`，它没了就重新启动。
+转发程序（`core/src/backend-tunnel-main.ts`，随后端包装进发行版）由桌面端经 `wsl.exe` 启动，一个进程，字节走它的标准输入输出，上面复用多条连接（`protocol/src/node/stdio-tunnel.ts`）。桌面端这头是 `wsl/wsl-link.ts`，它没了就重新启动。
 
 - **界面 → core**：桌面端在 Windows 的 `127.0.0.1` 上开一个端口，连进来的连接经转发程序接到发行版里 core 的端口。界面拿到的就是这个端口，自己不用改。Windows 直接连发行版的 `127.0.0.1` 在默认网络下也通，但换了网络模式就不一定，所以不走那条路。
 - **core → 内置浏览器**：发行版里连不到 Windows 的 `127.0.0.1`。转发程序在发行版的 `127.0.0.1` 上开一个端口，把连进来的连接转给桌面端，桌面端再连本机的浏览器 host；它把这个端口和 host 的令牌写进发行版的 `~/.antumi/browser/host.json`，core 照原样去读、去连，不用改。它在标准输入关闭时退出并删掉那个文件。
@@ -75,7 +75,6 @@ core 只认 Linux 路径，界面按路径本身的样子处理，不看自己�
 | 没有的 | 原因 | 什么时候做 |
 | --- | --- | --- |
 | 保持唤醒 | core 在发行版里，管不到 Windows 的睡眠 | 第一版确认可用后的下一个版本：改由桌面端在 Windows 上替它做 |
-| 自带 Node | 定了用发行版里的，版本不够时提示用户升级 | 升级 Node 这一步挡住的用户多了再做：首次使用时下载，或放进安装包（大几十 MB） |
 | 局域网里的手机直连 | WSL 默认网络下，外面连不进发行版 | 有用 WSL 的用户要用手机时。在那之前，经自己的服务器中转和 WireGuard 两种方式是 core 往外连，不受影响（待验证） |
 | 同时看到 Windows 和发行版两边的数据 | 一个界面只连一个 core | 不在计划里，要改的是界面连多个后端 |
 
@@ -130,8 +129,8 @@ core 只认 Linux 路径，界面按路径本身的样子处理，不看自己�
 各模块的单元测试用一个假的 `wsl.exe`。真的那个只有 Windows 上有：`wsl/wsl-smoke.ts` 打成一个文件后，在装了 WSL 2 的 Windows 上用 Node 跑。
 
 ```
-node wsl-smoke.mjs <发行版> [--mutate] [--tunnel <wsl-tunnel.mjs>]    # 调用 wsl.exe、登录环境、转发程序
-node wsl-smoke.mjs <发行版> --backend <pack-wsl-backend 的输出目录>    # 装上真的后端并从 Windows 调它
+node wsl-smoke.mjs <发行版> [--mutate] [--tunnel <backend-tunnel.mjs>]    # 调用 wsl.exe、登录环境、转发程序
+node wsl-smoke.mjs <发行版> --backend <pack-linux-backend 的输出目录>    # 装上真的后端并从 Windows 调它
 node wsl-smoke.mjs <发行版> --check-backend                            # 过几分钟，从另一个进程看它还在不在
 ```
 

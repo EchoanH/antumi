@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { afterEach, describe, expect, it } from 'vitest'
-import { startTunnelHelper } from '../../../../core/src/wsl-tunnel'
+import { startTunnelHelper } from '../../../../core/src/backend-tunnel'
 import type { WslHost } from './wsl-command'
 import { WslLink } from './wsl-link'
 
@@ -92,7 +92,7 @@ describe('WslLink', () => {
     const [core, browser] = [await named('core'), await named('browser')]
     expect(await link.connect({ corePort: core, browserHost: { port: browser, token: 'secret' } })).toBe(true)
 
-    expect(spawned[0]?.args).toEqual(['-d', 'Ubuntu', '--exec', '/usr/bin/node', '/home/me/.antumi/backend/1/wsl-tunnel.mjs'])
+    expect(spawned[0]?.args).toEqual(['-d', 'Ubuntu', '--exec', '/usr/bin/node', '/home/me/.antumi/backend/1/backend-tunnel.mjs'])
     expect(await ask(link.corePort() ?? 0, 'ping')).toBe('core:ping')
     // Written just after the helper answers; core watches for it.
     const hostFile = join(where.home, '.antumi/browser/host.json')
