@@ -2386,6 +2386,10 @@ export const MESSAGES = {
     "zh": "权限模式",
     "en": "Permission mode"
   },
+  "ChatHandoff.thisCoreCannotHandOffImagesYet": {
+    "zh": "当前 core 还不支持带图片移交，请先升级 core",
+    "en": "This core cannot hand off images yet. Update core first."
+  },
   "ChatImages.upToImagesPerMessage": {
     "zh": "一条消息最多带 {MAX_CHAT_IMAGES} 张图片",
     "en": "Up to {MAX_CHAT_IMAGES} {MAX_CHAT_IMAGES, plural, one {image} other {images}} per message"

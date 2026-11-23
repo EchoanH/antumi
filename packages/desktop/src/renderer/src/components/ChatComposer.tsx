@@ -336,7 +336,7 @@ export function ChatComposer({ conversation, state, compact = false }: { convers
   const [dismissed, setDismissed] = useState<string | null>(null)
   const offered = idle ? conversation.chat?.suggestion ?? null : null
   // Another agent picked in the agent switch: the next send hands the chat to it instead.
-  const handoff = useComposerHandoff(conversation)
+  const handoff = useComposerHandoff(conversation, attached.images)
   const handingOff = handoff.target?.agent ?? null
   const suggestion = !handingOff && offered && offered !== dismissed && text === '' && attached.images.length === 0 && quotes.length === 0 && !surface.sendBlocker ? offered : null
   const canSteer = !handingOff && queueable && steerable && canSend
@@ -446,18 +446,23 @@ export function ChatComposer({ conversation, state, compact = false }: { convers
     if (quoting) setQuotes(id, [])
     saveComposerDraft(id, EMPTY_DRAFT)
   }
-  // The message goes with the handoff as the note the new agent reads first; images wait for the next.
+  // The note and images go together in the new agent's first message.
   const handOff = async () => {
-    if (busy || starting || handoff.blocker) return
+    if (busy || starting || submitting.current || handoff.blocker || attached.uploading > 0 || files.pasting > 0) return
     const quoting = quotes.length > 0
+    submitting.current = true
     setBusy(true)
     const message = quoting ? composeMessage(quotes, written) : written.trim()
-    const went = await handoff.send(message, messageReferences(writtenMessage, message))
-    setBusy(false)
-    if (went) {
-      setText('')
-      if (quoting) setQuotes(id, [])
-      saveComposerDraft(id, { ...EMPTY_DRAFT, images: attached.images })
+    try {
+      if (await handoff.send(message, messageReferences(writtenMessage, message))) {
+        setText('')
+        attached.setImages([])
+        if (quoting) setQuotes(id, [])
+        saveComposerDraft(id, EMPTY_DRAFT)
+      }
+    } finally {
+      submitting.current = false
+      setBusy(false)
     }
   }
   // Picking an agent to hand to, here or from elsewhere, leads to the input that sends it.
@@ -604,7 +609,7 @@ export function ChatComposer({ conversation, state, compact = false }: { convers
             data-tooltip-side="top-end"
             aria-disabled={handoff.blocker !== null}
             data-tooltip={handoff.blocker ? t('ChatComposer.cannotHandOffYet', { value1: handoff.blocker }) : t('ChatComposer.handOffToEnter', { value1: handoff.stopsRunning ? t('ChatComposer.stop', { value1: agentLabel(handoff.from) }) : '', value2: agentLabel(handingOff), keys: sendKey ? ` · ${sendKey}` : '' })}
-            disabled={busy || starting}
+            disabled={busy || starting || attached.uploading > 0 || files.pasting > 0}
             onClick={() => void handOff()}
           >{t('ChatComposer.handOff')}</button>
         ) : (

@@ -520,7 +520,7 @@ export function createRpcHandlers(
       return conversationId ? userActed(conversationId, () => service.resumeChat(id, allowBypass)) : service.resumeChat(id, allowBypass)
     },
     'tasks.submit': ({ id }) => service.submitChecked(id),
-    'tasks.handoff': ({ id, agent, note, allowBypass, permissionMode, model, effort, references }) => service.handoff(id, agent, note, allowBypass, { permissionMode, model, effort, references }),
+    'tasks.handoff': ({ id, agent, note, allowBypass, permissionMode, model, effort, references, images }) => service.handoff(id, agent, note, allowBypass, { permissionMode, model, effort, references, images }),
     'tasks.savePlan': ({ id, stageId, requestId }) => service.savePlan(id, stageId, requestId),
     'tasks.delete': async ({ id }) => {
       await service.delete(id)
@@ -562,7 +562,7 @@ export function createRpcHandlers(
     'todos.remove': ({ id, groupId, itemId }) => todosOf(id).remove(id, groupId, itemId),
     'conversations.setArchived': ({ id, archived }) => { notChannel(id); return conversations.setArchived(id, archived) },
     'conversations.continue': ({ id, allowBypass }) => { notChannel(id); return userActed(id, () => { profiles?.guardUser(id, true); squads?.guardUser(id, true); return conversations.continue(id, allowBypass) }) },
-    'conversations.handoff': ({ id, agent, note, stopRunning, allowBypass, permissionMode, model, effort, references }) => { sources.automatic?.takeover(id); return conversations.handoff(id, agent, note, stopRunning, allowBypass, { permissionMode, model, effort, references }) },
+    'conversations.handoff': ({ id, agent, note, stopRunning, allowBypass, permissionMode, model, effort, references, images }) => { sources.automatic?.takeover(id); return conversations.handoff(id, agent, note, stopRunning, allowBypass, { permissionMode, model, effort, references, images }) },
     'conversations.fork': ({ id, stageId, itemId }) => conversations.fork(id, stageId, itemId),
     // A mode the user picks is theirs to answer for: a run nobody watched stops answering for them.
     'conversations.setAccount': ({ id, account }) => { notChannel(id); profiles?.guardUser(id, true); squads?.guardUser(id, true); return conversations.setAccount(id, account) },

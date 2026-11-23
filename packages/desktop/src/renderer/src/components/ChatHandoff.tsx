@@ -1,5 +1,5 @@
 import { t } from '../i18n'
-import { checkTaskHandoff, ChatPermissionMode, type ChatReference, type AgentKind, type ChatModel, type Conversation, type TaskLaunchOptions } from '@antumi/protocol'
+import { checkTaskHandoff, ChatPermissionMode, type ChatImage, type ChatReference, type AgentKind, type ChatModel, type Conversation, type TaskLaunchOptions } from '@antumi/protocol'
 import { resolveModel, useAgentCatalog } from '../agent-models'
 import { providerFor } from '../model-provider-choice'
 import { cancelHandoff, chooseHandoffMode, chooseHandoffModel, proposeHandoff, useHandoffs } from '../chat-handoff'
@@ -31,7 +31,7 @@ export type ComposerHandoff = {
   blocker: string | null
   // A free conversation's agent mid-turn is stopped for it, once the user agrees.
   stopsRunning: boolean
-  // Hands the chat over, the message as the note it goes with. Resolves to whether it went.
+  // Hands the chat over with the note and attached images. Resolves to whether it went.
   send: (note: string, references?: ChatReference[]) => Promise<boolean>
 }
 
@@ -43,13 +43,14 @@ export function handoffMode(agent: AgentKind, offered: readonly ChatPermissionMo
 
 // The composer's switch of agent: picking another agent readies a handoff, which the next send
 // carries out; picking the agent at work again calls it off.
-export function useComposerHandoff(conversation: Conversation): ComposerHandoff {
+export function useComposerHandoff(conversation: Conversation, images: readonly ChatImage[] = []): ComposerHandoff {
   const { id } = conversation
   const task = useCore((s) => (conversation.taskId ? s.tasks[conversation.taskId] : undefined))
   const tasks = useCore((s) => s.tasks)
   const taskSupported = useTaskHandoffSupported()
   const modelsSupported = useCore((s) => s.rpc?.features.includes('handoff-model') ?? false)
   const modesSupported = useCore((s) => s.rpc?.features.includes('handoff-mode') ?? false)
+  const imagesSupported = useCore((s) => s.rpc?.features.includes('handoff-images') ?? false)
   const installed = useInstalledAgents()
   const pending = useHandoffs((s) => s[id])
   const from = task?.agent ?? conversation.agent
@@ -64,6 +65,7 @@ export function useComposerHandoff(conversation: Conversation): ComposerHandoff 
   const turn = conversation.sessionId ? (conversation.chat?.turn ?? null) : null
   const dependencies = task ? task.dependsOn.map((other) => tasks[other]).filter((dependency) => dependency !== undefined) : []
   const found = task ? checkTaskHandoff(task, dependencies, turn) : null
+  const blocker = found ? reasonText(found, found) : images.length > 0 && !imagesSupported ? t('ChatHandoff.thisCoreCannotHandOffImagesYet') : null
   const stopsRunning = !task && conversation.sessionId !== null && turn !== 'idle'
   // A task still planned goes on planning, whoever takes it.
   const modes = picked && modesSupported && task?.status !== 'pending' ? startModes(picked.agent, model) : []
@@ -76,16 +78,17 @@ export function useComposerHandoff(conversation: Conversation): ComposerHandoff 
     options: { ...(mode ? { permissionMode: mode } : {}), ...(modelsSupported ? { model: modelId ?? null, effort: effort ?? null } : {}) }
   }
   const send = async (note: string, references?: ChatReference[]) => {
-    if (!target || found) return false
+    if (!target || blocker) return false
     if (stopsRunning && !await askConfirm({ message: t('ChatHandoff.stopTheCurrentAndHandOffTo', { value1: agentLabel(from), value2: agentLabel(target.agent) }), confirm: t('ConfirmDialog.stopAndHandOff') })) return false
     if (!targetProvider && !await confirmQuota(target.agent, modelText(target.model))) return false
+    const attachments = images.length ? { images: images.map((image) => image.id) } : {}
     const result = task
-      ? await perform((rpc) => rpc.call('tasks.handoff', { id: task.id, agent: target.agent, note, ...(rpc.features.includes('chat-references') ? { references } : {}), ...startOptions(), ...target.options }))
-      : await perform((rpc) => rpc.call('conversations.handoff', { id, agent: target.agent, note, ...(rpc.features.includes('chat-references') ? { references } : {}), stopRunning: stopsRunning, ...startOptions(), ...target.options }))
+      ? await perform((rpc) => rpc.call('tasks.handoff', { id: task.id, agent: target.agent, note, ...attachments, ...(rpc.features.includes('chat-references') ? { references } : {}), ...startOptions(), ...target.options }))
+      : await perform((rpc) => rpc.call('conversations.handoff', { id, agent: target.agent, note, ...attachments, ...(rpc.features.includes('chat-references') ? { references } : {}), stopRunning: stopsRunning, ...startOptions(), ...target.options }))
     if (result) cancelHandoff(id)
     return result !== null
   }
-  return { from, targets, target, blocker: found && reasonText(found, found), stopsRunning, send }
+  return { from, targets, target, blocker, stopsRunning, send }
 }
 
 // Who the chat is with, and the switch to another agent; the picked one stands out until it is sent.

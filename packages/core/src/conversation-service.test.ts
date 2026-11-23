@@ -952,6 +952,30 @@ describe('ConversationService', () => {
     expect(service.get(created.id).title).not.toContain('Antumi')
   })
 
+  it.each(['Look at these screenshots', ''])('attaches images to the first handoff message with note %j', async (note) => {
+    const created = await codexOpens(service.create('codex', []))
+    const first = await attachmentsAt(root).put(pngBytes(4, 3))
+    const second = await attachmentsAt(root).put(pngBytes(8, 6))
+    const handed = await service.handoff(created.id, 'claude', note, true, undefined, { images: [first.id, second.id, first.id] })
+    await settle()
+    expect(daemon.written(handed.sessionId!).at(-1)).toMatchObject({ message: { content: [
+      { type: 'image' }, { type: 'image' }, { type: 'text', text: expect.stringContaining('请先阅读 Antumi 移交文件') }
+    ] } })
+    const users = service.chatPage(handed.id).items.filter((item) => item.kind === 'user')
+    expect(users).toHaveLength(1)
+    expect(users[0]).toMatchObject({ images: [{ id: first.id, width: 4, height: 3 }, { id: second.id, width: 8, height: 6 }] })
+    const said = service.messages(handed.id).filter((message) => message.role === 'user').map((message) => message.text)
+    expect(said).toEqual([note ? `${note}\n\n（附了 2 张图片）` : '（附了 2 张图片）'])
+  })
+
+  it('rejects missing handoff images before stopping the current agent', async () => {
+    const created = await service.create('claude', [])
+    await expect(service.handoff(created.id, 'codex', 'look', true, undefined, { images: [`${'a'.repeat(64)}.png`] })).rejects.toMatchObject({ reason: 'attachment-not-found' })
+    expect(service.get(created.id)).toMatchObject({ agent: 'claude', sessionId: created.sessionId })
+    expect(daemon.killed).toHaveLength(0)
+    expect(daemon.spawns).toHaveLength(1)
+  })
+
   it('opens a conversation on an issue at once, preparing, and starts it on the brief once the issue is in', async () => {
     const source = { provider: 'demo', instance: 'default', name: 'Demo', key: 'D-1', url: 'https://demo.test/issues/D-1' }
     const opened = await service.openInvestigation('claude', [], undefined, { permissionMode: 'plan' }, { source, title: 'Login fails' })

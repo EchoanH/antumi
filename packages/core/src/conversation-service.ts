@@ -65,7 +65,7 @@ export type ChatStageRef = { conversationId: string; taskId: string | null; stag
 // What a model choice holds: see TaskLaunchOptions.
 export type ModelChoice = Pick<TaskLaunchOptions, 'model' | 'effort'>
 // What an agent takes over with on a handoff; each left out stays as the chat last had it.
-export type HandoffChoice = Pick<TaskLaunchOptions, 'permissionMode' | 'model' | 'effort'> & { references?: ChatReference[] }
+export type HandoffChoice = Pick<TaskLaunchOptions, 'permissionMode' | 'model' | 'effort'> & { references?: ChatReference[]; images?: readonly string[] }
 
 export type TaskChatLaunch = TaskLaunchOptions & {
   profile?: AgentProfile
@@ -82,6 +82,7 @@ export type TaskChatLaunch = TaskLaunchOptions & {
   // What the user adds for the next agent when the task's agent changes on the way.
   handoffNote?: string
   references?: ChatReference[]
+  images?: readonly string[]
   // The stage's first message. An agent going on from a handoff reads it there, in the turn the
   // handoff opens; otherwise it is sent once the agent is up.
   opening?: { text: string; imageIds: readonly string[] }
@@ -757,6 +758,7 @@ export class ConversationService {
     const extraDirs = await Promise.all(launch.extraDirs.map((dir) => realpath(dir)))
     const projectPaths = [cwd, ...extraDirs]
     const referencePaths = await Promise.all((launch.referenceDirs ?? []).map((dir) => realpath(dir)))
+    const images = await this.chatImages(launch.images ?? [])
     const existing = this.store.byTask(task.id)
     // The provider is settled with the conversation: a later start may only name the same one.
     if (existing && launch.modelProvider !== undefined && launch.modelProvider !== (existing.modelProvider ?? null)) {
@@ -793,7 +795,8 @@ export class ConversationService {
       planOnly: launch.planOnly,
       readable: launch.readable,
       opening: launch.opening?.text,
-      references: launch.references
+      references: launch.references,
+      images
     })
     if (launch.opening && !this.openedInHandoff.delete(id)) await this.send(id, launch.opening.text, launch.opening.imageIds)
     return started
@@ -968,11 +971,12 @@ export class ConversationService {
     if (this.launching.has(id)) throw new Rejection('conversation-running')
     if (current.sessionId && !stopRunning && !this.chats.idle(id)) throw new Rejection('conversation-running')
     if (!this.capacityAvailable(agent, id)) throw new Rejection('agent-capacity')
+    const images = await this.chatImages(choice.images ?? [])
     if (current.sessionId) await this.stop(id)
     this.pickModel(id, agent, choice)
     // After the stop, which may leave the old agent's last mode in the options.
     if (choice.permissionMode) this.store.setChatOptions(id, { permissionMode: choice.permissionMode })
-    return this.start(id, agent, note, true, { references: choice.references })
+    return this.start(id, agent, note, true, { references: choice.references, images })
   }
 
   // The model and effort an agent starts in: each as picked, null back to the default, absent as it
