@@ -32,8 +32,10 @@ Windows                                   WSL 发行版
 发版时多一个任务（`release.yml` 的 `linux-backend`）：在 Linux 上按 Linux 打出 `out/backend`（`bundle-backend.mjs --platform linux --linux-backend`，多出转发程序和 `backend-control` 两个入口，别的安装包里都没有），再由 `pack-linux-backend.mjs` 打成 `backend-linux-x64.tar.gz`，旁边一个写着 sha256 和版本的 json。各平台的打包任务都取来放进安装包的 `resources/linux-backend/`（远程服务器也用它，另有 arm64 的一份，见 [REMOTE.md](REMOTE.md)）。本机 `pnpm dist:win` 打的包里没有它，「后端位置」就不给选发行版。
 
 - 里面是全部 `.mjs`、`plugins` 和 Linux 上编译的 node-pty，解开就是发行版里的一份后端。
-- 在 `ubuntu-22.04` 上编：node-pty 按新 glibc 编出来的，旧 glibc 的发行版加载不了。再旧的发行版在预检时报出来。
-- 一定要在这台 runner 上真编一次：pnpm 默认把编好的 node-pty 存进 store，store 又随 CI 缓存在各任务间共用，`verify`（`ubuntu-latest`）编的那份曾被原样打进 0.21.8，要 glibc 2.42，Ubuntu 24.04 都加载不了。所以 `pnpm-workspace.yaml` 关了 `sideEffectsCache`，Linux 的任务装完再 `pnpm rebuild node-pty`，`bundle-backend.mjs` 打 Linux 包时还要查绑定要的 glibc 不超过 2.35、在本机加载得了，不然直接失败。Linux 桌面包（`ubuntu-24.04`）也受这条检查。
+- WSL 和 SSH 用的后端在 `ubuntu:20.04` 容器里编，x64 和 arm64 都用这套环境；gcc/g++ 10 来自发行版的软件源，支持 Node 24 的原生模块构建；Python 装 3.9，node-gyp 带的 gyp 要 3.9 以上，镜像默认的是 3.8。node-pty 按新系统库编出来的，旧发行版加载不了，所以后端包的兼容基线是 Ubuntu 20.04。
+- 容器以 root 跑，检出的目录属于 runner 的用户，git 会拒绝它（dubious ownership），`actions/checkout` 只为自己那一步放行：之后要 `git config --global --add safe.directory`，不然 `bundle-backend.mjs` 取提交号时失败。
+- 一定要在容器里真编一次：pnpm 默认把编好的 node-pty 存进 store，store 又随 CI 缓存在各任务间共用，`verify`（`ubuntu-latest`）编的那份曾被原样打进 0.21.8，要 glibc 2.42，Ubuntu 24.04 都加载不了。所以 `pnpm-workspace.yaml` 关了 `sideEffectsCache`，Linux 的任务装完再 `pnpm rebuild node-pty`。`bundle-backend.mjs` 对远程后端检查 GLIBC 不超过 2.31、GLIBCXX 不超过 3.4.28、CXXABI 不超过 1.3.12，并实际加载绑定；Linux 桌面包保留 glibc 2.35 的检查。
+- 打包后运行 `smoke-linux-backend.mjs <backend-linux-arch.tar.gz>`：校验归档的 sha256，解压到临时主目录下的 `.antumi/backend/<版本>-<哈希>/`（和真实安装同一个位置），用 Node 24 检查 PTY 读写和窗口大小，再启动 daemon/core、调用 `system.hello`。任务和会话用临时的 `ANTUMI_HOME`，结束后清理。两种架构在 Ubuntu 20.04 上各验证一次，Linux 桌面构建还用同一份 x64 归档在 Ubuntu 24.04 上验证。
 - 只有 x64。ARM 的 Windows 上发行版是 arm64，预检时报不支持。
 - 不带 Node。后端是按 Electron 自带的 Node 24 写和测的，22 上 core 一启动就缺 `node:zlib` 的 zstd，Ubuntu 24.04 用 apt 装到的是 18，不够：发行版里有 24 以上的就用它，没有就装一份固定版本的官方 Node（`linux-backend/managed-node.ts`，见 REMOTE.md）。
 
