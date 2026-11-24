@@ -3886,8 +3886,14 @@ div.inspector-empty > p { margin: 0 0 8px; }
 .update-settings-actions { display: flex; flex-direction: column; gap: 8px; padding: 0 0 12px; }
 
 .statusbar-divider { flex-shrink: 0; width: 1px; height: 14px; margin: 0 4px; background: var(--border); }
-.statusbar .statusbar-feedback { display: inline-flex; align-items: center; gap: 4px; width: auto; height: 24px; padding: 0 6px; text-decoration: none; }
+.statusbar .statusbar-feedback { display: inline-flex; align-items: center; gap: 4px; width: auto; height: 24px; padding: 0 6px; }
 .statusbar .statusbar-feedback svg { width: 15px; height: 15px; }
+.statusbar .statusbar-feedback[aria-expanded='true'] { background: var(--surface-muted); color: var(--text); }
+.feedback-issue-link { color: inherit; text-decoration: none; }
+.feedback-community-dialog { width: min(420px, calc(100vw - 32px)); }
+.feedback-community-dialog .modal-body { gap: 12px; padding: 22px; }
+.feedback-community-description { margin: 0; color: var(--text-muted); font-size: 13px; line-height: 1.5; }
+.feedback-community-qr { display: block; width: min(100%, 330px); max-height: calc(100dvh - 180px); margin: 0 auto; border-radius: var(--radius-sm); object-fit: contain; }
 
 .statusbar :is(.statusbar-settings, .statusbar-help) {
   width: 24px;

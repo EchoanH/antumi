@@ -9301,8 +9301,24 @@ export const MESSAGES = {
     "en": "Feedback"
   },
   "StatusBar.feedbackTooltip": {
-    "zh": "在 GitHub 报告问题或提建议",
-    "en": "Report a problem or suggest an idea on GitHub"
+    "zh": "加入交流群或在 GitHub 提交 Issue",
+    "en": "Join the community or submit a GitHub issue"
+  },
+  "StatusBar.joinCommunity": {
+    "zh": "加入交流群",
+    "en": "Join the community"
+  },
+  "StatusBar.submitGitHubIssue": {
+    "zh": "GitHub 提交 Issue",
+    "en": "Submit a GitHub issue"
+  },
+  "StatusBar.scanCommunityQr": {
+    "zh": "使用微信扫描二维码加入 Antumi 交流群。",
+    "en": "Scan the QR code with WeChat to join the Antumi community group."
+  },
+  "StatusBar.communityQr": {
+    "zh": "Antumi 交流群二维码",
+    "en": "QR code for the Antumi community group"
   },
   "StatusBar.settings": {
     "zh": "设置",

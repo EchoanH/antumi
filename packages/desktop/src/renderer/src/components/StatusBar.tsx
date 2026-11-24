@@ -1,5 +1,5 @@
 import { localized, t, tr } from '../i18n'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { PROJECT_GITHUB_URL } from '@antumi/protocol'
 import { openGuide, setAwakeMode, setSchedulesOpen, setSettingsOpen, setWorktreesOpen, toggleBrowserPanel, toggleGitPanel, toggleFilesPanel, togglePortsPanel, toggleTerminalPanel, useAwakeSupported, useFilesScope, useBrowserSupported, useCore, useSchedulesOpen, useSchedulesSupported, useWorktreesSupported, type ConnectionState } from '../core-store'
 import { ALL_TABS, useBrowserTabs } from '../browser-state'
@@ -7,7 +7,7 @@ import { formatBytes, worktreeRows, worktreeSummary } from '../worktree-groups'
 import { useWorktrees } from '../worktree-store'
 import { useShortcutLabel } from '../keyboard-shortcuts'
 import { usePanelShortcut } from '../panel-shortcuts'
-import { BoltIcon, BookIcon, WorktreeIcon, ChatIcon, CheckIcon, ClockIcon, CoffeeIcon, FilesIcon, GearIcon, GitIcon, GlobeIcon, HelpIcon, MegaphoneIcon, PortsIcon, PulseIcon, TerminalIcon } from './icons'
+import { BoltIcon, BookIcon, BugIcon, WorktreeIcon, ChatIcon, CheckIcon, ClockIcon, CloseIcon, CoffeeIcon, FilesIcon, GearIcon, GitIcon, GlobeIcon, HelpIcon, MegaphoneIcon, PortsIcon, PulseIcon, TerminalIcon } from './icons'
 import { usePorts } from '../port-state'
 import { UsageBar } from './UsageBar'
 import { useFolderChanges } from './ConversationInspector'
@@ -16,6 +16,8 @@ import { Popover } from './Popover'
 import { UpdateButton } from './UpdateNotice'
 import { openSetup } from '../setup-controller'
 import { ContextMenu, MenuItem, type MenuPoint } from './ContextMenu'
+import { useOccludesBrowser } from '../browser-occlusion'
+import wechatGroup from '../assets/wechat-group.png'
 
 type ConnectionIssue = Exclude<ConnectionState, 'connected'>
 
@@ -99,23 +101,60 @@ function HelpButton() {
   )
 }
 
-// Always in sight at the far end, apart from the panels: it leaves the app for GitHub.
+function WechatGroupDialog({ onClose }: { onClose: () => void }) {
+  useOccludesBrowser()
+  const dialog = useRef<HTMLDialogElement>(null)
+  const titleId = useId()
+  const descriptionId = useId()
+  useEffect(() => {
+    const element = dialog.current
+    element?.showModal()
+    return () => element?.close()
+  }, [])
+  return <dialog ref={dialog} className="modal feedback-community-dialog" aria-labelledby={titleId} aria-describedby={descriptionId}
+    onCancel={(event) => { event.preventDefault(); onClose() }}
+    onClick={(event) => { if (event.target === event.currentTarget) onClose() }}>
+    <div className="modal-body">
+      <header className="modal-header"><h2 id={titleId}>{t('StatusBar.joinCommunity')}</h2><button type="button" className="icon-button modal-close" aria-label={t('BackdropPicker.close')} onClick={onClose}><CloseIcon /></button></header>
+      <p id={descriptionId} className="feedback-community-description">{t('StatusBar.scanCommunityQr')}</p>
+      <img className="feedback-community-qr" src={wechatGroup} alt={t('StatusBar.communityQr')} />
+    </div>
+  </dialog>
+}
+
+// Always in sight at the far end, with community and issue-reporting paths in one place.
 function FeedbackButton() {
+  const trigger = useRef<HTMLButtonElement>(null)
+  const [at, setAt] = useState<MenuPoint | null>(null)
+  const [communityOpen, setCommunityOpen] = useState(false)
+  const closeMenu = () => setAt(null)
   return (
     <>
       <span className="statusbar-divider" aria-hidden="true" />
-      <a
+      <button
+        ref={trigger}
+        type="button"
         className="tool-button statusbar-feedback"
         aria-label={t('StatusBar.feedback')}
-        href={`${PROJECT_GITHUB_URL}/issues/new`}
-        target="_blank"
-        rel="noreferrer"
+        aria-haspopup="menu"
+        aria-expanded={at !== null}
         data-tooltip={t('StatusBar.feedbackTooltip')}
         data-tooltip-side="top-end"
+        onClick={(event) => {
+          const box = event.currentTarget.getBoundingClientRect()
+          setAt(at ? null : { x: box.right, y: box.top })
+        }}
       >
         <MegaphoneIcon />
         <span className="statusbar-label">{t('StatusBar.feedback')}</span>
-      </a>
+      </button>
+      {at && <ContextMenu at={at} align="end" above trigger={trigger.current} label={t('StatusBar.feedback')} onClose={closeMenu}>
+        <MenuItem icon={<ChatIcon />} label={t('StatusBar.joinCommunity')} onSelect={() => { closeMenu(); setCommunityOpen(true) }} />
+        <a className="menu-item feedback-issue-link" role="menuitem" href={`${PROJECT_GITHUB_URL}/issues/new`} target="_blank" rel="noreferrer" onClick={closeMenu}>
+          <span className="menu-item-icon"><BugIcon /></span><span className="menu-item-title">{t('StatusBar.submitGitHubIssue')}</span>
+        </a>
+      </ContextMenu>}
+      {communityOpen && <WechatGroupDialog onClose={() => setCommunityOpen(false)} />}
     </>
   )
 }
