@@ -15,6 +15,18 @@
   - 总结要求（可选）：这个来源的团队对总结的额外要求，如「用英文写」「附上测试环境地址」，加在内置要求后面
 
   状态填平台上显示的名字，多个用 `|` 隔开，按顺序取第一个此刻能流转到的；留空表示不改状态。
+- 每个平台的这一页按插件的声明（见下文「协议」的 `writebackRules`）显示：有预设的阶段是下拉框（「不改状态」、预设、「自己填…」），平台没有这一步状态的阶段不出现，不能发评论的来源不出现评论勾选和总结要求。各平台的差别：
+
+  | 来源 | 开始执行 | 提交验收 / 验收通过 | 能否自己填 |
+  |---|---|---|---|
+  | GitHub | In progress（仅用 Issue 状态的仓库） | In review；完成（Done，或关闭为已完成）；只改 Issue，不关 Pull Request | 否 |
+  | 禅道 | 开始或继续任务 | 完成任务、解决 Bug；验收通过还可选关闭 | 否；不能发评论 |
+  | TAPD | 任务进行中、需求开发中 | 任务已完成、需求已实现、缺陷已解决 | 能，缺陷和自定义工作流靠自己填 |
+  | Jira | In Progress（进行中） | 验收通过 Done（完成） | 能，状态名或转换名 |
+  | Linear | In Progress | 验收通过 Done；默认工作流没有 In Review，要自己填 | 能 |
+  | 飞书项目 / Meegle | 无预设，提示节点流的写法 | 无预设 | 能 |
+
+  预设值也是 `|` 连起来的名字，靠「取第一个此刻能流转到的」同时覆盖一个来源里的几种事项：禅道的「完成任务、解决 Bug、关闭需求」是 `已完成|已解决|已关闭`。插件声明某一步没有状态后，之前填在那里的规则不再执行，下次保存时清掉；预设里没有的旧值在下拉框里照样显示。
 - 插件没有声明回写能力时，上面这些都不出现。
 
 登录时用的 Token 要有写权限（各插件 README 写明需要哪些）。只读的 Token 写入时报「没有权限」，记录里提示换一个有写权限的 Token 重新登录。
@@ -32,7 +44,7 @@ Agent 写，Antumi 发。参考 orca 和 multica，但 Agent 只写草稿，不�
 
 ## 状态怎么选
 
-- 插件的 `transitions` 返回事项当前状态和此刻能流转到的状态（Jira 的转换、Linear 团队的工作流状态、GitHub 的打开 / 关闭、禅道和 TAPD 当前工作流允许的下一步、Meegle 状态流的下一状态），每项带名字、可选的动作名（如 Jira 转换「开始处理」、禅道「完成」）和 `todo` / `doing` / `done` / `unknown` 分类。
+- 插件的 `transitions` 返回事项当前状态和此刻能流转到的状态（Jira 的转换、Linear 团队的工作流状态、GitHub 的打开 / 关闭或 Issue 状态、禅道和 TAPD 当前工作流允许的下一步、Meegle 状态流的下一状态），每项带名字、可选的动作名（如 Jira 转换「开始处理」、禅道「完成」）和 `todo` / `doing` / `done` / `unknown` 分类。
 - 规则里的名字和状态名或动作名比，不区分大小写和首尾空白；同一个名字匹配到多项时当作没匹配上。
 - **不倒退**：当前分类排在目标之后（`todo` < `doing` < `done`）时跳过，比如事项已经关了，任务又开始执行，不会被改回处理中。`unknown` 不比。
 - 已经是目标状态时跳过，不算失败。
@@ -59,7 +71,18 @@ Agent 写，Antumi 发。参考 orca 和 multica，但 Agent 只写草稿，不�
 | `transition` | `id`：`options` 里的一项 | `{ status, statusCategory }`，写入后的状态 |
 | `comment` | `markdown`（最多 20,000 字）、`writeId` | `{ id, url }`，平台上的评论 ID 和链接（没有链接时为 `null`） |
 
-`id` 由插件自定，core 不解析，只原样传回。平台接口不能发评论时（禅道 RESTful API v1），manifest 里再声明 `writebackComment: false`、不实现 `comment`：界面不出现「写评论」，规则里的评论记为跳过。`markdown` 由插件转成平台的格式（Jira 的 ADF、TAPD 和禅道的 HTML）。旧插件没有这三个方法，旧宿主不认识 `writeback`，互不影响。
+`id` 由插件自定，core 不解析，只原样传回。
+
+SDK 0.6.0 起，来源还可以声明 `writebackRules`，告诉设置页每个阶段（`start`、`review`、`done`）怎么填状态：
+
+```json
+"writebackRules": {
+  "start": false,
+  "done": { "presets": [{ "value": "Done|completed", "label": "完成", "translations": { "en": { "label": "Done" } } }], "custom": false, "hint": "只改 Issue" }
+}
+```
+
+`false` 表示平台没有这一步的状态：界面不出现，core 也不执行那里存过的状态（`applicableWriteback`）。否则 `presets` 最多 8 个，`value` 和规则的写法相同；`custom: false` 表示预设就是全部，不给自己填（默认可以填）；`placeholder`、`hint` 和预设的 `label` 都可带 `translations.en`。没声明的阶段照旧是文本框。这只是设置页的提示，状态是否真能流转仍以写入时现取的 `transitions` 为准。平台接口不能发评论时（禅道 RESTful API v1），manifest 里再声明 `writebackComment: false`、不实现 `comment`：界面不出现「写评论」，规则里的评论记为跳过。`markdown` 由插件转成平台的格式（Jira 的 ADF、TAPD 和禅道的 HTML）。旧插件没有这三个方法，旧宿主不认识 `writeback`，互不影响。
 
 ## 实现
 

@@ -173,7 +173,7 @@ export function SourceSettingsSection({ source }: { source: SourceDescriptor }) 
         </button>
       </div>
       <AutoInvestigationSettings provider={source.provider} instance={DEFAULT_INSTANCE} info={instance.autoInvestigation} connected={instance.enabled && credential.configured} />
-      {source.writeback && <SourceWritebackSettings provider={source.provider} instance={DEFAULT_INSTANCE} config={instance.writeback} />}
+      {source.writeback && <SourceWritebackSettings provider={source.provider} instance={DEFAULT_INSTANCE} config={instance.writeback} hints={source.writebackRules} comments={source.writebackComments} />}
     </form>
   )
 }

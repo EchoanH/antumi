@@ -190,6 +190,20 @@ describe('SourceService', () => {
     expect(moved).toEqual(['D-1:go'])
   })
 
+  it('applies what the plugin says of its stages: no status where it has none, no comment where it takes none', async () => {
+    await service.saveSettings({ provider: 'demo', instance: 'default', settings: { site: 'https://demo.test' } })
+    await signIn()
+    Object.assign(demo, { writeback: 1, writebackComment: false, writebackRules: { start: false, done: { presets: [{ value: 'completed', label: 'Close as completed' }], custom: false } } })
+    demo.transitions = async () => ({ status: 'open', statusCategory: 'todo', options: [] })
+    demo.transition = async () => ({ status: 'completed', statusCategory: 'done' })
+    const descriptor = await service.saveWriteback('demo', 'default', { start: { status: 'In Progress' }, review: { status: '', comment: true }, done: { status: 'completed', comment: true }, guidance: '' })
+    expect(descriptor.writebackComments).toBe(false)
+    expect(descriptor.writebackRules?.start).toBe(false)
+    expect(descriptor.instances[0]?.writeback).toEqual({ start: { status: '' }, review: { status: '', comment: false }, done: { status: 'completed', comment: false }, guidance: '' })
+    expect(service.writebackRules('demo', 'default').done.status).toBe('completed')
+    expect(service.writer({ provider: 'demo', instance: 'default', name: 'Demo', key: 'D-1', url: 'https://demo.test/issues/D-1' })?.comments).toBe(false)
+  })
+
   it('reuses credentials internally without exposing their payloads in the source list', async () => {
     await config.save({ provider: 'demo', instance: 'default', enabled: false, settings: { site: 'https://demo.test' } })
     await credentials.set('demo', 'default', { kind: 'token', payload: { token: 'stored-secret' }, account: 'Ann', updatedAt: clock })
