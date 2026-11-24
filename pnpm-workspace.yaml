@@ -27,6 +27,10 @@ allowBuilds:
   koffi: false
   node-pty: true
 
+# A built node-pty kept in the store is reused wherever the store goes, CI's cache included: a
+# binding compiled on a newer Linux then ships in a package for an older one (docs/WSL.md 打包).
+sideEffectsCache: false
+
 # @electron/rebuild names @electron/node-gyp by a git URL, which the supply-chain policy blocks;
 # the same package from npm satisfies it. It is never run: packaging rebuilds nothing (npmRebuild
 # false), every native module arrives prebuilt.

@@ -33,6 +33,7 @@ Windows                                   WSL 发行版
 
 - 里面是全部 `.mjs`、`plugins` 和 Linux 上编译的 node-pty，解开就是发行版里的一份后端。
 - 在 `ubuntu-22.04` 上编：node-pty 按新 glibc 编出来的，旧 glibc 的发行版加载不了。再旧的发行版在预检时报出来。
+- 一定要在这台 runner 上真编一次：pnpm 默认把编好的 node-pty 存进 store，store 又随 CI 缓存在各任务间共用，`verify`（`ubuntu-latest`）编的那份曾被原样打进 0.21.8，要 glibc 2.42，Ubuntu 24.04 都加载不了。所以 `pnpm-workspace.yaml` 关了 `sideEffectsCache`，Linux 的任务装完再 `pnpm rebuild node-pty`，`bundle-backend.mjs` 打 Linux 包时还要查绑定要的 glibc 不超过 2.35、在本机加载得了，不然直接失败。Linux 桌面包（`ubuntu-24.04`）也受这条检查。
 - 只有 x64。ARM 的 Windows 上发行版是 arm64，预检时报不支持。
 - 不带 Node。后端是按 Electron 自带的 Node 24 写和测的，22 上 core 一启动就缺 `node:zlib` 的 zstd，Ubuntu 24.04 用 apt 装到的是 18，不够：发行版里有 24 以上的就用它，没有就装一份固定版本的官方 Node（`linux-backend/managed-node.ts`，见 REMOTE.md）。
 

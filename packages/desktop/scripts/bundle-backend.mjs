@@ -2,7 +2,7 @@
 // each, run by Electron's binary as plain Node (ELECTRON_RUN_AS_NODE), so users need no Node
 // install. node-pty stays external: its prebuilt binding is copied beside the bundles.
 import { execFileSync } from 'node:child_process'
-import { chmodSync, cpSync, existsSync, mkdirSync, rmSync } from 'node:fs'
+import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -90,6 +90,21 @@ for (const piece of ['package.json', 'lib', ...prebuilds]) {
 for (const piece of prebuilds) {
   const helper = path.join(ptyOut, piece, 'spawn-helper')
   if (existsSync(helper)) chmodSync(helper, 0o755)
+}
+
+// The Linux binding needs the glibc it was compiled against, which is not always this runner's: a
+// build cached on a newer Linux once shipped needing 2.42. Every Linux package promises Ubuntu
+// 22.04 (docs/WSL.md), so the binding is held to its glibc, and must load here as well.
+const GLIBC_FLOOR = [2, 35]
+if (platform === 'linux') {
+  const binding = path.join(ptyOut, 'build/Release/pty.node')
+  const newest = [...readFileSync(binding, 'latin1').matchAll(/GLIBC_(\d+)\.(\d+)/g)]
+    .map(([, major, minor]) => [Number(major), Number(minor)])
+    .reduce((a, b) => (b[0] - a[0] || b[1] - a[1]) > 0 ? b : a, [0, 0])
+  if ((newest[0] - GLIBC_FLOOR[0] || newest[1] - GLIBC_FLOOR[1]) > 0) {
+    throw new Error(`[bundle-backend] node-pty's binding needs glibc ${newest.join('.')}, newer than Ubuntu 22.04's ${GLIBC_FLOOR.join('.')}: build it on Ubuntu 22.04 (pnpm rebuild node-pty)`)
+  }
+  createRequire(import.meta.url)(binding)
 }
 
 const commit = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim()

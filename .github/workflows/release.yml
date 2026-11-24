@@ -110,6 +110,8 @@ jobs:
           node-version: '24'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # On this runner's glibc, whatever the cache restored: bundle-backend.mjs checks the result.
+      - run: pnpm rebuild node-pty
       - run: node packages/desktop/scripts/bundle-backend.mjs --platform linux --linux-backend
       - run: node packages/desktop/scripts/pack-linux-backend.mjs
       - uses: actions/upload-artifact@v7
@@ -156,6 +158,8 @@ jobs:
           node-version: '24'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - if: runner.os == 'Linux'
+        run: pnpm rebuild node-pty
       - uses: actions/download-artifact@v8
         with:
           pattern: linux-backend-*
