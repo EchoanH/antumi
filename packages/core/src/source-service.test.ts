@@ -167,6 +167,29 @@ describe('SourceService', () => {
     })
   }
 
+  it('writes back only through a provider that can, and keeps its rules when settings are saved', async () => {
+    await service.saveSettings({ provider: 'demo', instance: 'default', settings: { site: 'https://demo.test' } })
+    await signIn()
+    const source = { provider: 'demo', instance: 'default', name: 'Demo', key: 'D-1', url: 'https://demo.test/issues/D-1' }
+    expect(service.writer(source)).toBeNull()
+    await expect(service.saveWriteback('demo', 'default', { start: { status: 'Doing' }, review: { status: '', comment: true }, done: { status: '', comment: false }, guidance: '' })).rejects.toThrow()
+    const moved: string[] = []
+    Object.assign(demo, { writeback: 1 })
+    demo.transitions = async () => ({ status: 'Open', statusCategory: 'todo', options: [{ id: 'go', name: 'Doing', category: 'doing' }, { id: '', name: 'bad', category: 'doing' }] })
+    demo.transition = async (_settings, _credential, key, id) => { moved.push(`${key}:${id}`); return { status: 'Doing', statusCategory: 'doing' } }
+    demo.comment = async () => ({ id: '7', url: null })
+    const descriptor = await service.saveWriteback('demo', 'default', { start: { status: 'Doing' }, review: { status: '', comment: true }, done: { status: '', comment: false }, guidance: '' })
+    expect(descriptor.writeback).toBe(true)
+    expect(descriptor.instances[0]?.writeback?.start.status).toBe('Doing')
+    await service.saveSettings({ provider: 'demo', instance: 'default', settings: { site: 'https://demo.test', query: 'all' } })
+    expect(service.writebackRules('demo', 'default').review.comment).toBe(true)
+    const writer = service.writer(source)
+    // An answer that does not fit, an empty id here, is refused like any other.
+    await expect(writer?.transitions()).rejects.toThrow()
+    expect(await writer?.transition('go')).toEqual({ status: 'Doing', statusCategory: 'doing' })
+    expect(moved).toEqual(['D-1:go'])
+  })
+
   it('reuses credentials internally without exposing their payloads in the source list', async () => {
     await config.save({ provider: 'demo', instance: 'default', enabled: false, settings: { site: 'https://demo.test' } })
     await credentials.set('demo', 'default', { kind: 'token', payload: { token: 'stored-secret' }, account: 'Ann', updatedAt: clock })

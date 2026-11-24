@@ -24,6 +24,7 @@ runSourcePlugin({ manifest, sources: [source] })
 - `fetch(settings, credential, key, signal)`：返回事项字段和最多 50,000 字符的 `markdown` 原文快照。SDK 0.1.1 起可附带 `images: [{ name, bytes: Uint8Array }]`（20 张、单张 10 MiB、合计 50 MiB），需要支持来源图片的宿主。SDK 负责 base64 编解码约定，宿主附件仓库验证实际图片。
 - `comments(settings, credential, key, signal, options)`：可选，manifest 里声明 `commentSync: 1` 的来源实现，增量返回评论。SDK 0.1.4 起每条评论可带 `images: [{ id, name }]`，列出评论里的图片（最多 20 张），只给编号不给内容。
 - `image(settings, credential, key, id, signal)`：可选（SDK 0.1.4 起），返回评论里某张图片的 `{ name, bytes }`。宿主把评论发给 Agent 时才按 `images` 里的编号来取，同步评论时不下载图片；评论列出了图片就必须实现它。
+- `transitions` / `transition` / `comment`：可选（SDK 0.5.0 起），manifest 里声明 `writeback: 1` 的来源三个都要实现，用来把进展写回事项。`transitions(settings, credential, key, signal)` 返回 `{ status, statusCategory, options }`：当前状态和此刻能流转到的状态，每项 `{ id, name, action?, category }`，`id` 由插件自定、宿主原样传回；`transition(settings, credential, key, id, signal)` 流转到其中一项，返回新的 `{ status, statusCategory }`；`comment(settings, credential, key, { markdown, writeId }, signal)` 发一条评论（Markdown 由插件转成平台格式），返回 `{ id, url }`。`writeId` 是每次写入唯一的 UUID，平台能按它去重时（如 Linear 评论的 ID）就用上。没有写权限时抛 `SourceError('forbidden', …)`。平台的接口不能发评论时，manifest 里再声明 `writebackComment: false`，不实现 `comment`，只回写状态。详见 Antumi 的 docs/SOURCE-WRITEBACK.md。
 - `fetch` 的第五个参数 `options`（SDK 0.1.2 起）：`options.images === false` 表示宿主想先拿到正文，图片会另调一次 `fetch` 来取。能分开取图的插件这时不下载图片，在结果里用 `imagesDeferred` 写明留下了几张；不理会这个参数、照常返回图片也可以。宿主排查问题时用它先让 Agent 开始，不让慢图片拖住。
 
 设置和凭据由 core 保存；SDK 不读写用户配置、不访问数据库、不依赖 Electron。站点地址字段需要设置 `bindsCredential: true`，防止改地址后把旧凭据发到新站点。

@@ -4,6 +4,7 @@ import { TextTranslations } from './localization'
 import { TaskImage } from './attachments'
 import { AgentKind } from './agent'
 import { ChatPermissionMode } from './chat'
+import { SourceWritebackConfig } from './source-writeback-rules'
 
 // Where tasks can come from besides being written by hand: an issue tracker, reached through a
 // source provider. A provider may be configured more than once (two Jira sites); each is an instance.
@@ -134,7 +135,9 @@ export const SourceInstanceInfo = z.object({
   enabled: z.boolean(),
   settings: z.record(z.string(), z.string()),
   credential: CredentialStatus,
-  autoInvestigation: AutoInvestigationInfo.optional()
+  autoInvestigation: AutoInvestigationInfo.optional(),
+  // The rules for writing back, when the provider can (docs/SOURCE-WRITEBACK.md).
+  writeback: SourceWritebackConfig.optional()
 })
 export type SourceInstanceInfo = z.infer<typeof SourceInstanceInfo>
 
@@ -142,6 +145,8 @@ export const SourceDescriptor = z.object({
   provider: SourceId,
   name: z.string(),
   settings: z.array(SettingField),
+  // Whether the provider can write back to issues; older cores leave it out.
+  writeback: z.boolean().optional(),
   instances: z.array(SourceInstanceInfo)
 })
 export type SourceDescriptor = z.infer<typeof SourceDescriptor>

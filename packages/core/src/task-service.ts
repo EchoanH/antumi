@@ -92,6 +92,9 @@ export class TaskService {
 
   private squads: TaskSquads | null = null
   setSquads(squads: TaskSquads): void { this.squads = squads }
+  // Told of every status change, after it is saved; it must not throw or block (source writeback).
+  private statusListener: ((before: Task, after: Task) => void) | undefined
+  setStatusListener(listener: (before: Task, after: Task) => void): void { this.statusListener = listener }
 
   private readonly launching = new Set<string>()
   private gitGuard: ((dirs: readonly string[]) => Promise<void>) | null = null
@@ -922,6 +925,11 @@ export class TaskService {
           after.conversationId && this.chats ? this.chats.runUsage(after.conversationId, run.startedAt, endedAt) : null)
       } catch (error) {
         console.error('[antumi-core] recording the run failed:', error instanceof Error ? error.message : error)
+      }
+    }
+    if (before && before.status !== after.status) {
+      try { this.statusListener?.(before, after) } catch (error) {
+        console.error('[antumi-core] a status listener failed:', error instanceof Error ? error.message : error)
       }
     }
     return after

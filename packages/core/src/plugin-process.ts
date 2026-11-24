@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { dirname } from 'node:path'
 import { PLUGIN_PROTOCOL_VERSION, PluginMessage, pluginSchemas, type PluginManifest, type PluginMethod, type PluginParams, type PluginResult } from '@antumi/protocol'
 import { SourceError } from './source-error'
-import type { LoginSession, SourceCredential, SourceProvider } from './source-provider'
+import type { LoginSession, SourceCredential, SourceProvider, SourceSettings } from './source-provider'
 import { PluginBrowserResult, type PluginBrowserRequest } from '@antumi/protocol'
 
 export type PluginBrowserCall = (request: PluginBrowserRequest, signal: AbortSignal) => Promise<PluginBrowserResult>
@@ -211,6 +211,11 @@ export class PluginProcess {
             const image = await this.call('image', { source: source.id, settings, credential, key, id }, signal)
             return { name: image.name, bytes: Buffer.from(image.base64, 'base64') }
           }
+        } satisfies Partial<SourceProvider> : {}),
+        ...(source.writeback === 1 ? {
+          transitions: (settings, credential, key, signal) => this.call('transitions', { source: source.id, settings, credential, key }, signal),
+          transition: (settings, credential, key, id, signal) => this.call('transition', { source: source.id, settings, credential, key, id }, signal),
+          ...(source.writebackComment === false ? {} : { comment: (settings: SourceSettings, credential: SourceCredential, key: string, comment: { markdown: string; writeId: string }, signal: AbortSignal) => this.call('comment', { source: source.id, settings, credential, key, ...comment }, signal) })
         } satisfies Partial<SourceProvider> : {}),
         envCredential: () => credential,
         normalizeSettings: (settings) => this.call('normalizeSettings', { source: source.id, settings }, timed()),

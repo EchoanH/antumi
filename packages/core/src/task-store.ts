@@ -450,7 +450,13 @@ export const MIGRATIONS = [
   `CREATE TABLE squad_calls (id TEXT PRIMARY KEY, parent_id TEXT NOT NULL, ref TEXT NOT NULL,
      task_id TEXT NOT NULL UNIQUE, data TEXT NOT NULL, UNIQUE(parent_id, ref));
    CREATE TABLE delegation_deliveries (id TEXT PRIMARY KEY, parent_id TEXT NOT NULL, data TEXT NOT NULL, sent INTEGER NOT NULL DEFAULT 0);
-   CREATE INDEX delegation_deliveries_parent ON delegation_deliveries(parent_id, sent);`
+   CREATE INDEX delegation_deliveries_parent ON delegation_deliveries(parent_id, sent);`,
+  // Writing back to the issue a task or conversation came from (docs/SOURCE-WRITEBACK.md): each
+  // status move and comment, and the summary the agent drafted for it. item is provider/instance/key.
+  `CREATE TABLE source_writes (id TEXT PRIMARY KEY, target TEXT NOT NULL, item TEXT NOT NULL, created_at INTEGER NOT NULL, data TEXT NOT NULL);
+   CREATE INDEX source_writes_target ON source_writes(target, created_at);
+   CREATE INDEX source_writes_item ON source_writes(item);
+   CREATE TABLE source_reports (target TEXT PRIMARY KEY, data TEXT NOT NULL);`
 ]
 
 

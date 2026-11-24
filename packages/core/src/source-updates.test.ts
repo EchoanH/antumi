@@ -83,6 +83,13 @@ describe('watched issue updates', () => {
     expect(send).toHaveBeenCalledTimes(1)
     expect(updates.summary(target).pending).toBe(0)
   })
+  it('takes a comment Antumi posted itself as neither new nor to send', async () => {
+    updates.setOwnComments(() => new Set(['ours']))
+    comments.push(comment('ours', 2000), comment('theirs', 2000))
+    await updates.poll()
+    expect(updates.summary(target)).toMatchObject({ unread: 1, pending: 1 })
+    expect(updates.page(target).comments.map((each) => each.id)).toEqual(['theirs'])
+  })
   it('fetches a comment’s images only when sending it, and says which did not come', async () => {
     comments.push({ ...comment('pictured'), images: [{ id: 'shot', name: 'shot.png' }, { id: 'broken', name: 'gone.png' }] })
     await updates.poll()

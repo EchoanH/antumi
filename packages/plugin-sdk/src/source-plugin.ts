@@ -1,6 +1,7 @@
 import type { LoginNotice, LoginPrompt, SourceIssue } from '../../protocol/src/source.js'
 import type { SourceCommentOptions, SourceCommentPage } from '../../protocol/src/source-comments.js'
 import type { PluginCredential, PluginResult } from '../../protocol/src/plugin.js'
+import type { SourceCommentResult, SourceStatusResult, SourceTransitions } from '../../protocol/src/source-writeback.js'
 
 export type SourceSettings = Readonly<Record<string, string>>
 export type SourceCredential = PluginCredential
@@ -17,6 +18,13 @@ export type SourcePlugin = {
   // The bytes of an image a comment names in its images, asked for when Antumi sends the comment to
   // an agent. Required once comments name images.
   image?(settings: SourceSettings, credential: SourceCredential, key: string, id: string, signal: AbortSignal): Promise<{ name: string; bytes: Uint8Array }>
+  // Writing back, for a source declaring writeback: 1 (SDK 0.5.0): the statuses the issue can move
+  // to now, a move to one of them by the id transitions gave, and a comment in Markdown. writeId is
+  // unique per write; pass it on where the tracker can dedupe by it. A tracker that takes no comments
+  // through its API declares writebackComment: false and leaves comment out.
+  transitions?(settings: SourceSettings, credential: SourceCredential, key: string, signal: AbortSignal): Promise<SourceTransitions>
+  transition?(settings: SourceSettings, credential: SourceCredential, key: string, id: string, signal: AbortSignal): Promise<SourceStatusResult>
+  comment?(settings: SourceSettings, credential: SourceCredential, key: string, comment: { markdown: string; writeId: string }, signal: AbortSignal): Promise<SourceCommentResult>
   normalizeSettings(values: SourceSettings): Record<string, string> | Promise<Record<string, string>>
   normalizeKey?(key: string): string | Promise<string>
   envCredential?(env: Readonly<Record<string, string | undefined>>): SourceCredential | null

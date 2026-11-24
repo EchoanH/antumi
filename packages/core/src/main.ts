@@ -6,6 +6,9 @@ import { SourceInvestigationStore } from './source-investigation-store'
 import { Rejection } from './rejection'
 import { SourceUpdates, type SourceUpdateOwner } from './source-updates'
 import { SourceUpdateStore } from './source-update-store'
+import { SourceWritebackStore } from './source-writeback-store'
+import { SourceWriteback } from './source-writeback'
+import { reportInstruction } from './source-report-prompt'
 import { AgentProfileStore } from './agent-profile-store'
 import { AgentProfileService, readyAgents } from './agent-profile-service'
 import { AgentCliMaintenance } from './agent-cli-maintenance'
@@ -363,8 +366,24 @@ sourceUpdates = new SourceUpdates(sourceUpdateStore, sources, {
   changed: (summaries) => server?.broadcast('sources.updatesChanged', { summaries })
 })
 sources.setUpdateSink((target, source, snapshot) => sourceUpdates?.initial(target, source, snapshot))
-service.setSourcePrompt(async (task, conversationId, prompt) => {
+const writeback = new SourceWriteback(new SourceWritebackStore(paths.database), sources, {
+  owner: (target) => {
+    if (target.kind === 'task') {
+      const task = service.list().find((each) => each.id === target.id)
+      return task?.source ? { target, source: task.source, conversationId: task.conversationId } : null
+    }
+    const conversation = conversations.list().find((each) => each.id === target.id)
+    return conversation?.source && !conversation.taskId ? { target, source: conversation.source, conversationId: conversation.id } : null
+  },
+  lastReply: (conversationId) => conversations.messages(conversationId).findLast((message) => message.role === 'assistant' && message.complete)?.text ?? null,
+  changed: (view) => server?.broadcast('sources.writebackChanged', { writeback: view })
+})
+sourceUpdates.setOwnComments((source) => writeback.ownComments(source))
+service.setStatusListener((before, after) => writeback.taskMoved(before, after))
+service.setSourcePrompt(async (task, conversationId, original) => {
   const snapshot = task.sourceSnapshot
+  // An agent whose task can be written back to drafts the issue's summary for Antumi to post.
+  const prompt = task.source && sources.writer(task.source) ? `${original}\n\n${reportInstruction(task.source.name, sources.writebackRules(task.source.provider, task.source.instance))}` : original
   if (!task.source || !snapshot?.commentState) return { text: prompt }
   const comments = snapshot.commentState.comments.map((comment) => `### ${comment.author || '未知作者'} · ${new Date(comment.createdAt).toISOString()}
 ${comment.url}
@@ -781,7 +800,7 @@ server = await startRpcServer({
     uploads: new AttachmentUploads(attachments),
     sweeper: attachmentSweeper
   }, terminals, worktrees, browser, awake, terminalCommands, limits, runs, turns, chatSettings, environment, schedules, chatCommands, routines, discussions, wire, () => { server?.broadcast('git.changed', {}); profiles.tick() }, squads, todos, plugins, skills, mcpServers, smallModels, projectConfigs, modelProviders, sessionImports, accounts, cliMaintenance, analytics, automation, pets, new ProjectStar(sources), profiles, bookmarks, browserHistory, sourceUpdates,
-    { store: pullRequestStore, changed: (taskId, links) => server?.broadcast('pullRequests.changed', { taskId, links }), ready: (service) => { pullRequests.current = service } }, browserSites, mobile, channels, squadCalls)
+    { store: pullRequestStore, changed: (taskId, links) => server?.broadcast('pullRequests.changed', { taskId, links }), ready: (service) => { pullRequests.current = service } }, browserSites, mobile, channels, squadCalls, writeback)
 })
 await writeCoreEndpoint({ port: server.port, token, pid: process.pid, protocolVersion: PROTOCOL_VERSION, version: packageJson.version })
 mobile.seed(conversations.list(true, true, true))

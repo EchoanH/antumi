@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { SourceCommentOptions, SourceCommentPage, SourceCommentState } from './source-comments'
+import { MAX_WRITEBACK_COMMENT, SourceCommentResult, SourceStatusResult, SourceTransitions } from './source-writeback'
 import { MAX_ATTACHMENT_BYTES, MAX_TASK_IMAGES } from './attachments'
 import { LoginNotice, LoginPrompt, SettingField, SourceId, SourceIssue, SourceProblem } from './source'
 import { TextTranslations } from './localization'
@@ -8,7 +9,9 @@ import { PluginBrowserRequest, PluginBrowserResult, PluginBrowserSite } from './
 export const PLUGIN_PROTOCOL_VERSION = 1
 export const PluginId = z.string().max(120).regex(/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/)
 export const PluginVersion = z.string().max(80).regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/)
-export const PluginSource = z.object({ id: SourceId, name: z.string().min(1).max(64), settings: z.array(SettingField).max(32), commentSync: z.literal(1).optional() })
+export const PluginSource = z.object({ id: SourceId, name: z.string().min(1).max(64), settings: z.array(SettingField).max(32), commentSync: z.literal(1).optional(), writeback: z.literal(1).optional(),
+  // With writeback: the tracker takes no comments through its API, only status moves.
+  writebackComment: z.literal(false).optional() })
 // A page the plugin draws itself, which the desktop shows in a sandboxed frame. entry is its HTML,
 // in a directory of its own inside the package: everything in that directory is served to the frame.
 export const PluginPageId = z.string().regex(/^[a-z][a-z0-9-]{0,31}$/)
@@ -103,6 +106,11 @@ export const pluginMethods = {
   image: { params: z.object({ source: SourceId, settings: Settings, credential: PluginCredential, key: z.string(), id: z.string().min(1).max(500) }), result: SourceImage },
   // A page calling its own plugin's backend. Both ends are the plugin's, so method, params and
   // result pass through core unread.
+  // Writing back (writeback: 1): the statuses the issue can move to now, a move to one of them by
+  // its id, and a comment. writeId is unique per write, for a tracker that can dedupe by it.
+  transitions: { params: z.object({ source: SourceId, settings: Settings, credential: PluginCredential, key: z.string() }), result: SourceTransitions },
+  transition: { params: z.object({ source: SourceId, settings: Settings, credential: PluginCredential, key: z.string(), id: z.string().min(1).max(500) }), result: SourceStatusResult },
+  comment: { params: z.object({ source: SourceId, settings: Settings, credential: PluginCredential, key: z.string(), markdown: z.string().min(1).max(MAX_WRITEBACK_COMMENT), writeId: z.string().uuid() }), result: SourceCommentResult },
   page: { params: z.object({ page: PluginPageId, method: PluginPageMethod, params: z.unknown() }), result: z.object({ result: z.unknown() }) },
   fetch: {
     params: z.object({ source: SourceId, settings: Settings, credential: PluginCredential, key: z.string(), images: z.boolean().optional() }),
@@ -116,7 +124,7 @@ export type PluginParams<M extends PluginMethod> = z.output<(typeof pluginMethod
 export type PluginResult<M extends PluginMethod> = z.output<(typeof pluginMethods)[M]['result']>
 export const PluginCall = z.object({
   type: z.literal('call'), id: z.string(),
-  method: z.enum(['handshake', 'normalizeSettings', 'normalizeKey', 'envCredential', 'login', 'list', 'fetch', 'comments', 'image', 'page']),
+  method: z.enum(['handshake', 'normalizeSettings', 'normalizeKey', 'envCredential', 'login', 'list', 'fetch', 'comments', 'image', 'transitions', 'transition', 'comment', 'page']),
   params: z.unknown()
 })
 export const PluginAnswer = z.object({ type: z.literal('answer'), id: z.string(), value: z.string() })

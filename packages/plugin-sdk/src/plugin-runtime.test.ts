@@ -67,6 +67,31 @@ describe('source SDK protocol runtime', () => {
     expect(() => runSourcePlugin({ manifest: { ...manifest, contributes: { sources: [{ ...manifest.contributes.sources[0], commentSync: 1 }] } }, sources: [source] })).toThrow('comments implementation')
   })
 
+  it('dispatches writeback operations and passes the write id on with a comment', async () => {
+    const posted: unknown[] = []
+    const credential = { kind: 'token', payload: {} }
+    const writeId = '2f1c4f5e-8b5a-4b1e-9a51-0e6a2d7f3c11'
+    const h = harness({
+      transitions: async () => ({ status: 'Open', statusCategory: 'todo', options: [{ id: '21', name: 'In Progress', action: 'Start', category: 'doing' }] }),
+      comment: async (_settings, _credential, key, comment) => { posted.push({ key, ...comment }); return { id: '9', url: null } }
+    })
+    await h.hello()
+    h.call('comment', { source: 'demo', settings: {}, credential, key: 'DEMO-1', markdown: 'Done in #12', writeId })
+    await h.tick()
+    expect(posted).toEqual([{ key: 'DEMO-1', markdown: 'Done in #12', writeId }])
+    expect(h.messages[1]).toEqual({ type: 'result', id: 'comment', result: { id: '9', url: null } })
+    const other = harness({ transitions: async () => ({ status: 'Open', statusCategory: 'todo', options: [{ id: '21', name: 'In Progress', action: 'Start', category: 'doing' }] }) })
+    await other.hello()
+    other.call('transitions', { source: 'demo', settings: {}, credential, key: 'DEMO-1' })
+    await other.tick()
+    expect(other.messages[1]).toMatchObject({ type: 'result', result: { status: 'Open', options: [{ id: '21', category: 'doing' }] } })
+  })
+
+  it('requires every writeback operation once a source advertises it', () => {
+    const writeback = { ...manifest, contributes: { sources: [{ ...manifest.contributes.sources[0], writeback: 1 }] } }
+    expect(() => runSourcePlugin({ manifest: writeback, sources: [{ ...source, comment: async () => ({ id: '1', url: null }) }] })).toThrow('Writeback capability')
+  })
+
   it('keeps sequential login questions and notifications in the same operation', async () => {
     const h = harness()
     await h.hello()

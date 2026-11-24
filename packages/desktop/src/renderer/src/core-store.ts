@@ -22,6 +22,7 @@ import {
   type SourceDescriptor,
   type SourceInbox,
   type SourceUpdateSummary,
+  type SourceWriteback,
   type SourceUpdateTarget,
   type SourceProblem,
   type Task,
@@ -214,6 +215,8 @@ export type CoreState = {
   // null until core answers sources.list.
   sources: SourceDescriptor[] | null
   sourceUpdates: Record<string, SourceUpdateSummary>
+  // Writing back to a task's or conversation's issue, by target, as last loaded or told.
+  sourceWriteback: Record<string, SourceWriteback>
   // Each task's pull requests (feature pull-requests), every repo's, as core last told.
   pullRequests: Record<string, PullRequestLink[]>
   inboxes: Record<string, SourceInbox>
@@ -333,6 +336,7 @@ export const useCore = create<CoreState>()(() => ({
   usageCardAgent: null,
   sources: null,
   sourceUpdates: {},
+  sourceWriteback: {},
   pullRequests: {},
   inboxes: {},
   terminals: [],
@@ -1708,6 +1712,7 @@ export function startCoreConnection(scope: 'app' | 'requests' = 'app'): void {
         rpc.on('todos.changed', ({ conversationId, groups }) => receiveTodos(conversationId, groups))
         rpc.on('pullRequests.changed', ({ taskId, links }) => useCore.setState((s) => ({ pullRequests: { ...s.pullRequests, [taskId]: links } })))
         rpc.on('sources.updatesChanged', ({ summaries }) => { sourceUpdateChanges = summaries; useCore.setState({ sourceUpdates: Object.fromEntries(summaries.map((summary) => [`${summary.target.kind}:${summary.target.id}`, summary])) }) })
+        rpc.on('sources.writebackChanged', ({ writeback }) => useCore.setState((s) => ({ sourceWriteback: { ...s.sourceWriteback, [`${writeback.target.kind}:${writeback.target.id}`]: writeback } })))
         rpc.on('sources.inboxChanged', ({ inbox }) =>
           useCore.setState((s) => ({ inboxes: { ...s.inboxes, [inboxKey(inbox)]: inbox } }))
         )

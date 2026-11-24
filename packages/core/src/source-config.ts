@@ -1,12 +1,14 @@
 import { z } from 'zod'
-import { SourceId } from '@antumi/protocol'
+import { SourceId, SourceWritebackConfig } from '@antumi/protocol'
 import { readJsonIfExists, writePrivateJson } from '@antumi/protocol/node'
 
 export const InstanceConfig = z.object({
   provider: SourceId,
   instance: SourceId,
   enabled: z.boolean(),
-  settings: z.record(z.string(), z.string())
+  settings: z.record(z.string(), z.string()),
+  // The rules for writing back to issues (docs/SOURCE-WRITEBACK.md); absent, none.
+  writeback: SourceWritebackConfig.optional()
 })
 export type InstanceConfig = z.infer<typeof InstanceConfig>
 

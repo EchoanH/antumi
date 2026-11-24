@@ -10,4 +10,6 @@ export { ISSUE_STATUS_CATEGORIES, MAX_ISSUE_TITLE_LENGTH, MAX_SNAPSHOT_LENGTH, S
 export type { SettingField, LoginPrompt, LoginNotice, SourceFailure, SourceProblem } from '../../protocol/src/source.js'
 
 export * from '../../protocol/src/source-comments.js'
+export { MAX_WRITEBACK_COMMENT, SourceTransitionOption } from '../../protocol/src/source-writeback.js'
+export type { SourceTransitions, SourceStatusResult, SourceCommentResult } from '../../protocol/src/source-writeback.js'
 export { commentState, commentPage } from './comment-pagination.js'

@@ -11527,6 +11527,18 @@ button.squad-member-main { cursor: pointer; }
 .source-update-comment { padding: 12px 0; border-bottom: 1px solid var(--border); }
 .source-update-delivery { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 0; }
 .source-comment-badge { color: var(--accent); font-size: 12px; white-space: nowrap; }
+.source-writeback { display: flex; flex-direction: column; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--border); font-size: 12px; }
+.source-writeback-header, .source-writeback-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.source-writeback-actions select { width: auto; max-width: 240px; }
+.source-writeback-status { color: var(--text-muted); }
+.source-writeback-composer { display: flex; flex-direction: column; gap: 6px; }
+.source-writeback-report-text { margin: 4px 0 0; white-space: pre-wrap; color: var(--text-muted); }
+.source-writeback-log { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.source-writeback-log li { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; }
+.source-writeback-log .link-button { margin-left: 0; text-decoration: none; }
+.source-writeback-log .link-button:hover { text-decoration: underline; }
+.source-writeback-log li[data-state='failed'], .source-writeback-log li[data-state='uncertain'] { color: var(--warning); }
+.source-writeback-comment-toggle { display: flex; align-items: center; gap: 6px; margin-top: -4px; }
 
 .source-updates-button { display: inline-flex; align-items: center; flex-shrink: 0; gap: 5px; height: 24px; padding: 0 6px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font: inherit; font-size: 12px; white-space: nowrap; cursor: pointer; }
 .source-updates-button:hover, .source-updates-button[aria-expanded='true'] { background: var(--fill); color: var(--text); }
