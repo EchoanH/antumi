@@ -4,6 +4,8 @@
 
 ## 未发布
 
+## 0.22.0-beta.2 — 2026-11-24
+
 ### 修复
 
 - 在内置浏览器里从其他网站跳到 Google 登录（如 V2EX 的「Sign in with Google」）不再让 Antumi 闪退。
