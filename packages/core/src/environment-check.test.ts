@@ -136,6 +136,17 @@ describe('environment check', () => {
     expect(others((await service.check()).cliInstallations)).toEqual([])
   })
 
+  it.skipIf(process.platform === 'win32')('takes the ChatGPT app for Codex and offers its CLI', async () => {
+    const application = path.join(root, 'ChatGPT.app')
+    mkdirSync(path.join(application, 'Contents'), { recursive: true })
+    writeFileSync(path.join(application, 'Contents', 'Info.plist'), 'chatgpt')
+    const service = new EnvironmentService({ pathEnv: bin, platform: 'darwin', applicationDirs: [root], signedIn: {} })
+    expect((await service.check()).detectedAgents).toEqual([
+      { id: 'codex', name: 'Codex', locations: [{ source: 'application', path: application }] }
+    ])
+    expect(others((await service.check()).cliInstallations)).toEqual([{ agent: 'codex', shell: 'bash', command: 'npm install -g @openai/codex' }])
+  })
+
   it.each([
     { platform: 'win32', application: 'cursor/Cursor.exe', shell: 'powershell' },
     { platform: 'linux', application: 'cursor/cursor', shell: 'bash' }

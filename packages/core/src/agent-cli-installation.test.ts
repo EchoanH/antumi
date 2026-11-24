@@ -42,6 +42,16 @@ describe('agent CLI installation eligibility', () => {
     expect(agentCliInstallations(missing, 'win32')).toEqual([{ agent: 'cursor', shell: 'powershell', command: "irm 'https://cursor.com/install?win32=true' | iex" }])
     expect(agentCliInstallations(missing, 'freebsd')).toEqual([])
   })
+
+  it('offers the Codex CLI beside the ChatGPT app, whose own copy is not on the PATH', () => {
+    const chatgpt: Environment = {
+      checks: [{ tool: 'codex', status: 'missing', version: null, path: null, signedIn: null }],
+      detectedAgents: [{ id: 'codex', name: 'Codex', locations: [{ source: 'application', path: '/Applications/ChatGPT.app' }] }],
+      searchPath: [], checkedAt: 0
+    }
+    expect(agentCliInstallations(chatgpt, 'darwin')).toEqual([{ agent: 'codex', shell: 'bash', command: 'npm install -g @openai/codex' }])
+    expect(agentCliInstallations({ ...chatgpt, detectedAgents: [] }, 'darwin')).toEqual([])
+  })
 })
 
 describe('AgentCliInstaller', () => {

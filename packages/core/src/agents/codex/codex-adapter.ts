@@ -31,6 +31,9 @@ export const codex: AgentAdapter = {
   // not marked as, so Antumi asks in the chat.
   mcpApproval: 'antumi',
   signedIn: hasCodexCredentials,
+  // The ChatGPT app runs Codex from a CLI inside its bundle, which puts no codex on the PATH.
+  discovery: { commands: ['codex'], applications: { darwin: ['ChatGPT.app', 'Codex.app'] } },
+  installation: (platform) => ({ agent: 'codex', shell: platform === 'win32' ? 'powershell' : 'bash', command: 'npm install -g @openai/codex' }),
   usage: readCodexUsage,
   useResetCredit: useCodexResetCredit,
   accounts: codexAccounts,
