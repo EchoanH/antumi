@@ -17,6 +17,7 @@ import {
   SourceStatusResult,
   SourceTransitions,
   EMPTY_WRITEBACK,
+  applicableWriteback,
   MAX_WRITEBACK_COMMENT,
   type AgentKind,
   type Conversation,
@@ -271,14 +272,14 @@ export class SourceService {
         provider: provider.id,
         name: provider.name,
         settings: [...provider.settings],
-        ...(this.writes(provider) ? { writeback: true } : {}),
+        ...(this.writes(provider) ? { writeback: true, writebackComments: !!provider.comment, ...(provider.writebackRules ? { writebackRules: provider.writebackRules } : {}) } : {}),
         instances: instances.map((entry) => ({
           instance: entry.instance,
           enabled: entry.enabled,
           // A record saved before a field existed shows that field's default.
           settings: { ...this.defaults(provider), ...entry.settings },
           credential: this.credentialStatus(provider, entry.instance),
-          ...(this.writes(provider) ? { writeback: this.config.get(provider.id, entry.instance)?.writeback ?? EMPTY_WRITEBACK } : {}),
+          ...(this.writes(provider) ? { writeback: this.writebackRules(provider.id, entry.instance) } : {}),
           ...(this.automatic ? { autoInvestigation: this.automatic.info(provider.id, entry.instance) } : {})
         }))
       }
@@ -892,7 +893,9 @@ export class SourceService {
   }
 
   writebackRules(id: string, instance: string): SourceWritebackConfig {
-    return this.config.get(id, instance)?.writeback ?? EMPTY_WRITEBACK
+    const provider = this.providers.find((entry) => entry.id === id)
+    const saved = this.config.get(id, instance)?.writeback ?? EMPTY_WRITEBACK
+    return provider ? applicableWriteback(saved, provider.writebackRules, !!provider.comment) : saved
   }
 
   async saveWriteback(id: string, instance: string, writeback: SourceWritebackConfig): Promise<SourceDescriptor> {
@@ -900,7 +903,7 @@ export class SourceService {
     if (!this.writes(provider)) throw new Rejection('source-writeback-unsupported')
     const configured = this.configured(provider, instance)
     if (!configured) throw new Rejection('source-not-configured', `${id} is not set up`)
-    await this.config.save({ ...this.config.get(id, instance), provider: id, instance, enabled: configured.enabled, settings: { ...configured.settings }, writeback })
+    await this.config.save({ ...this.config.get(id, instance), provider: id, instance, enabled: configured.enabled, settings: { ...configured.settings }, writeback: applicableWriteback(writeback, provider.writebackRules, !!provider.comment) })
     this.events.listChanged(this.list())
     return this.descriptor(id)
   }

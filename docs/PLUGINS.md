@@ -373,4 +373,4 @@ SDK 0.1.3 支持来源声明 `commentSync: 1`，通过 `fetch.commentState` 建�
 
 ### 回写
 
-SDK 0.5.0 支持来源声明 `writeback: 1`，实现 `transitions`、`transition`、`comment`，把状态和评论写回事项；平台不能发评论时再声明 `writebackComment: false`。旧宿主忽略这些字段。详见 SDK README 和 [来源回写](SOURCE-WRITEBACK.md)。
+SDK 0.5.0 支持来源声明 `writeback: 1`，实现 `transitions`、`transition`、`comment`，把状态和评论写回事项；平台不能发评论时再声明 `writebackComment: false`。SDK 0.6.0 起可再声明 `writebackRules`，让设置页按平台给出每个阶段可选的状态。旧宿主忽略这些字段。详见 SDK README 和 [来源回写](SOURCE-WRITEBACK.md)。
