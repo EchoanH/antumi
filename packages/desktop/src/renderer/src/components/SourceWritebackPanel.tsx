@@ -20,7 +20,10 @@ export function useSourceWriteback(target: SourceUpdateTarget | null) {
 }
 
 function writeLabel(write: SourceWrite): string {
-  const what = write.kind === 'status' ? t('SourceWriteback.statusTo', { status: write.result ?? write.detail }) : t('SourceWriteback.commented')
+  const excerpt = write.detail.replace(/\s+/g, ' ').trim()
+  const what = write.kind === 'status'
+    ? t('SourceWriteback.statusTo', { status: write.result ?? write.detail })
+    : excerpt ? t('SourceWriteback.commentedText', { text: excerpt.length > 24 ? `${excerpt.slice(0, 24)}…` : excerpt }) : t('SourceWriteback.commented')
   return `${t(`SourceWriteback.trigger.${write.trigger}`)} · ${what}`
 }
 
@@ -93,7 +96,7 @@ export function SourceWritebackPanel({ target }: { target: SourceUpdateTarget })
         <span>{writeLabel(write)}</span>
         <span className="muted">{t(`SourceWriteback.state.${write.state}`)} · {dayAndTime(write.createdAt)}</span>
         {write.reason && <span className="muted">{write.reason}</span>}
-        {write.url && <a href={write.url} target="_blank" rel="noreferrer">{t('SourceUpdates.original')}</a>}
+        {write.url && <a className="link-button" href={write.url} target="_blank" rel="noreferrer">{t('SourceWriteback.open')}</a>}
         {(write.state === 'failed' || write.state === 'uncertain') && <button type="button" className="link-button" disabled={busy} onClick={() => void retry(write.id)}>{t('SourceWriteback.retry')}</button>}
       </li>)}
     </ul>}

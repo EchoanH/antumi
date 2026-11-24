@@ -11535,6 +11535,8 @@ button.squad-member-main { cursor: pointer; }
 .source-writeback-report-text { margin: 4px 0 0; white-space: pre-wrap; color: var(--text-muted); }
 .source-writeback-log { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
 .source-writeback-log li { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; }
+.source-writeback-log .link-button { margin-left: 0; text-decoration: none; }
+.source-writeback-log .link-button:hover { text-decoration: underline; }
 .source-writeback-log li[data-state='failed'], .source-writeback-log li[data-state='uncertain'] { color: var(--warning); }
 .source-writeback-comment-toggle { display: flex; align-items: center; gap: 6px; margin-top: -4px; }
 

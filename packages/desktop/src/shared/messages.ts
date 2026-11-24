@@ -123,6 +123,8 @@ export const MESSAGES = {
   "SourceWriteback.retry": {"zh": "重试", "en": "Retry"},
   "SourceWriteback.statusTo": {"zh": "状态改为「{status}」", "en": "status to “{status}”"},
   "SourceWriteback.commented": {"zh": "评论", "en": "comment"},
+  "SourceWriteback.commentedText": {"zh": "评论「{text}」", "en": "comment “{text}”"},
+  "SourceWriteback.open": {"zh": "查看", "en": "Open"},
   "SourceWriteback.trigger.manual": {"zh": "手动", "en": "By hand"},
   "SourceWriteback.trigger.start": {"zh": "开始执行时", "en": "On start"},
   "SourceWriteback.trigger.review": {"zh": "提交验收时", "en": "On review"},
