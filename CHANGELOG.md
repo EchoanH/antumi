@@ -12,12 +12,14 @@
 ### 改进
 
 - 只装了 ChatGPT 桌面版时，「设置 → 本机 Agent」可一键安装 Codex CLI。
+- DeepSeek Harness 新增支持 0.2.2-rc.4 和 rc.5，保留 rc.3；外部智能体设置会列出支持的版本。
 
 ### 修复
 
 - 后端在 WSL 或远程服务器上首次启动较慢时，不再误报「后端没能启动」。
 - WSL 和远程服务器上装好的后端和 Node 不再归其他系统账号所有。
 - macOS 上用 nvm、bun 等安装的 Codex 等 Agent 不再检测不到。
+- Codex 使用 CC Switch 等工具配置中转 API 后，不再被误提示需要登录账号。
 
 ## 0.22.0-beta.2 — 2026-11-24
 
