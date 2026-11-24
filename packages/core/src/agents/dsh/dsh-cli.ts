@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
-import { DSH_CONFIG_ENV, type AgentCliInstallation, type ChatCatalog } from '@antumi/protocol'
+import { DSH_CONFIG_ENV, DSH_VERSION, DSH_VERSIONS, type AgentCliInstallation, type ChatCatalog } from '@antumi/protocol'
 import { launchFile } from '@antumi/protocol/node'
 import { findOnPath } from '../../environment-check'
 import { Rejection } from '../../rejection'
@@ -18,7 +18,6 @@ import { dshDialect } from './dsh-dialect'
 import { DSH_PROVIDER_ENV, dshCommand } from './dsh-command'
 
 const execute = promisify(execFile)
-export const DSH_VERSION = '0.2.2-rc.3'
 const prepares = new Map<string, Promise<void>>()
 
 async function output(command: string, args: string[], timeout = 10_000, env = process.env): Promise<string> {
@@ -26,7 +25,7 @@ async function output(command: string, args: string[], timeout = 10_000, env = p
   return (await execute(launch.file, launch.args, { env: launch.env, timeout, windowsHide: true, maxBuffer: 1024 * 1024 })).stdout
 }
 
-export function dshCompatible(version: string | null): boolean { return version === DSH_VERSION }
+export function dshCompatible(version: string | null): boolean { return version !== null && DSH_VERSIONS.includes(version) }
 
 async function versionOf(command: string): Promise<string | null> {
   const printed = (await output(command, ['--version']).catch(() => '')).trim()
@@ -47,7 +46,7 @@ export async function detectDsh(pathEnv: string, platform: NodeJS.Platform): Pro
 export async function requireDsh(): Promise<string> {
   const command = await findOnPath('dsh', process.env.PATH ?? '', process.platform)
   if (!command) throw new Rejection('dsh-cli-missing', '未找到 DeepSeek Harness，请安装后重新检测')
-  if (!dshCompatible(await versionOf(command))) throw new Rejection('dsh-version-incompatible', `请安装 DeepSeek Harness ${DSH_VERSION}，其他版本尚未验证兼容`)
+  if (!dshCompatible(await versionOf(command))) throw new Rejection('dsh-version-incompatible', `支持 DeepSeek Harness ${DSH_VERSIONS.join('、')}，建议安装 ${DSH_VERSION}；其他版本尚未验证兼容`)
   return command
 }
 
