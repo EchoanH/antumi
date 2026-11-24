@@ -219,7 +219,7 @@ describe('Git management', () => {
     expect(await service.containing(target, ahead)).toEqual([local('feature'), remote('origin/feature')])
   })
 
-  it('holds a repository lock across preparation or cleanup and blocks agent starts in subdirectories', async () => {
+  it('holds a repository lock across preparation or cleanup, and agent starts in subdirectories wait for it', async () => {
     const child = path.join(repo, 'child'); mkdirSync(child)
     let release = () => {}
     let started = () => {}
@@ -229,8 +229,17 @@ describe('Git management', () => {
     await ready
     try {
       await expect(service.execute(target, { kind: 'fetch' })).rejects.toMatchObject({ reason: 'git-busy' })
-      await expect(service.guardAgent([child])).rejects.toMatchObject({ reason: 'git-busy' })
       await expect(service.withRepositories([child], async () => {})).rejects.toMatchObject({ reason: 'git-busy' })
+      service.guardWaitMs = 50
+      await expect(service.guardAgent([child])).rejects.toMatchObject({ reason: 'git-busy' })
+      service.guardWaitMs = 10_000
+      const guarded = service.guardAgent([child])
+      let through = false
+      void guarded.then(() => { through = true })
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(through).toBe(false)
+      release()
+      await expect(guarded).resolves.toBeUndefined()
     } finally { release(); await operation }
     await expect(service.guardAgent([child])).resolves.toBeUndefined()
     await expect(service.execute(target, { kind: 'fetch' })).resolves.toEqual({ state: 'done' })

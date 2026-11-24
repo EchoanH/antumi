@@ -26,6 +26,10 @@ const validBranchName = (dir: string) => async (name: string) => {
 
 export class GitService {
   private readonly locked = new Set<string>()
+  // Who waits for a repository's lock to go, by its key.
+  private readonly unlocking = new Map<string, Set<() => void>>()
+  // How long a message waits for a git operation in its repository to end; a test may shorten it.
+  guardWaitMs = 30_000
   constructor(private readonly tasks: Pick<TaskService, 'get' | 'list' | 'isLaunching'>, private readonly conversations: Pick<ConversationService, 'get' | 'listAll' | 'recordGitChange' | 'isGitPending'>, private readonly favorites: GitFavoriteStore, private readonly changed: () => void = () => {}) {}
 
   private directory(target: GitTarget): string {
@@ -85,11 +89,38 @@ export class GitService {
     return { project: workspaces[0]?.path ?? directory, directory, workspaces }
   }
 
+  // A message waits a while for a git operation in its repository rather than failing at once: the
+  // user who started one often writes the moment it looks done.
   async guardAgent(dirs: readonly string[]): Promise<void> {
+    const deadline = Date.now() + this.guardWaitMs
     for (const dir of dirs) {
       const key = await repositoryKey(dir)
-      if (key && this.locked.has(key)) throw new Rejection('git-busy', 'Git 操作进行中，请完成后再发送消息。')
+      while (key && this.locked.has(key)) {
+        if (!await this.unlocked(key, deadline - Date.now())) throw new Rejection('git-busy', 'Git 操作进行中，请完成后再发送消息。')
+      }
     }
+  }
+
+  // Whether the key's lock went within ms.
+  private unlocked(key: string, ms: number): Promise<boolean> {
+    if (ms <= 0) return Promise.resolve(false)
+    const waiters = this.unlocking.get(key) ?? new Set<() => void>()
+    this.unlocking.set(key, waiters)
+    return new Promise((resolve) => {
+      const done = () => { clearTimeout(timer); resolve(true) }
+      const timer = setTimeout(() => { waiters.delete(done); resolve(false) }, ms)
+      waiters.add(done)
+    })
+  }
+
+  private unlock(keys: readonly string[]): void {
+    for (const key of keys) {
+      this.locked.delete(key)
+      const waiters = this.unlocking.get(key)
+      this.unlocking.delete(key)
+      waiters?.forEach((done) => done())
+    }
+    this.changed()
   }
 
   // Holds the repositories' lock for run, and refuses while an agent works in one of those checkouts.
@@ -113,7 +144,7 @@ export class GitService {
     this.changed()
     try {
       return await run()
-    } finally { keys.forEach((key) => this.locked.delete(key)); this.changed() }
+    } finally { this.unlock(keys) }
   }
 
   // Whether an agent works, waits or starts in dir's checkout. One in another worktree of the same
@@ -298,10 +329,7 @@ export class GitService {
         }
       }
       return result
-    } finally {
-      this.locked.delete(key)
-      this.changed()
-    }
+    } finally { this.unlock([key]) }
   }
 
   private async perform(dir: string, key: string, status: GitStatus, action: GitAction): Promise<GitResult> {
