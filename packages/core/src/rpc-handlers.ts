@@ -1,3 +1,4 @@
+import { CcSwitchImport } from './cc-switch-import'
 import type { SquadCallService } from './squad-call-service'
 import { homedir } from 'node:os'
 import type { AgentProfileService } from './agent-profile-service'
@@ -138,7 +139,7 @@ export function createRpcHandlers(
     if (!mobile) throw new Rejection('mobile-unavailable')
     return mobile
   }
-  const hello = () => ({ protocolVersion: PROTOCOL_VERSION, serverVersion: packageJson.version, home: { path: homedir(), windows: process.platform === 'win32' }, features: CORE_FEATURES.filter((feature) => (feature !== 'agent-profiles' || Boolean(profiles)) && (feature !== 'project-star' || Boolean(projectStar)) && (feature !== 'bookmarks' || Boolean(bookmarks)) && (feature !== 'browser-history' || Boolean(browserHistory)) && (feature !== 'browser-sites' || Boolean(browserSites)) && (feature !== 'pets' || Boolean(pets)) && (feature !== 'squads' || Boolean(squads)) && (feature !== 'squad-calls' || Boolean(squadCalls)) && (!['plugins', 'plugin-recommendations', 'plugin-packages', 'plugin-pages'].includes(feature) || Boolean(plugins)) && (!['skills-library', 'skills-search', 'skills-activation'].includes(feature) || Boolean(skills)) && (feature !== 'mcp-servers' || Boolean(mcpServers)) && (feature !== 'small-model-stats' || Boolean(smallModels)) && (!['model-providers', 'model-provider-models'].includes(feature) || Boolean(modelProviders)) && (feature !== 'agent-accounts' || Boolean(accounts)) && (feature !== 'pull-requests' || Boolean(pullRequests)) && (feature !== 'mobile' || Boolean(mobile)) && (!['channels', 'channel-readiness', 'channel-tasks'].includes(feature) || Boolean(channels)) && (feature !== 'attachment-sweep' || Boolean(attachments.sweeper)) && (feature !== 'source-writeback' || Boolean(writeback))) })
+  const hello = () => ({ protocolVersion: PROTOCOL_VERSION, serverVersion: packageJson.version, home: { path: homedir(), windows: process.platform === 'win32' }, features: CORE_FEATURES.filter((feature) => (feature !== 'agent-profiles' || Boolean(profiles)) && (feature !== 'project-star' || Boolean(projectStar)) && (feature !== 'bookmarks' || Boolean(bookmarks)) && (feature !== 'browser-history' || Boolean(browserHistory)) && (feature !== 'browser-sites' || Boolean(browserSites)) && (feature !== 'pets' || Boolean(pets)) && (feature !== 'squads' || Boolean(squads)) && (feature !== 'squad-calls' || Boolean(squadCalls)) && (!['plugins', 'plugin-recommendations', 'plugin-packages', 'plugin-pages'].includes(feature) || Boolean(plugins)) && (!['skills-library', 'skills-search', 'skills-activation'].includes(feature) || Boolean(skills)) && (feature !== 'mcp-servers' || Boolean(mcpServers)) && (feature !== 'small-model-stats' || Boolean(smallModels)) && (!['model-providers', 'model-provider-models', 'cc-switch-import'].includes(feature) || Boolean(modelProviders)) && (feature !== 'agent-accounts' || Boolean(accounts)) && (feature !== 'pull-requests' || Boolean(pullRequests)) && (feature !== 'mobile' || Boolean(mobile)) && (!['channels', 'channel-readiness', 'channel-tasks'].includes(feature) || Boolean(channels)) && (feature !== 'attachment-sweep' || Boolean(attachments.sweeper)) && (feature !== 'source-writeback' || Boolean(writeback))) })
   const channelService = (): ChannelService => {
     if (!channels) throw new Rejection('channels-unavailable')
     return channels
@@ -280,6 +281,11 @@ export function createRpcHandlers(
   const imports = () => {
     if (!sessionImports) throw new Rejection('session-import-unavailable')
     return sessionImports
+  }
+  const ccSwitchImport = modelProviders ? new CcSwitchImport(modelProviders) : null
+  const ccSwitchImporter = () => {
+    if (!ccSwitchImport) throw new Rejection('model-providers-unavailable')
+    return ccSwitchImport
   }
   const modelProviderStore = () => {
     if (!modelProviders) throw new Rejection('model-providers-unavailable')
@@ -470,6 +476,8 @@ export function createRpcHandlers(
     'mcpServers.import': ({ items, agents }) => mcpServerStore().import(items, agents),
     'sessionImports.list': async () => ({ sessions: await imports().list(), warnings: imports().diagnostics() }),
     'sessionImports.import': async ({ sessions }) => ({ conversations: await imports().import(sessions) }),
+    'modelProviders.previewCcSwitch': ({ directory }) => ccSwitchImporter().preview(directory),
+    'modelProviders.importCcSwitch': ({ token, ids }) => ccSwitchImporter().import(token, ids),
     'modelProviders.list': () => modelProviderStore().list(),
     'modelProviders.save': (input) => modelProviderStore().save(input),
     'modelProviders.remove': async ({ id }) => { await modelProviderStore().remove(id); return OK },

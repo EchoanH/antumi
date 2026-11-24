@@ -26,6 +26,10 @@
 
 想在 Antumi 单独管理编程套餐或 API，再按下面的步骤添加服务商。
 
+**从 CC Switch 导入**：在 **设置 → 服务商** 点 **从 CC Switch 导入**，读取列表、勾选需要的项，再点 **导入所选服务商**。支持 Claude Code / Codex 的 API 服务商，包括未启用项；读取的是后端所在电脑用户目录下的 `.cc-switch/cc-switch.db`，也兼容旧版 `config.json`，改过数据位置时填写实际目录。预览不显示 Key，导入后 Key 存在 Antumi 的凭据文件里；已有同名、同接口、同 Key 的配置会跳过，不覆盖任何服务商，也不修改 CC Switch。
+
+导入是一次性复制，之后可在 Antumi 独立选择服务商；CC Switch 后续改动不会自动同步。没有保存模型名的条目会在导入时尝试获取 `/models`，失败只影响该项，结果页会标明；可在 CC Switch 补充模型配置后重试。导入不调用模型或自动执行连接测试，「标题、翻译、提交说明」默认关闭。官方订阅、OAuth 托管或暂不兼容的条目会注明原因，仍可通过「沿用本机配置」使用。
+
 ![设置 → 服务商 → 添加服务商：选套餐，填 API Key](assets/guide/provider.png)
 
 在 [**设置 → 服务商**](antumi:settings/model-providers) 点 **添加服务商**：选套餐、粘贴 API Key、勾选给哪些 Agent 用，点 **保存并测试**，每项都是 ✓ 就能用。Cursor 用不了服务商。
