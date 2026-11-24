@@ -110,7 +110,8 @@ export class PluginProcess {
         force.unref()
       }
       const fail = (message: string) => finish({ error: new SourceError('request-failed', message) })
-      const cancel = () => fail('插件调用已取消或超时')
+      // AbortSignal.any carries the reason of whichever signal fired, so a time limit reads as one.
+      const cancel = () => fail(signal.reason instanceof DOMException && signal.reason.name === 'TimeoutError' ? '插件调用超时' : '插件调用已取消')
       const send = (message: unknown) => { if (!outcome) child.stdin.write(`${JSON.stringify(message)}\n`) }
       const handshakeTimer = setTimeout(() => fail('插件握手超时'), 5000)
       signal.addEventListener('abort', cancel, { once: true })
