@@ -139,7 +139,7 @@ export const MESSAGES = {
   "SourceWriteback.onStart": {"zh": "开始执行时，状态改为", "en": "When the task starts, set status to"},
   "SourceWriteback.onReview": {"zh": "提交验收时，状态改为", "en": "When handed in for review, set status to"},
   "SourceWriteback.onDone": {"zh": "验收通过时，状态改为", "en": "When accepted, set status to"},
-  "SourceWriteback.postSummary": {"zh": "并发 Agent 写的总结评论", "en": "and post the Agent’s summary as a comment"},
+  "SourceWriteback.postSummary": {"zh": "同时发 Agent 写的总结评论", "en": "and post the Agent’s summary as a comment"},
   "SourceWriteback.guidance": {"zh": "总结要求（可选）", "en": "Summary guidance (optional)"},
   "SourceWriteback.guidancePlaceholder": {"zh": "如：用英文写；附上测试环境地址", "en": "e.g. Write in English; include the staging URL"},
   "SourceWriteback.guidanceHint": {"zh": "Agent 写总结时，在内置要求（2 到 4 句，说结果不说过程）之外再照这里写的做。", "en": "Besides the built-in rules (2–4 sentences, the outcome rather than the process), the Agent follows this when writing the summary."},
