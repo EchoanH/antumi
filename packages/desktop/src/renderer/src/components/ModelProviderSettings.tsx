@@ -1,3 +1,4 @@
+import { CcSwitchImportSettings } from './CcSwitchImportSettings'
 import { keepProbe, probeProvider, useProviderProbes } from '../provider-probes'
 import { getLocale, t } from '../i18n'
 import { useLayoutEffect, useId, useRef, useState, type FormEvent } from 'react'
@@ -548,13 +549,17 @@ export function ModelProviderSettings() {
   const connected = useCore((s) => s.connection === 'connected')
   const providers = useCore((s) => s.modelProviders)
   const [draft, setDraft] = useState<Draft | null>(null)
+  const [importing, setImporting] = useState(false)
+  const canImport = useCore((s) => s.rpc?.features.includes('cc-switch-import') ?? false)
   const accountsSupported = useAccountsSupported()
   const probes = useProviderProbes((state) => state.probes)
 
   if (!connected) return <SettingsEmptyState icon={<CloudIcon />} title={t('SettingsPage.providersDisconnected')}>{t('ChatCommandSettings.connectToAntumiCoreToView')}</SettingsEmptyState>
+  if (importing && canImport) return <CcSwitchImportSettings onDone={() => setImporting(false)} />
   if (draft) return <ProviderForm key={draft.id ?? 'new'} initial={draft} onDone={(saved, retest) => { setDraft(null); if (saved && retest) void probeProvider(saved.id); else if (saved) keepProbe(saved.id, saved.revision - 1, saved.revision) }} />
   return (
     <div className="provider-settings">
+      {canImport && <div className="settings-section-toolbar"><p>{t('CcSwitchImport.entryHint')}</p><button type="button" className="button" onClick={() => setImporting(true)}>{t('CcSwitchImport.title')}</button></div>}
       {providers.length === 0 ? <>
         <SettingsEmptyState icon={<CloudIcon />} title={t('SettingsPage.providerGetStarted')} actions={<button type="button" className="button" onClick={() => setDraft(draftOfPreset('custom'))}><PlusIcon />{t('SettingsPage.providerCustomAdd')}</button>}>
           {t('SettingsPage.providerEmptyHint')}
