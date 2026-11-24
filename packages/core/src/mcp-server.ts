@@ -313,9 +313,11 @@ export async function serveMcp(home: string | undefined, conversationId?: string
     const conversation = await rpc.call('conversations.get', { id: conversationId })
     const run = rpc.features.includes('squads') ? await rpc.call('squads.roster', { id: conversationId }) : null
     const target = conversation.taskId ? { kind: 'task' as const, id: conversation.taskId } : { kind: 'conversation' as const, id: conversation.id }
-    const writeback = rpc.features.includes('source-writeback') && !conversation.parentConversationId
-      ? (await rpc.call('sources.writeback', { target }).catch(() => null))?.supported === true
-      : false
+    const view = rpc.features.includes('source-writeback') && !conversation.parentConversationId
+      ? await rpc.call('sources.writeback', { target }).catch(() => null)
+      : null
+    // The summary is drafted to be posted, so a tracker that takes no comments gets no tool for it.
+    const writeback = view?.supported === true && view.comments
     return { ...conversationToolLimits(conversation), run, features: rpc.features, writeback, delegate: rpc.features.includes('agent-profiles') && canDelegate(conversation, Boolean(run)) }
   }) : null
   const attachments = new AttachmentStore(antumiPaths(home).attachments)

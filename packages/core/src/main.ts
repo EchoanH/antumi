@@ -382,8 +382,9 @@ sourceUpdates.setOwnComments((source) => writeback.ownComments(source))
 service.setStatusListener((before, after) => writeback.taskMoved(before, after))
 service.setSourcePrompt(async (task, conversationId, original) => {
   const snapshot = task.sourceSnapshot
-  // An agent whose task can be written back to drafts the issue's summary for Antumi to post.
-  const prompt = task.source && sources.writer(task.source) ? `${original}\n\n${reportInstruction(task.source.name, sources.writebackRules(task.source.provider, task.source.instance))}` : original
+  // An agent whose task can be written back to drafts the issue's summary for Antumi to post;
+  // where the tracker takes no comments there is nothing to post it as.
+  const prompt = task.source && sources.writer(task.source)?.comments ? `${original}\n\n${reportInstruction(task.source.name, sources.writebackRules(task.source.provider, task.source.instance))}` : original
   if (!task.source || !snapshot?.commentState) return { text: prompt }
   const comments = snapshot.commentState.comments.map((comment) => `### ${comment.author || '未知作者'} · ${new Date(comment.createdAt).toISOString()}
 ${comment.url}
