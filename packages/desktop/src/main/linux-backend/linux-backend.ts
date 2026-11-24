@@ -49,7 +49,9 @@ const INSTALL_SCRIPT = [
   'cat > "$tmp.tar.gz"',
   'echo "$2  $tmp.tar.gz" | sha256sum -c - > /dev/null',
   'mkdir "$tmp"',
-  'tar -xzf "$tmp.tar.gz" -C "$tmp"',
+  // As root, tar keeps the archive's owner: CI's uid, some other account here, which could then
+  // rewrite what root runs.
+  'tar -xzf "$tmp.tar.gz" -C "$tmp" --no-same-owner',
   'rm -f "$tmp.tar.gz"',
   ': > "$tmp/.ready"',
   'rm -rf "$dir"',

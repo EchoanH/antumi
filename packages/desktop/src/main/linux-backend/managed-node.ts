@@ -43,7 +43,8 @@ const INSTALL_SCRIPT = [
   '  if echo "$sum  $tmp" | sha256sum -c - > /dev/null 2>&1; then got=1; break; fi',
   'done',
   'if [ -z "$got" ]; then rm -f "$tmp"; exit 11; fi',
-  'tar -xzf "$tmp" -C "$dir" --strip-components=2 "${file%.tar.gz}/bin/node" || { rm -f "$tmp"; exit 13; }',
+  // Not as Node's builders own it: as root, that uid would be some other account here.
+  'tar -xzf "$tmp" -C "$dir" --no-same-owner --strip-components=2 "${file%.tar.gz}/bin/node" || { rm -f "$tmp"; exit 13; }',
   'rm -f "$tmp"',
   ': > "$dir/.ready"',
   'echo "$dir/node"'
