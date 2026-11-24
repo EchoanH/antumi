@@ -111,6 +111,14 @@ describe('plugin process boundary', () => {
   it('terminates a process that ignores cancellation', async () => {
     const manifest = await pluginFixture(directory, { behavior: { mode: 'hang' } })
     const runtime = new PluginProcess(manifest, path.join(directory, 'main.mjs'))
-    await expect(runtime.call('normalizeKey', { source: 'demo', key: '1' }, AbortSignal.timeout(500))).rejects.toThrow('取消或超时')
+    await expect(runtime.call('normalizeKey', { source: 'demo', key: '1' }, AbortSignal.timeout(500))).rejects.toThrow('插件调用超时')
+  })
+
+  it('tells a cancelled call from one that ran out of time', async () => {
+    const manifest = await pluginFixture(directory, { behavior: { mode: 'hang' } })
+    const runtime = new PluginProcess(manifest, path.join(directory, 'main.mjs'))
+    const controller = new AbortController()
+    setTimeout(() => controller.abort(), 300)
+    await expect(runtime.call('normalizeKey', { source: 'demo', key: '1' }, AbortSignal.any([controller.signal, AbortSignal.timeout(60_000)]))).rejects.toThrow(/^插件调用已取消$/)
   })
 })
