@@ -1,9 +1,7 @@
-import { readFile } from 'node:fs/promises'
-import path from 'node:path'
 import { z } from 'zod'
 import type { ResetCreditOutcome, ResetCredits, UsageWindow } from '@antumi/protocol'
-import { fetchUsageJson, parseJson, type UsageReading } from '../../usage-source'
-import { codexDefaultHome } from './codex-account'
+import { fetchUsageJson, type UsageReading } from '../../usage-source'
+import { readCodexAuth, type CodexTokens } from './codex-auth'
 
 // The endpoint behind Codex's /status; only ChatGPT sign-ins have plan limits.
 const USAGE_URL = 'https://chatgpt.com/backend-api/wham/usage'
@@ -24,11 +22,6 @@ const SESSION_MINUTES = 300
 const WEEK_MINUTES = 10_080
 // Older Codex builds report window lengths a minute off.
 const WINDOW_TOLERANCE_MINUTES = 1
-
-// An API-key sign-in has `tokens: null`: it is billed per token and has no windows to show.
-const Auth = z.object({
-  tokens: z.object({ access_token: z.string().min(1), account_id: z.string().nullish() }).nullish()
-})
 
 const Window = z.object({
   used_percent: z.number(),
@@ -171,18 +164,17 @@ async function supplementResetCredits(
 
 // home: an account's own folder; without one, the user's.
 async function readTokens(home?: string) {
-  const raw = await readFile(path.join(home ?? codexDefaultHome(), 'auth.json'), 'utf8').catch(() => null)
-  const auth = Auth.safeParse(parseJson(raw))
-  return auth.success ? auth.data.tokens : null
+  const auth = await readCodexAuth(home)
+  return auth?.type === 'chatgpt' ? auth.tokens : null
 }
 
 // Whether Codex has an account here, without asking the service anything.
 export async function hasCodexCredentials(home?: string): Promise<boolean> {
-  return (await readTokens(home)) !== null
+  return (await readCodexAuth(home)) !== null
 }
 
 // Sent as the Codex client, the one these endpoints serve; same headers as Orca.
-function codexHeaders(tokens: NonNullable<z.infer<typeof Auth>['tokens']>): Record<string, string> {
+function codexHeaders(tokens: CodexTokens): Record<string, string> {
   return {
     Authorization: `Bearer ${tokens.access_token}`,
     'User-Agent': 'codex-cli',
@@ -193,11 +185,12 @@ function codexHeaders(tokens: NonNullable<z.infer<typeof Auth>['tokens']>): Reco
 }
 
 export async function readCodexUsage(home?: string): Promise<UsageReading> {
-  const tokens = await readTokens(home)
-  if (!tokens) {
+  const auth = await readCodexAuth(home)
+  if (!auth) {
     return { signedIn: false }
   }
-  const headers = codexHeaders(tokens)
+  if (auth.type === 'api-key') return { signedIn: true, windows: [], plan: null }
+  const headers = codexHeaders(auth.tokens)
   const usage = parseCodexUsage(await fetchUsageJson(USAGE_URL, headers))
   return { signedIn: true, ...usage, resetCredits: await supplementResetCredits(usage.resetCredits, headers) }
 }
