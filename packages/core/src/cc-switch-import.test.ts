@@ -122,6 +122,20 @@ describe('CC Switch provider import', () => {
     expect(store.list()).toHaveLength(1)
   })
 
+  it('does not copy a key into public request headers, names or URL paths', async () => {
+    await database([
+      { id: 'Headers', app: 'claude', config: claude({ ANTHROPIC_CUSTOM_HEADERS: `X-Route: ${KEY}` }) },
+      { id: 'Path', app: 'claude', config: claude({ ANTHROPIC_BASE_URL: `https://relay.example/${KEY}/v1` }) },
+      { id: 'Name', name: `Relay ${KEY}`, app: 'codex', config: codex() }
+    ])
+    const preview = await importer.preview(dir)
+    expect(preview.candidates.every((entry) => entry.issue === 'invalid-config')).toBe(true)
+    expect(JSON.stringify(preview)).not.toContain(KEY)
+    const result = await importer.import(preview.token, preview.candidates.map((entry) => entry.id))
+    expect(JSON.stringify(result)).not.toContain(KEY)
+    expect(store.list()).toEqual([])
+  })
+
   it('lists unknown models only after selection and reports individual failures', async () => {
     await database([{ id: 'No model', app: 'claude', config: claude({ ANTHROPIC_MODEL: '', ANTHROPIC_DEFAULT_HAIKU_MODEL: '' }) }, { id: 'Known model', app: 'codex', config: codex() }])
     const listing = vi.spyOn(store, 'fetchModels').mockResolvedValue({ models: [], endpoints: [] })

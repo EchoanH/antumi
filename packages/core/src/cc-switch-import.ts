@@ -59,9 +59,16 @@ function models(ids: unknown[], context: number | null = null, effort = '') {
   return [...new Set(ids.map(text).filter(Boolean))].map((id) => ProviderModel.parse({ id, label: null, contextWindow: context, maxOutput: null, efforts: effort ? [effort] : [] }))
 }
 
+function containsKey(value: unknown, key: string): boolean {
+  if (typeof value === 'string') return value.includes(key)
+  if (Array.isArray(value)) return value.some((entry) => containsKey(entry, key))
+  return Object.values(record(value)).some((entry) => containsKey(entry, key))
+}
+
 function normalize(row: Row): Planned {
   const shown: ProviderImportCandidate = { id: randomBytes(12).toString('hex'), app: row.app, name: row.name.trim().slice(0, 60).trim(), endpoint: null, models: [], issue: null }
-  const skip = (issue: NonNullable<ProviderImportCandidate['issue']>): Planned => ({ shown: { ...shown, issue }, input: null })
+  let secret = ''
+  const skip = (issue: NonNullable<ProviderImportCandidate['issue']>): Planned => ({ shown: { ...shown, name: secret ? shown.name.replaceAll(secret, '…') : shown.name, issue }, input: null })
   if (!['claude', 'codex'].includes(row.app)) return skip('unsupported')
   const meta = objectJson(row.meta)
   if (row.category === 'official' || ['codex_oauth', 'xai_oauth', 'github_copilot'].includes(text(meta.providerType))) return skip('managed-account')
@@ -76,6 +83,7 @@ function normalize(row: Row): Planned {
       const token = text(env.ANTHROPIC_AUTH_TOKEN)
       const key = token || text(env.ANTHROPIC_API_KEY)
       if (!key || /^(\$|PROXY_MANAGED|MANAGED_BY_)/i.test(key)) return skip('missing-key')
+      secret = key
       const ids = [env.ANTHROPIC_MODEL, env.ANTHROPIC_DEFAULT_SONNET_MODEL, env.ANTHROPIC_DEFAULT_OPUS_MODEL, env.ANTHROPIC_DEFAULT_HAIKU_MODEL, env.ANTHROPIC_SMALL_FAST_MODEL]
       if (Array.isArray(meta.stackModels)) ids.push(...meta.stackModels.map((entry) => record(entry).model))
       const found = models(ids, positive(env.CLAUDE_CODE_MAX_CONTEXT_TOKENS))
@@ -96,10 +104,13 @@ function normalize(row: Row): Planned {
       if (provider.auth || provider.aws || provider.gateway_oauth) return skip('managed-account')
       const key = text(provider.env_key) ? text(process.env[text(provider.env_key)]) : text(provider.experimental_bearer_token) || text(record(config.auth).OPENAI_API_KEY)
       if (!key || /^(\$|PROXY_MANAGED|MANAGED_BY_)/i.test(key)) return skip('missing-key')
+      secret = key
       const found = models([profile.model ?? toml.model], positive(profile.model_context_window ?? toml.model_context_window), text(profile.model_reasoning_effort ?? toml.model_reasoning_effort))
       input = { id: null, name: shown.name, preset: 'custom', apiKey: key, agents: ['codex'], anthropic: null, openai: { chatUrl: null, responsesUrl: baseUrl }, models: found, defaultModel: found[0]?.id ?? '', smallModel: found[0]?.id ?? '', headers: ProviderHeaders.parse(provider.http_headers ?? {}), smallJobs: 'off' }
     }
     // Missing models can be listed at import time; all connection fields must already be valid.
+    const { apiKey, ...publicConfig } = input
+    if (apiKey && containsKey(publicConfig, apiKey)) return skip('invalid-config')
     ModelProviderInput.omit({ models: true, defaultModel: true, smallModel: true }).parse(input)
     z.array(ProviderModel).max(100).parse(input.models)
     shown.endpoint = input.anthropic?.baseUrl ?? input.openai?.responsesUrl ?? null
