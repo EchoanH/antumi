@@ -6,7 +6,7 @@
 
 ## 使用
 
-「设置 → 插件」的推荐列表包含 GitHub、Jira、Linear、禅道和飞书项目 / Meegle，只保存 GitHub 仓库与发布定位信息。点击安装时，core 下载对应插件最新正式 Release 的 ZIP；启动、查看列表和构建应用都不会下载或安装来源插件。也可以安装本地目录、ZIP 或 GitHub 项目。目录和 ZIP 的根目录必须有 `manifest.json`；目录安装会复制文件，后续修改开发目录不会改变已安装版本。GitHub 填写项目地址（`https://github.com/owner/repository`，或 `owner/repository`），安装最新正式 Release：只有一个 ZIP 时直接安装，有多个时在界面里选择。安装来源仍可带 `tag`、`tagPrefix` 和 `asset`（推荐插件用它们定位各自的发布）；未指定标签时使用最新正式 Release，显式 `tag` 优先于 `tagPrefix`。按 ZIP 名安装的记录（界面安装 GitHub 项目时会记下 ZIP 名）若名字带版本号（`<名字>-1.2.0.zip`），更新时找带同名不同版本 ZIP、版本最高的正式 Release，不要求它是仓库最新的 Release，所以多插件仓库里别的插件发版不会挡住更新；接口限流时从发布页由新到旧最多查 20 个 Release。多个 ZIP 又没指定 `asset` 时拒绝安装。API 分页每页 100 条、最多 10 页；超限要求显式标签，不猜测版本。API 限流时按发布网页分页筛选，最多 10 页。查 Release 先用 GitHub 接口；接口因同一出口 IP 请求过多拒绝（403、429，多人共用的 VPN 常见）时，改从仓库的发布页读标签（`releases/latest` 的跳转）和附件列表（`releases/expanded_assets/<标签>`），下载地址同样只接受该仓库的 `releases/download/`。
+「设置 → 插件」的推荐列表包含 GitHub、Jira、Linear、禅道、飞书项目 / Meegle 和 TAPD，只保存 GitHub 仓库与发布定位信息。点击安装时，core 下载对应插件最新正式 Release 的 ZIP；启动、查看列表和构建应用都不会下载或安装来源插件。也可以安装本地目录、ZIP 或 GitHub 项目。目录和 ZIP 的根目录必须有 `manifest.json`；目录安装会复制文件，后续修改开发目录不会改变已安装版本。GitHub 填写项目地址（`https://github.com/owner/repository`，或 `owner/repository`），安装最新正式 Release：只有一个 ZIP 时直接安装，有多个时在界面里选择。安装来源仍可带 `tag`、`tagPrefix` 和 `asset`（推荐插件用它们定位各自的发布）；未指定标签时使用最新正式 Release，显式 `tag` 优先于 `tagPrefix`。按 ZIP 名安装的记录（界面安装 GitHub 项目时会记下 ZIP 名）若名字带版本号（`<名字>-1.2.0.zip`），更新时找带同名不同版本 ZIP、版本最高的正式 Release，不要求它是仓库最新的 Release，所以多插件仓库里别的插件发版不会挡住更新；接口限流时从发布页由新到旧最多查 20 个 Release。多个 ZIP 又没指定 `asset` 时拒绝安装。API 分页每页 100 条、最多 10 页；超限要求显式标签，不猜测版本。API 限流时按发布网页分页筛选，最多 10 页。查 Release 先用 GitHub 接口；接口因同一出口 IP 请求过多拒绝（403、429，多人共用的 VPN 常见）时，改从仓库的发布页读标签（`releases/latest` 的跳转）和附件列表（`releases/expanded_assets/<标签>`），下载地址同样只接受该仓库的 `releases/download/`。
 
 安装文件放在 `ANTUMI_HOME/plugins/<id>/<version>/`（默认 `~/.antumi/plugins/`）。`active.json` 原子记录启用状态、当前版本、安装来源和来源 ID 归属。版本目录不覆盖；重新开发需要增加版本号。手动更新使用原安装来源，GitHub 更新按可选标签前缀检查最新正式 Release；不兼容版本拒绝安装。界面可以切换到保留的旧版。
 
@@ -16,9 +16,9 @@
 
 ## 独立维护的推荐插件
 
-五个插件统一在 `flyhero/antumi-plugins` 仓库维护，目录为 `plugins/github`、`plugins/jira`、`plugins/linear`、`plugins/zentao`、`plugins/meegle`。仓库按插件身份组织，名称不限定任务来源能力；当前 SDK 仍只提供来源接口，不预设尚未实现的贡献点。插件 ID 为 `antumi.<来源>`，来源 ID 为 `github`、`jira`、`linear`、`zentao`、`meegle`。Antumi 主仓库仅在 `packages/core/src/plugins-recommended.json` 中维护推荐名称、说明、仓库地址、标签前缀与旧仓库列表，不保存或打包这些插件的 ZIP、源码与依赖。
+六个插件统一在 `flyhero/antumi-plugins` 仓库维护，目录为 `plugins/github`、`plugins/jira`、`plugins/linear`、`plugins/zentao`、`plugins/meegle`、`plugins/tapd`。仓库按插件身份组织，名称不限定任务来源能力；当前 SDK 仍只提供来源接口，不预设尚未实现的贡献点。插件 ID 为 `antumi.<来源>`，来源 ID 为 `github`、`jira`、`linear`、`zentao`、`meegle`、`tapd`。Antumi 主仓库仅在 `packages/core/src/plugins-recommended.json` 中维护推荐名称、说明、仓库地址、标签前缀与旧仓库列表，不保存或打包这些插件的 ZIP、源码与依赖。
 
-推荐列表由 core 提供。客户端只能用推荐 ID 请求安装，core 从列表解析仓库，下载后校验包内 ID、版本兼容性、文件结构和握手。安装来源记录为 GitHub，后续「检查并更新」按 `github-v`、`jira-v`、`linear-v`、`zentao-v`、`meegle-v` 前缀分别查找最高正式版本，跳过草稿与预发布。当前安装器读取公开 Release，仓库尚未发布 ZIP 时安装会提示重试，不改变现有数据。
+推荐列表由 core 提供。客户端只能用推荐 ID 请求安装，core 从列表解析仓库，下载后校验包内 ID、版本兼容性、文件结构和握手。安装来源记录为 GitHub，后续「检查并更新」按 `github-v`、`jira-v`、`linear-v`、`zentao-v`、`meegle-v`、`tapd-v` 前缀分别查找最高正式版本，跳过草稿与预发布。当前安装器读取公开 Release，仓库尚未发布 ZIP 时安装会提示重试，不改变现有数据。
 
 旧版已安装的 GitHub 插件继续从用户插件目录加载；旧 `bundled` 安装记录仍可读取，通过推荐条目的 GitHub 仓库检查更新。原四个 `flyhero/antumi-plugin-*` 仓库的安装在用户主动检查更新时迁移到新仓库；只匹配推荐条目明确列出的旧地址，不迁移本地安装或自定义 fork。新包验证成功后才保存来源变更，同版本也会保存新来源，失败保留原记录。不会覆盖已有安装或自动重新启用被停用、卸载的插件。
 
@@ -197,6 +197,7 @@ pnpm exec tsx scripts/verify-source-plugin.ts ../antumi-plugin-acme/dist/antumi-
 - [Linear](https://github.com/flyhero/antumi-plugins/tree/main/plugins/linear)：团队和项目筛选、GraphQL 分页。
 - [禅道](https://github.com/flyhero/antumi-plugins/tree/main/plugins/zentao)：自定义站点、任务/Bug/需求及 RESTful API v1。
 - [飞书项目 / Meegle](https://github.com/flyhero/antumi-plugins/tree/main/plugins/meegle)：官方 MCP 服务、个人 MCP Token、MQL 条件筛选。
+- [TAPD](https://github.com/flyhero/antumi-plugins/tree/main/plugins/tapd)：个人访问令牌、需求/缺陷/任务、按处理人和状态筛选、评论同步。
 
 ## 插件页面
 

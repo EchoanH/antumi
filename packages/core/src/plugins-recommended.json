@@ -50,5 +50,13 @@
     "descriptionEn": "Sync Feishu Project or Meegle work items with an MCP token, filtered by MQL.",
     "repository": "flyhero/antumi-plugins",
     "tagPrefix": "meegle-v"
+  },
+  {
+    "id": "antumi.tapd",
+    "name": "TAPD",
+    "description": "用个人访问令牌同步 TAPD 项目的需求、缺陷或任务。",
+    "descriptionEn": "Sync TAPD stories, bugs or tasks with a personal access token.",
+    "repository": "flyhero/antumi-plugins",
+    "tagPrefix": "tapd-v"
   }
 ]
