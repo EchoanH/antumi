@@ -1,4 +1,5 @@
 import { SourceUpdatesPanel } from './SourceUpdatesPanel'
+import { SourceWritebackPanel } from './SourceWritebackPanel'
 import { localized, t, tr } from '../i18n'
 import { useState } from 'react'
 import { checkChangePrimary, checkEditProjects, shortTaskId, type Task } from '@antumi/protocol'
@@ -160,6 +161,7 @@ function TaskDetailBody({ task }: { task: Task }) {
           <SourceSnapshotCard task={task} />
           <TaskChannelSourceCard source={task.channelSource} />
           {task.source && <SourceUpdatesPanel target={{ kind: 'task', id: task.id }} />}
+          {task.source && <SourceWritebackPanel target={{ kind: 'task', id: task.id }} />}
           <TaskPlanCard task={task} />
 
           <MarkdownEditor

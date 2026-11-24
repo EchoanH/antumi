@@ -1,4 +1,5 @@
 import { AutoInvestigationSettings } from './AutoInvestigationSettings'
+import { SourceWritebackSettings } from './SourceWritebackSettings'
 import { getLocale, t, tr } from '../i18n'
 import { useEffect, useId, useState, type FormEvent } from 'react'
 import { DEFAULT_INSTANCE, translatedText, type SettingField, type SourceDescriptor } from '@antumi/protocol'
@@ -172,6 +173,7 @@ export function SourceSettingsSection({ source }: { source: SourceDescriptor }) 
         </button>
       </div>
       <AutoInvestigationSettings provider={source.provider} instance={DEFAULT_INSTANCE} info={instance.autoInvestigation} connected={instance.enabled && credential.configured} />
+      {source.writeback && <SourceWritebackSettings provider={source.provider} instance={DEFAULT_INSTANCE} config={instance.writeback} />}
     </form>
   )
 }

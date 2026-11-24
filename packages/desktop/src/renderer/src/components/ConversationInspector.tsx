@@ -18,6 +18,7 @@ import { WireLogView } from './WireLogView'
 import { DiffCommentConversation } from './DiffComments'
 import { useSourceUpdateSummary } from '../source-updates'
 import { SourceUpdatesPanel } from './SourceUpdatesPanel'
+import { SourceWritebackPanel, useSourceWriteback } from './SourceWritebackPanel'
 
 // Read again whenever the conversation changes (every agent turn and exit), the window regains
 // focus, or the user refreshes. An older core without the method has nothing to show; nor does
@@ -87,7 +88,8 @@ export function ConversationInspector({ conversation, widthRatio, onWidthRatioCh
   const todosShown = useTodosShown()
   const todos = useConversationTodos(todosShown ? conversation.id : null)
   const sourceUpdates = useSourceUpdateSummary(conversation.source ? { kind: 'conversation', id: conversation.id } : null)
-  const tabs: InspectorTab[] = [...(helper ? ['helper' as const] : []), ...(calls?.length ? ['delegation' as const] : []),...(conversation.projectPaths.length > 0 ? GIT_TABS : []), ...(sourceUpdates ? ['source' as const] : []), ...(plans.length > 0 ? ['plan' as const] : []), ...(todosShown ? ['todos' as const] : []), ...(wire ? ['wire' as const] : [])]
+  const writeback = useSourceWriteback(conversation.source && !conversation.taskId ? { kind: 'conversation', id: conversation.id } : null)
+  const tabs: InspectorTab[] = [...(helper ? ['helper' as const] : []), ...(calls?.length ? ['delegation' as const] : []),...(conversation.projectPaths.length > 0 ? GIT_TABS : []), ...(sourceUpdates || writeback ? ['source' as const] : []), ...(plans.length > 0 ? ['plan' as const] : []), ...(todosShown ? ['todos' as const] : []), ...(wire ? ['wire' as const] : [])]
   const tab = tabs.includes(wanted) ? wanted : (tabs[0] ?? 'changes')
   const [refreshCount, setRefreshCount] = useState(0)
   const [gitMaximized, setGitMaximized] = useState(false)
@@ -121,7 +123,10 @@ export function ConversationInspector({ conversation, widthRatio, onWidthRatioCh
         ) : tab === 'delegation' && conversation ? (
           <AgentCalls key={conversation.id} conversation={conversation} />
         ) : tab === 'source' ? (
-          <SourceUpdatesPanel key={conversation.id} target={{ kind: 'conversation', id: conversation.id }} inspector />
+          <>
+            <SourceWritebackPanel key={`writeback-${conversation.id}`} target={{ kind: 'conversation', id: conversation.id }} />
+            <SourceUpdatesPanel key={conversation.id} target={{ kind: 'conversation', id: conversation.id }} inspector />
+          </>
         ) : tab === 'todos' ? (
           <TodoPanel conversationId={conversation.id} />
         ) : tab === 'wire' ? (

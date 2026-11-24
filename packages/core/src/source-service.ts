@@ -13,6 +13,11 @@ import {
   SOURCE_KEY_PATTERN,
   SourceIssue,
   SourceCommentPage,
+  SourceCommentResult,
+  SourceStatusResult,
+  SourceTransitions,
+  EMPTY_WRITEBACK,
+  MAX_WRITEBACK_COMMENT,
   type AgentKind,
   type Conversation,
   type CredentialStatus,
@@ -22,6 +27,7 @@ import {
   type SourceIssuePreview,
   type SourceProblem,
   type SourceSnapshot,
+  type SourceWritebackConfig,
   type Task,
   type TaskImage,
   type TaskSource
@@ -265,12 +271,14 @@ export class SourceService {
         provider: provider.id,
         name: provider.name,
         settings: [...provider.settings],
+        ...(this.writes(provider) ? { writeback: true } : {}),
         instances: instances.map((entry) => ({
           instance: entry.instance,
           enabled: entry.enabled,
           // A record saved before a field existed shows that field's default.
           settings: { ...this.defaults(provider), ...entry.settings },
           credential: this.credentialStatus(provider, entry.instance),
+          ...(this.writes(provider) ? { writeback: this.config.get(provider.id, entry.instance)?.writeback ?? EMPTY_WRITEBACK } : {}),
           ...(this.automatic ? { autoInvestigation: this.automatic.info(provider.id, entry.instance) } : {})
         }))
       }
@@ -304,7 +312,7 @@ export class SourceService {
     }
     check()
     const previous = this.config.get(id, instance)
-    await this.config.save({ provider: id, instance, enabled: enabled ?? previous?.enabled ?? true, settings: normalized })
+    await this.config.save({ ...previous, provider: id, instance, enabled: enabled ?? previous?.enabled ?? true, settings: normalized })
     // A credential was made for one host; it must not follow a changed site anywhere else.
     const rebound = provider.settings.some(
       (field) => field.bindsCredential && previous && previous.settings[field.key] !== normalized[field.key]
@@ -881,6 +889,55 @@ export class SourceService {
     const result = this.descriptor(id)
     this.events.listChanged(this.list())
     return result
+  }
+
+  writebackRules(id: string, instance: string): SourceWritebackConfig {
+    return this.config.get(id, instance)?.writeback ?? EMPTY_WRITEBACK
+  }
+
+  async saveWriteback(id: string, instance: string, writeback: SourceWritebackConfig): Promise<SourceDescriptor> {
+    const provider = this.provider(id)
+    if (!this.writes(provider)) throw new Rejection('source-writeback-unsupported')
+    const configured = this.configured(provider, instance)
+    if (!configured) throw new Rejection('source-not-configured', `${id} is not set up`)
+    await this.config.save({ ...this.config.get(id, instance), provider: id, instance, enabled: configured.enabled, settings: { ...configured.settings }, writeback })
+    this.events.listChanged(this.list())
+    return this.descriptor(id)
+  }
+
+  private writes(provider: SourceProvider): boolean {
+    return provider.writeback === 1 && !!provider.transitions && !!provider.transition && (!!provider.comment || provider.writebackComment === false)
+  }
+
+  // Writing back to one issue, through its provider; null when the source cannot or is not ready.
+  // Every answer is checked like the rest of what a provider says.
+  writer(source: TaskSource) {
+    const ready = this.ready(source.provider, source.instance)
+    if (!ready || !this.writes(ready.provider)) return null
+    const { provider, settings, credential } = ready
+    const run = <T>(write: (signal: AbortSignal) => Promise<unknown>, schema: { safeParse(value: unknown): { success: true; data: T } | { success: false } }) =>
+      this.track(source.provider, async () => {
+        const check = this.guard(source.provider, source.instance)
+        const abort = this.state(source.provider, source.instance).controller.signal
+        let raw: unknown
+        try {
+          raw = await this.call((signal) => write(AbortSignal.any([signal, abort])), CALL_TIMEOUT_MS * 3)
+        } catch (error) {
+          throw sourceRejection(error)
+        }
+        check()
+        const parsed = schema.safeParse(raw)
+        if (!parsed.success) throw new Rejection('source-request-failed', `${provider.name} answered with something core cannot accept`)
+        return parsed.data
+      })
+    return {
+      comments: !!provider.comment,
+      transitions: () => run((signal) => provider.transitions!(settings, credential, source.key, signal), SourceTransitions),
+      transition: (id: string) => run((signal) => provider.transition!(settings, credential, source.key, id, signal), SourceStatusResult),
+      comment: (markdown: string, writeId: string) => !provider.comment
+        ? Promise.reject(new Rejection('source-writeback-no-comments', `${provider.name} 不支持发评论`))
+        : run((signal) => provider.comment!(settings, credential, source.key, { markdown: markdown.slice(0, MAX_WRITEBACK_COMMENT), writeId }, signal), SourceCommentResult)
+    }
   }
 
   private descriptor(id: string): SourceDescriptor {

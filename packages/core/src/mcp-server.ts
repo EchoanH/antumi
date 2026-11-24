@@ -3,6 +3,7 @@ import { agentToolsOverCore } from './mcp-agent-tools'
 import { bookmarkToolsOverCore } from './mcp-bookmark-tools'
 import { squadToolsOverCore, type SquadTools } from './mcp-squad-tools'
 import { todoToolsOverCore } from './mcp-todo-tools'
+import { sourceToolsOverCore } from './mcp-source-tools'
 import { pullRequestToolsOverCore } from './mcp-pull-request-tools'
 import { managementToolsOverCore } from './mcp-management-tools'
 import readline from 'node:readline'
@@ -97,6 +98,8 @@ export type McpTools = {
   todo?: ReturnType<typeof todoToolsOverCore>
   // The task's pull requests, there when core has them and the server serves a conversation.
   pullRequests?: ReturnType<typeof pullRequestToolsOverCore>
+  // The issue summary, there when the conversation came from an issue that can be written back to.
+  source?: ReturnType<typeof sourceToolsOverCore>
 }
 
 export type McpResponse = {
@@ -125,7 +128,7 @@ const describe = (error: unknown) => (error instanceof Error ? error.message : S
 // arguments are the model's to fix, so they come back as a tool error it can read.
 type ToolEntry = { spec: object & { name: string }; run(args: Record<string, unknown>): Promise<McpResult> }
 
-function toolTable({ preview, browser, bookmarks, terminal, history, squad, agents, teams, management, todo, pullRequests, planOnly }: McpTools): ToolEntry[] {
+function toolTable({ preview, browser, bookmarks, terminal, history, squad, agents, teams, management, todo, pullRequests, source, planOnly }: McpTools): ToolEntry[] {
   const entries: ToolEntry[] = [
     {
       spec: PREVIEW_TOOL,
@@ -202,6 +205,7 @@ function toolTable({ preview, browser, bookmarks, terminal, history, squad, agen
   if (management) entries.push(...management.filter((entry) => !planOnly || entry.spec.annotations.readOnlyHint))
   // Antumi's list, not the checkout: a planning agent writes to it too.
   if (todo) entries.push(...todo)
+  if (source) entries.push(...source)
   if (pullRequests) entries.push(...pullRequests.filter((entry) => !planOnly || entry.spec.annotations.readOnlyHint))
   return entries
 }
@@ -308,7 +312,11 @@ export async function serveMcp(home: string | undefined, conversationId?: string
   const scope = conversationId ? await withCore(async (rpc) => {
     const conversation = await rpc.call('conversations.get', { id: conversationId })
     const run = rpc.features.includes('squads') ? await rpc.call('squads.roster', { id: conversationId }) : null
-    return { ...conversationToolLimits(conversation), run, features: rpc.features, delegate: rpc.features.includes('agent-profiles') && canDelegate(conversation, Boolean(run)) }
+    const target = conversation.taskId ? { kind: 'task' as const, id: conversation.taskId } : { kind: 'conversation' as const, id: conversation.id }
+    const writeback = rpc.features.includes('source-writeback') && !conversation.parentConversationId
+      ? (await rpc.call('sources.writeback', { target }).catch(() => null))?.supported === true
+      : false
+    return { ...conversationToolLimits(conversation), run, features: rpc.features, writeback, delegate: rpc.features.includes('agent-profiles') && canDelegate(conversation, Boolean(run)) }
   }) : null
   const attachments = new AttachmentStore(antumiPaths(home).attachments)
   const handle = createMcpHandler({
@@ -325,7 +333,8 @@ export async function serveMcp(home: string | undefined, conversationId?: string
       bookmarks: bookmarkToolsOverCore(withCore),
       terminal: terminalToolsOverCore(withCore, conversationId),
       ...(todos && scope?.todos !== false ? { todo: todoToolsOverCore(withCore, conversationId) } : {}),
-      ...(scope?.features.includes('pull-requests') ? { pullRequests: pullRequestToolsOverCore(withCore, conversationId) } : {})
+      ...(scope?.features.includes('pull-requests') ? { pullRequests: pullRequestToolsOverCore(withCore, conversationId) } : {}),
+      ...(scope?.writeback ? { source: sourceToolsOverCore(withCore, conversationId) } : {})
     } : {}),
     ...(history ? { history: historyToolsOverCore(withCore, conversationId ?? null) } : {})
   })

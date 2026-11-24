@@ -29,6 +29,9 @@ export class SourceUpdates {
   private stopped = false
   private activeTargets = new Set<string>()
   constructor(private readonly store: SourceUpdateStore, private readonly sources: Pick<SourceService, 'updateConnection'>, private readonly hooks: Hooks, private readonly now: () => number = Date.now) {}
+  // Comments Antumi posted itself (docs/SOURCE-WRITEBACK.md): never new, never sent to an agent.
+  private own: (source: TaskSource) => ReadonlySet<string> = () => new Set()
+  setOwnComments(own: (source: TaskSource) => ReadonlySet<string>): void { this.own = own }
 
   start(): void {
     this.stopped = false
@@ -121,7 +124,8 @@ export class SourceUpdates {
     const target = this.ensure(owner)
     const item = this.store.item(target.itemId)
     if (!item) throw new Rejection('source-none')
-    const comments = this.store.comments(item.id).filter((comment) => newer(comment, target.baseline))
+    const own = this.own(item.source)
+    const comments = this.store.comments(item.id).filter((comment) => newer(comment, target.baseline) && !own.has(comment.id))
     const deliveries = this.store.deliveries().filter((delivery) => key(delivery.target) === key(target.target))
     const reserved = new Set(deliveries.filter((delivery) => !['cancelled', 'failed'].includes(delivery.state)).flatMap((delivery) => delivery.commentIds))
     return { target, item, comments, deliveries, reserved }
