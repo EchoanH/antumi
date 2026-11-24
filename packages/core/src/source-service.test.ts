@@ -172,13 +172,13 @@ describe('SourceService', () => {
     await signIn()
     const source = { provider: 'demo', instance: 'default', name: 'Demo', key: 'D-1', url: 'https://demo.test/issues/D-1' }
     expect(service.writer(source)).toBeNull()
-    await expect(service.saveWriteback('demo', 'default', { start: { status: 'Doing' }, review: { status: '', comment: true }, done: { status: '', comment: false } })).rejects.toThrow()
+    await expect(service.saveWriteback('demo', 'default', { start: { status: 'Doing' }, review: { status: '', comment: true }, done: { status: '', comment: false }, guidance: '' })).rejects.toThrow()
     const moved: string[] = []
     Object.assign(demo, { writeback: 1 })
     demo.transitions = async () => ({ status: 'Open', statusCategory: 'todo', options: [{ id: 'go', name: 'Doing', category: 'doing' }, { id: '', name: 'bad', category: 'doing' }] })
     demo.transition = async (_settings, _credential, key, id) => { moved.push(`${key}:${id}`); return { status: 'Doing', statusCategory: 'doing' } }
     demo.comment = async () => ({ id: '7', url: null })
-    const descriptor = await service.saveWriteback('demo', 'default', { start: { status: 'Doing' }, review: { status: '', comment: true }, done: { status: '', comment: false } })
+    const descriptor = await service.saveWriteback('demo', 'default', { start: { status: 'Doing' }, review: { status: '', comment: true }, done: { status: '', comment: false }, guidance: '' })
     expect(descriptor.writeback).toBe(true)
     expect(descriptor.instances[0]?.writeback?.start.status).toBe('Doing')
     await service.saveSettings({ provider: 'demo', instance: 'default', settings: { site: 'https://demo.test', query: 'all' } })

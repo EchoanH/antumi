@@ -7,7 +7,8 @@ import { Rejection } from './rejection'
 import { SourceUpdates, type SourceUpdateOwner } from './source-updates'
 import { SourceUpdateStore } from './source-update-store'
 import { SourceWritebackStore } from './source-writeback-store'
-import { reportInstruction, SourceWriteback } from './source-writeback'
+import { SourceWriteback } from './source-writeback'
+import { reportInstruction } from './source-report-prompt'
 import { AgentProfileStore } from './agent-profile-store'
 import { AgentProfileService, readyAgents } from './agent-profile-service'
 import { AgentCliMaintenance } from './agent-cli-maintenance'
@@ -382,7 +383,7 @@ service.setStatusListener((before, after) => writeback.taskMoved(before, after))
 service.setSourcePrompt(async (task, conversationId, original) => {
   const snapshot = task.sourceSnapshot
   // An agent whose task can be written back to drafts the issue's summary for Antumi to post.
-  const prompt = task.source && sources.writer(task.source) ? `${original}\n\n${reportInstruction(sources.writebackRules(task.source.provider, task.source.instance))}` : original
+  const prompt = task.source && sources.writer(task.source) ? `${original}\n\n${reportInstruction(task.source.name, sources.writebackRules(task.source.provider, task.source.instance))}` : original
   if (!task.source || !snapshot?.commentState) return { text: prompt }
   const comments = snapshot.commentState.comments.map((comment) => `### ${comment.author || '未知作者'} · ${new Date(comment.createdAt).toISOString()}
 ${comment.url}

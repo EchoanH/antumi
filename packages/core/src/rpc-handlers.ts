@@ -23,6 +23,7 @@ import { localSkillFolders } from './local-skills'
 import type { PluginService } from './plugin-service'
 import type { PetLibrary } from './pet-library'
 import type { SourceWriteback } from './source-writeback'
+import { condensedReport, condensePrompt } from './source-report-prompt'
 import type { SourceUpdates } from './source-updates'
 import type { SourceService } from './source-service'
 import type { Connection, RpcHandlers } from './rpc-server'
@@ -229,6 +230,12 @@ export function createRpcHandlers(
     chatSettings.current().titleModels[conversation.agent], {
       kind: 'title', conversationId: conversation.id, baseline: () => conversations.costBaseline(conversation.id)
     }, conversations.quickProvider(conversation.id))).text)
+  // The small model rewrites an agent's last reply as an issue's summary when it drafted none.
+  writeback?.setCondenser(async (conversationId, platform, reply, guidance) => {
+    const conversation = conversations.get(conversationId)
+    const { text } = await quick.ask(conversation.agent, condensePrompt(platform, reply, guidance), chatSettings.current().titleModels[conversation.agent], undefined, conversations.quickProvider(conversationId))
+    return condensedReport(text)
+  })
   service.setBranchNamer(async (agent, title, modelProvider) => cleanSlug((await quick.ask(agent, slugPrompt(title), undefined, undefined,
     modelProvider ? conversations.quickProviderFor(modelProvider, agent) : undefined)).text))
   const cliInstaller = new AgentCliInstaller(environment, terminals)

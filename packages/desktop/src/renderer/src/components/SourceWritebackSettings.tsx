@@ -17,7 +17,7 @@ export function SourceWritebackSettings({ provider, instance, config }: { provid
     await perform((rpc) => rpc.call('sources.saveWriteback', { provider, instance, config: draft }))
     setBusy(false)
   }
-  const statusField = (stage: keyof SourceWritebackConfig, label: string) => <div className="settings-field">
+  const statusField = (stage: Exclude<keyof SourceWritebackConfig, 'guidance'>, label: string) => <div className="settings-field">
     <label className="settings-field-label" htmlFor={`${id}-${stage}`}>{label}</label>
     <input id={`${id}-${stage}`} className="input" value={draft[stage].status} maxLength={500} placeholder="In Progress | 处理中" autoComplete="off" spellCheck={false}
       onChange={(event) => { const status = event.target.value; setDraft((known) => ({ ...known, [stage]: { ...known[stage], status } })) }} />
@@ -34,6 +34,12 @@ export function SourceWritebackSettings({ provider, instance, config }: { provid
     {commentToggle('review')}
     {statusField('done', t('SourceWriteback.onDone'))}
     {commentToggle('done')}
+    <div className="settings-field">
+      <label className="settings-field-label" htmlFor={`${id}-guidance`}>{t('SourceWriteback.guidance')}</label>
+      <textarea id={`${id}-guidance`} className="input settings-textarea" rows={2} maxLength={1000} value={draft.guidance} placeholder={t('SourceWriteback.guidancePlaceholder')}
+        onChange={(event) => { const guidance = event.target.value; setDraft((known) => ({ ...known, guidance })) }} />
+      <p className="settings-field-hint">{t('SourceWriteback.guidanceHint')}</p>
+    </div>
     <div className="settings-form-footer">
       <button type="button" className="button" disabled={busy || !dirty} onClick={() => void save()}>{busy ? t('SourceWriteback.saving') : t('SourceWriteback.save')}</button>
     </div>

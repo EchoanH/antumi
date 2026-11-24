@@ -91,7 +91,7 @@ describe('source writeback', () => {
   })
 
   it('follows the rules as the task starts, goes for review and is accepted', async () => {
-    rules = { start: { status: 'In Progress' }, review: { status: 'In Review', comment: true }, done: { status: 'Done', comment: true } }
+    rules = { start: { status: 'In Progress' }, review: { status: 'In Review', comment: true }, done: { status: 'Done', comment: true }, guidance: '' }
     writeback.saveReport(target, 'Fixed the redirect; see PR #12.')
     writeback.taskMoved(task('pending'), task('running'))
     await settled()
@@ -129,12 +129,29 @@ describe('source writeback', () => {
     expect(writeback.view(target).writes[0]).toMatchObject({ state: 'skipped', reason: expect.stringContaining('不往回改') })
   })
 
-  it('falls back to the agent’s last reply when there is no summary', async () => {
+  it('posts the last reply only as the small model condenses it, never as it is', async () => {
+    const asked: string[][] = []
+    writeback.setCondenser(async (conversationId, platform, text, guidance) => { asked.push([conversationId, platform, text, guidance]); return 'Login returns to the page you were on.' })
+    rules = { ...EMPTY_WRITEBACK, review: { status: '', comment: true }, guidance: 'Write in English' }
+    writeback.taskMoved(task('running'), task('review'))
+    await settled()
+    expect(asked).toEqual([['chat-1', 'Demo', 'Fixed the redirect after sign-in.', 'Write in English']])
+    expect(comments[0]?.markdown).toBe('Login returns to the page you were on.')
+    expect(writeback.view(target).writes[0]).toMatchObject({ origin: 'last-reply' })
+  })
+
+  it('posts no comment when the reply cannot be condensed', async () => {
+    writeback.setCondenser(async () => null)
     rules = { ...EMPTY_WRITEBACK, review: { status: '', comment: true } }
     writeback.taskMoved(task('running'), task('review'))
     await settled()
-    expect(comments[0]?.markdown).toBe('Fixed the redirect after sign-in.')
-    expect(writeback.view(target).writes[0]).toMatchObject({ origin: 'last-reply' })
+    expect(comments).toEqual([])
+    expect(writeback.view(target).writes[0]).toMatchObject({ kind: 'comment', state: 'skipped', reason: expect.stringContaining('压缩') })
+  })
+
+  it('sends a summary past the limit back to the agent to shorten', () => {
+    expect(() => writeback.saveReport(target, 'x'.repeat(601))).toThrow(/601 字/)
+    expect(writeback.view(target).report).toBeNull()
   })
 
   it('posts nothing, and says so, when there is neither a summary nor a reply', async () => {

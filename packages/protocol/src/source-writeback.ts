@@ -10,6 +10,9 @@ export const SOURCE_REPORT_TOOL = 'source_report'
 
 export const MAX_WRITEBACK_COMMENT = 20_000
 export const MAX_SOURCE_REPORT = 8_000
+// What a summary for an issue may run to: the prompt asks for 300 characters, this leaves slack, and
+// past it source_report refuses so the agent writes a shorter one.
+export const SOURCE_REPORT_LIMIT = 600
 
 const StatusCategory = z.enum(ISSUE_STATUS_CATEGORIES)
 

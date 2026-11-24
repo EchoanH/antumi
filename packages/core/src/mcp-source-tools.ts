@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { MAX_SOURCE_REPORT, SOURCE_REPORT_TOOL, type RpcConnection } from '@antumi/protocol'
+import { MAX_SOURCE_REPORT, SOURCE_REPORT_LIMIT, SOURCE_REPORT_TOOL, type RpcConnection } from '@antumi/protocol'
+import { reportRules } from './source-report-prompt'
 
 type WithCore = <T>(action: (rpc: RpcConnection) => Promise<T>) => Promise<T>
 type Result = { content: { type: 'text'; text: string }[]; isError: boolean }
@@ -14,9 +15,9 @@ export function sourceToolsOverCore(withCore: WithCore, conversationId: string) 
     {
       spec: {
         name: SOURCE_REPORT_TOOL,
-        description: '给这个任务来源的事项（Jira、GitHub 等）写一段总结，存为草稿。做完工作、交给用户验收前调用：2 到 4 句，说结果不说过程，有 PR 就带上链接；之后又改了就再调用一次覆盖。' +
+        description: `给这个任务来源的事项（Jira、GitHub 等）写一条完成总结，存为草稿。做完工作、交给用户验收前调用；之后又改了就再调用一次覆盖。超过 ${SOURCE_REPORT_LIMIT} 字会被退回。\n${reportRules()}\n` +
           '它不会直接发出去：用户设置了规则时，Antumi 在提交验收或验收通过时把它作为评论发到事项上，否则由用户决定。你不能用它改事项状态。',
-        inputSchema: { type: 'object', properties: { summary: { type: 'string', description: '总结正文，Markdown' } }, required: ['summary'], additionalProperties: false },
+        inputSchema: { type: 'object', properties: { summary: { type: 'string', description: `总结正文，2 到 4 句，${SOURCE_REPORT_LIMIT} 字以内` } }, required: ['summary'], additionalProperties: false },
         // Writes to Antumi alone, never to the tracker or the workspace, so it is fine while planning.
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
       },
