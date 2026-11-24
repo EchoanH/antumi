@@ -1,5 +1,5 @@
 import { useState, type ReactElement, type ReactNode } from 'react'
-import { BackendLocation, type BackendLocationState, type BackendProblem } from '../../../shared/backend-location'
+import { BackendLocation, ptyNeedsNewerLibc, type BackendLocationState, type BackendProblem } from '../../../shared/backend-location'
 import { readBackendLocation, sameLocation, useBackendLocation, type RemoteLocation } from '../backend-location-state'
 import { askConfirm } from '../confirm-dialog'
 import { setBackendLocation } from '../desktop-bridge'
@@ -117,7 +117,9 @@ function sshProblemContent(problem: BackendProblem, host: string): ProblemConten
     case 'install':
       return { title: t('BackendLocation.problemInstallSsh', { host }), body: <Detail text={problem.detail} />, retry: true }
     case 'pty':
-      return { title: t('BackendLocation.problemPtySsh', { host }), body: <><p>{t('BackendLocation.problemPtySshFix')}</p><Detail text={problem.detail} /></>, retry: true }
+      return ptyNeedsNewerLibc(problem.detail)
+        ? { title: t('BackendLocation.problemPtySsh', { host }), body: <><p>{t('BackendLocation.problemPtySshFix')}</p><Detail text={problem.detail} /></>, retry: true }
+        : { title: t('BackendLocation.problemPtyLoadSsh', { host }), body: <><p>{t('BackendLocation.problemPtyLoadFix')}</p><Detail text={problem.detail} /></>, retry: true }
     case 'start':
       return { title: t('BackendLocation.problemStartSsh', { host }), body: <><p>{tr('BackendLocation.problemStartSshFix', { log: <code>~/.antumi/logs/core.log</code> })}</p><Detail text={problem.detail} /></>, retry: true }
     default:
@@ -150,7 +152,9 @@ function wslProblemContent(problem: BackendProblem, distro: string): ProblemCont
     case 'install':
       return { title: t('BackendLocation.problemInstall', { distro }), body: <Detail text={problem.detail} />, retry: true }
     case 'pty':
-      return { title: t('BackendLocation.problemPty', { distro }), body: <><p>{t('BackendLocation.problemPtyFix')}</p><Detail text={problem.detail} /></>, retry: true }
+      return ptyNeedsNewerLibc(problem.detail)
+        ? { title: t('BackendLocation.problemPty', { distro }), body: <><p>{t('BackendLocation.problemPtyFix')}</p><Detail text={problem.detail} /></>, retry: true }
+        : { title: t('BackendLocation.problemPtyLoad', { distro }), body: <><p>{t('BackendLocation.problemPtyLoadFix')}</p><Detail text={problem.detail} /></>, retry: true }
     case 'start':
       return { title: t('BackendLocation.problemStart', { distro }), body: <><p>{tr('BackendLocation.problemStartFix', { log: <code>~/.antumi/logs/core.log</code> })}</p><Detail text={problem.detail} /></>, retry: true }
     default:

@@ -102,7 +102,8 @@ describe('backend location settings', () => {
       [{ kind: 'arch', arch: 'arm64' }, ['「Ubuntu」是 arm64 的发行版，目前只支持 x64。']],
       [{ kind: 'login-environment' }, ['登录 shell 没有回应', '<code>wsl -d Ubuntu</code>']],
       [{ kind: 'install', detail: 'tar: no space left' }, ['没能把后端装进「Ubuntu」。', 'tar: no space left']],
-      [{ kind: 'pty', detail: 'GLIBC_2.34 not found' }, ['系统库太旧', 'Ubuntu 22.04', 'GLIBC_2.34 not found']],
+      [{ kind: 'pty', detail: "libc.so.6: version `GLIBC_2.34' not found" }, ['「Ubuntu」的系统库太旧。', 'Ubuntu 22.04', 'GLIBC_2.34']],
+      [{ kind: 'pty', detail: 'Cannot find module pty.node' }, ['「Ubuntu」里的后端没能加载终端组件。', '与这台机器无关', 'Cannot find module pty.node']],
       [{ kind: 'start', detail: 'exited with 1' }, ['「Ubuntu」里的后端没能启动。', '<code>~/.antumi/logs/core.log</code>', 'exited with 1']]
     ]
     for (const [problem, expected] of cases) {
@@ -175,6 +176,8 @@ describe('backend location on a server', () => {
       [{ kind: 'arch', arch: 'riscv64' }, ['「dev@box」是 riscv64，后端只有 x86_64 和 aarch64 的。']],
       [{ kind: 'linger' }, ['ssh 断开时结束你的所有进程', '<code>sudo loginctl enable-linger $USER</code>']],
       [{ kind: 'node-old', version: 'v20.1.0', path: '/usr/bin/node' }, ['「dev@box」上的 Node 是 v20.1.0，需要 24 以上。', '后端用服务器上的 Node']],
+      [{ kind: 'pty', detail: "libstdc++.so.6: version `GLIBCXX_3.4.30' not found" }, ['「dev@box」的系统库太旧。', 'glibc 2.35', 'GLIBCXX_3.4.30']],
+      [{ kind: 'pty', detail: 'invalid ELF header' }, ['「dev@box」上的后端没能加载终端组件。', '更新 Antumi', 'invalid ELF header']],
       [{ kind: 'start', detail: 'exited with 1' }, ['「dev@box」上的后端没能启动。', '服务器上的', 'exited with 1']],
       [{ kind: 'node-download', detail: 'the machine could not download it' }, ['没能在「dev@box」上装好 Node 24。', '国内镜像', 'the machine could not download it', 'nvm install 24']]
     ]

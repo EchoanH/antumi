@@ -77,8 +77,15 @@ describe('backendControl', () => {
 
   it('says whether node-pty loads, and why not', async () => {
     expect(await backendControl(['check'], { loadPty: async () => ({}) })).toEqual({ answer: { node: process.version, arch: process.arch, pty: true } })
-    const failing = await backendControl(['check'], { loadPty: () => Promise.reject(new Error('no binding')) })
+    const failing = await backendControl(['check'], { loadPty: () => Promise.reject(new Error('no binding')), bindingError: () => null })
     expect(failing).toEqual({ answer: { node: process.version, arch: process.arch, pty: 'no binding' } })
+  })
+
+  it('gives the binding\'s own error over the last place node-pty looked', async () => {
+    const glibc = "/lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.42' not found (required by pty.node)"
+    const lastPlace = new Error("Failed to load native module: pty.node, checked: build/Release, build/Debug, prebuilds/linux-x64: Error: Cannot find module './prebuilds/linux-x64//pty.node'")
+    const failing = await backendControl(['check'], { loadPty: () => Promise.reject(lastPlace), bindingError: () => glibc })
+    expect(failing).toEqual({ answer: { node: process.version, arch: process.arch, pty: glibc } })
   })
 
   it('refuses anything else', async () => {

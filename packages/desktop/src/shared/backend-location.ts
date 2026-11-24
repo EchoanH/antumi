@@ -21,11 +21,15 @@ export const LinuxBackendProblem = z.discriminatedUnion('kind', [
   // No Node new enough there, and the one Antumi installs could not be put there either.
   z.object({ kind: z.literal('node-download'), detail: z.string() }),
   z.object({ kind: z.literal('install'), detail: z.string() }),
-  // node-pty does not load there: a libc older than the one it was compiled against, mostly.
+  // node-pty does not load there; `detail` is why, ptyNeedsNewerLibc() tells whose problem it is.
   z.object({ kind: z.literal('pty'), detail: z.string() }),
   z.object({ kind: z.literal('start'), detail: z.string() })
 ])
 export type LinuxBackendProblem = z.infer<typeof LinuxBackendProblem>
+
+// node-pty's binding asks for a newer glibc or libstdc++ than the machine has: the one way it fails
+// that the machine's owner fixes, by upgrading. Any other way is the package's.
+export const ptyNeedsNewerLibc = (detail: string) => /version `(?:GLIBC|GLIBCXX|CXXABI)_[\d.]+' not found/.test(detail)
 
 // Why a backend in WSL did not start, for the renderer to say what to do about it.
 export const WslBackendProblem = z.discriminatedUnion('kind', [

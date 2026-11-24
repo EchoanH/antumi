@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import path from 'node:path'
 import type { CoreEndpoint } from '@antumi/protocol'
 import { backendToStart, retireOldDaemon, runningCore } from '@antumi/protocol/node'
 
@@ -14,6 +17,8 @@ export type BackendControlAnswer =
 export type BackendControlOptions = {
   home?: string
   loadPty?: () => Promise<unknown>
+  // Why node-pty's Linux binding itself does not load; null when it does or is not there.
+  bindingError?: () => string | null
 }
 
 export const BACKEND_CONTROL_USAGE = 'usage: backend-control prepare <version> [--keep-newer] | replace-daemon <version> [--keep-newer] | endpoint | check'
@@ -30,15 +35,31 @@ export async function backendControl(args: string[], options: BackendControlOpti
   // As replaceOldDaemon in the desktop app: a daemon to start only once an older one left.
   if (command === 'replace-daemon' && rest.length === 1 && rest[0]) return { answer: { start: (await retireOldDaemon(rest[0], options.home, rule)) ? ['daemon'] : [] } }
   if (command === 'endpoint' && rest.length === 0) return { answer: { endpoint: await runningCore(options.home) } }
-  if (command === 'check' && rest.length === 0) return { answer: { node: process.version, arch: process.arch, pty: await ptyLoads(options.loadPty) } }
+  if (command === 'check' && rest.length === 0) return { answer: { node: process.version, arch: process.arch, pty: await ptyLoads(options.loadPty, options.bindingError) } }
   return { usage: BACKEND_CONTROL_USAGE }
 }
 
-async function ptyLoads(load: () => Promise<unknown> = () => import(NODE_PTY)): Promise<true | string> {
+const message = (error: unknown) => (error instanceof Error ? error.message : String(error))
+
+async function ptyLoads(load: () => Promise<unknown> = () => import(NODE_PTY), bindingError: () => string | null = linuxBindingError): Promise<true | string> {
   try {
     await load()
     return true
   } catch (error) {
-    return error instanceof Error ? error.message : String(error)
+    // node-pty tries each place its binding may be and keeps only the last error, a prebuild
+    // folder Linux never has: the binding's own error says why it did not load, a glibc too old.
+    return bindingError() ?? message(error)
+  }
+}
+
+function linuxBindingError(): string | null {
+  try {
+    const require = createRequire(import.meta.url)
+    const binding = path.join(path.dirname(require.resolve(`${NODE_PTY}/package.json`)), 'build/Release/pty.node')
+    if (!existsSync(binding)) return null
+    require(binding)
+    return null
+  } catch (error) {
+    return message(error)
   }
 }

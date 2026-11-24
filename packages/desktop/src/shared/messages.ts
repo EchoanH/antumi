@@ -13531,6 +13531,8 @@ export const MESSAGES = {
   "BackendLocation.problemInstall": {"zh": "没能把后端装进「{distro}」。", "en": "Could not install the backend in {distro}."},
   "BackendLocation.problemPty": {"zh": "「{distro}」的系统库太旧。", "en": "The system libraries in {distro} are too old."},
   "BackendLocation.problemPtyFix": {"zh": "后端的终端组件按 Ubuntu 22.04 编译，需要同样新或更新的发行版。换一个新些的发行版，或升级这个。", "en": "The backend's terminal component is built for Ubuntu 22.04 and later. Use a newer distro, or upgrade this one."},
+  "BackendLocation.problemPtyLoad": {"zh": "「{distro}」里的后端没能加载终端组件。", "en": "The backend in {distro} could not load its terminal component."},
+  "BackendLocation.problemPtyLoadFix": {"zh": "多半是 Antumi 安装包的问题，与这台机器无关。更新 Antumi 后再试；还不行，请把下面的报错通过「反馈」发给我们。", "en": "This is most likely a problem with Antumi's package, not this machine. Update Antumi and try again; if it persists, send us the error below through Feedback."},
   "BackendLocation.problemStart": {"zh": "「{distro}」里的后端没能启动。", "en": "The backend in {distro} did not start."},
   "BackendLocation.problemStartFix": {"zh": "完整日志在发行版里的 {log}。", "en": "The full log is in {log} inside the distro."},
   "BackendLocation.chooseDescriptionSsh": {"zh": "选远程服务器时，用的是服务器上的项目、git 和 Agent：服务器要是 Linux，装好要用的 Agent，并且 ssh 能不输密码登录；没有 Node 24 时 Antumi 会自己装一份。切换后 Antumi 会重启。", "en": "With a remote server, Antumi uses the projects, git and Agents on it: the server must run Linux with the Agents you use, and ssh must log in without a password prompt; Antumi sets up Node 24 there if it has none. Switching restarts Antumi."},
@@ -13565,6 +13567,7 @@ export const MESSAGES = {
   "BackendLocation.problemInstallSsh": {"zh": "没能把后端装到「{host}」上。", "en": "Could not install the backend on {host}."},
   "BackendLocation.problemPtySsh": {"zh": "「{host}」的系统库太旧。", "en": "The system libraries on {host} are too old."},
   "BackendLocation.problemPtySshFix": {"zh": "后端的终端组件按 Ubuntu 22.04 编译，需要 glibc 2.35 或更新的系统。", "en": "The backend's terminal component is built for Ubuntu 22.04: it needs glibc 2.35 or later."},
+  "BackendLocation.problemPtyLoadSsh": {"zh": "「{host}」上的后端没能加载终端组件。", "en": "The backend on {host} could not load its terminal component."},
   "BackendLocation.problemStartSsh": {"zh": "「{host}」上的后端没能启动。", "en": "The backend on {host} did not start."},
   "BackendLocation.problemStartSshFix": {"zh": "完整日志在服务器上的 {log}。", "en": "The full log is in {log} on the server."},
 } as const
