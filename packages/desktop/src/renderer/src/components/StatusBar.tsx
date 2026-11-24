@@ -13,7 +13,7 @@ import { UsageBar } from './UsageBar'
 import { useFolderChanges } from './ConversationInspector'
 import { openRuns } from '../schedules'
 import { Popover } from './Popover'
-import { UpdateButton } from './UpdateNotice'
+import { UpdatesButton } from './UpdatesButton'
 import { openSetup } from '../setup-controller'
 import { ContextMenu, MenuItem, type MenuPoint } from './ContextMenu'
 import { useOccludesBrowser } from '../browser-occlusion'
@@ -428,7 +428,7 @@ export function StatusBar({ panelsInTitleBar }: { panelsInTitleBar: boolean }) {
       <SettingsButton />
       <HelpButton />
       <ConnectionStatus />
-      <UpdateButton />
+      <UpdatesButton />
       <UsageBar />
       <ScheduleButton />
       <WorktreeButton />

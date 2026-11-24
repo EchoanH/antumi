@@ -3885,6 +3885,20 @@ div.inspector-empty > p { margin: 0 0 8px; }
 .update-settings-status { display: inline-flex; align-items: center; gap: 8px; }
 .update-settings-actions { display: flex; flex-direction: column; gap: 8px; padding: 0 0 12px; }
 
+.maintenance-card { width: min(400px, calc(100vw - 48px)); max-height: min(640px, calc(100dvh - 80px)); overflow-y: auto; gap: 12px; }
+.maintenance-anchor .menu { min-width: 0; max-width: calc(100vw - 16px); max-height: calc(100dvh - 64px); overflow: hidden; }
+.maintenance-heading, .maintenance-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.maintenance-heading { color: var(--text); }
+.maintenance-group { display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--border); padding-top: 12px; }
+.maintenance-row > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.maintenance-row > .button { flex-shrink: 0; }
+.maintenance-heading .muted { font-size: 12px; }
+.settings-update-count { margin-left: auto; padding: 0 6px; border-radius: var(--radius-sm); background: var(--accent-bg); color: var(--accent); font-size: 12px; font-variant-numeric: tabular-nums; }
+.release-notes-dialog { width: min(560px, calc(100vw - 32px)); }
+.release-notes-dialog .modal-body { gap: 20px; padding: 24px; }
+.release-notes-content { max-height: min(480px, calc(100dvh - 240px)); overflow-y: auto; font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
+.release-notes-dialog .update-actions { justify-content: flex-end; }
+
 .statusbar-divider { flex-shrink: 0; width: 1px; height: 14px; margin: 0 4px; background: var(--border); }
 .statusbar .statusbar-feedback { display: inline-flex; align-items: center; gap: 4px; width: auto; height: 24px; padding: 0 6px; }
 .statusbar .statusbar-feedback svg { width: 15px; height: 15px; }

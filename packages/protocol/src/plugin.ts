@@ -61,11 +61,20 @@ function githubPath(input: string): [string, string] | null {
   const [owner, repo] = url.pathname.split('/').filter(Boolean)
   return owner && repo ? [owner, repo] : null
 }
+export const PluginUpdate = z.object({
+  availability: z.enum(['available', 'current', 'manual', 'error']),
+  latestVersion: PluginVersion.nullable(),
+  checkedAt: z.number(),
+  error: z.string().nullable()
+})
+export type PluginUpdate = z.infer<typeof PluginUpdate>
+
 export const PluginInfo = z.object({
   id: PluginId, version: PluginVersion, enabled: z.boolean(),
   sources: z.array(PluginSource), pages: z.array(PluginPage).default([]), versions: z.array(PluginVersion),
   origin: z.union([PluginInstallSource, z.object({ kind: z.literal('bundled') })]),
-  problem: z.string().nullable()
+  problem: z.string().nullable(),
+  update: PluginUpdate.optional()
 })
 export type PluginInfo = z.infer<typeof PluginInfo>
 export const RecommendedPlugin = z.object({

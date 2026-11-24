@@ -72,6 +72,7 @@ import { SupportSettings } from './SupportSettings'
 import { ProjectConfigDialog, projectConfigSummary } from './ProjectConfigDialog'
 import { useOccludesBrowser } from '../browser-occlusion'
 import { UpdateSettings } from './UpdateNotice'
+import { SettingsUpdateCount } from './SettingsUpdateCount'
 import { PetSettings } from './PetSettings'
 import { AppearanceSettings } from './AppearanceSettings'
 import { KeyboardShortcutSettings } from './KeyboardShortcutSettings'
@@ -996,6 +997,7 @@ export function SettingsPage() {
                   >
                     <section.Icon />
                     {section.title}
+                    <SettingsUpdateCount section={section.id} />
                   </button>
                 ))}
             </div>

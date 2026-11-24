@@ -44,6 +44,8 @@ import { TaskLaunchDialog } from './components/TaskLaunchDialog'
 import { usePreferences } from './preferences'
 import { usePortPolling } from './port-state'
 import { useUpdateFeed } from './update-state'
+import { useMaintenancePolling } from './maintenance-updates'
+import { ReleaseNotesDialog } from './components/ReleaseNotesDialog'
 import { useBackendLocationFeed } from './backend-location-state'
 import { AppPet } from './components/AppPet'
 import { recordingPanelShortcut, usePanelShortcuts } from './panel-shortcuts'
@@ -65,6 +67,7 @@ export function App() {
   usePreferences((state) => state.projectNames)
   usePortPolling()
   useUpdateFeed()
+  useMaintenancePolling()
   useBackendLocationFeed()
   const selectedId = useCore((s) => s.selectedId)
   const section = useCore((s) => s.section)
@@ -209,6 +212,7 @@ export function App() {
         )}
       </main>
       <SetupGuide />
+      <ReleaseNotesDialog />
       {/* After the workspace: where drag regions overlap, the later one wins, and the sidebar and
           pane headers under it are drag regions. */}
       {framed && <TitleBar />}

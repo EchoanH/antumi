@@ -1,13 +1,11 @@
 import { useState } from 'react'
 import type { UpdateState } from '../../../shared/app-update'
 import { t } from '../i18n'
-import { checkForUpdate, installUpdate, setUpdateAutomatic, setUpdatePrerelease, skipUpdate, updateOffered, useUpdate } from '../update-state'
+import { checkForUpdate, installUpdate, setUpdateAutomatic, setUpdatePrerelease, skipUpdate, useUpdate } from '../update-state'
 import { closeTerminal, selectConversation, showTerminal, useCore } from '../core-store'
 import { agentLabel } from '../labels'
-import { ArrowUpIcon, ChevronDownIcon } from './icons'
-import { ChatMarkdown } from './ChatMarkdown'
-import { Popover } from './Popover'
 import { SettingsRow, Toggle } from './SettingsControls'
+import { openReleaseNotes } from '../release-notes-state'
 
 const ERROR_TEXT: Record<string, () => string> = {
   'download-failed': () => t('AppUpdate.errorDownload'),
@@ -94,59 +92,6 @@ export function UpdateActions({ state, onSkip }: { state: UpdateState; onSkip?: 
   )
 }
 
-// A newer Antumi, in the status bar until it is installed or skipped.
-export function UpdateButton() {
-  const state = useUpdate((s) => s.state)
-  const [open, setOpen] = useState(false)
-  if (!state?.latest || !updateOffered(state)) return null
-  const { latest } = state
-  const busy = state.status === 'downloading' || state.status === 'installing'
-  const ready = state.status === 'ready' && state.canInstall
-  const label = ready ? t('AppUpdate.installDownloaded')
-    : state.status === 'downloading' ? t('AppUpdate.downloading', { percent: Math.round((state.progress ?? 0) * 100) })
-    : state.status === 'installing' ? t('AppUpdate.installing')
-    : t('AppUpdate.newVersion', { version: latest.version })
-  return (
-    <span className="menu-anchor statusbar-update-anchor">
-      <button
-        type="button"
-        className="tool-button statusbar-update"
-        aria-haspopup={ready ? undefined : "dialog"}
-        aria-expanded={ready ? undefined : open}
-        disabled={state.status === 'installing'}
-        title={ready ? t('AppUpdate.available', { version: latest.version }) : undefined}
-        data-busy={busy || undefined}
-        onClick={ready ? installUpdate : () => setOpen((value) => !value)}
-      >
-        <ArrowUpIcon />
-        <span>{label}</span>
-      </button>
-      {ready && (
-        <button
-          type="button"
-          className="tool-button statusbar-update"
-          aria-label={t('AppUpdate.details')}
-          aria-haspopup="dialog"
-          aria-expanded={open}
-          onClick={() => setOpen((value) => !value)}
-        >
-          <ChevronDownIcon />
-        </button>
-      )}
-      {open && (
-        <Popover label={t('AppUpdate.available', { version: latest.version })} onClose={() => setOpen(false)}>
-          <div className="update-card">
-            <div className="update-title">{t('AppUpdate.available', { version: latest.version })}</div>
-            <div className="update-current">{t('AppUpdate.current', { version: state.current })}</div>
-            {latest.notes.trim() && <div className="update-notes"><ChatMarkdown text={latest.notes} highlight={false} /></div>}
-            <UpdateActions state={state} onSkip={() => { skipUpdate(latest.version); setOpen(false) }} />
-          </div>
-        </Popover>
-      )}
-    </span>
-  )
-}
-
 function statusText(state: UpdateState): string {
   if (state.status === 'checking') return t('AppUpdate.checking')
   if (state.status === 'error' && !state.latest && state.error) return t('AppUpdate.checkFailed', { reason: updateErrorText(state.error) })
@@ -169,11 +114,12 @@ export function UpdateSettings() {
     finally { setSavingAutomatic(false) }
   }
   const state = useUpdate((s) => s.state)
-  if (!state) return null
+  if (!state) return <button type="button" className="button" onClick={openReleaseNotes}>{t('Updates.currentRelease')}</button>
   const skipped = state.latest !== null && state.latest.version === state.skipped
   const checked = state.checkedAt === null ? null : new Date(state.checkedAt).toLocaleString()
   return (
     <>
+      <div className="update-actions"><button type="button" className="button" onClick={openReleaseNotes}>{t('Updates.currentRelease')}</button></div>
       <SettingsRow
         label={t('AppUpdate.updates')}
         description={[t('AppUpdate.updatesDescription'), checked && t('AppUpdate.lastChecked', { time: checked })].filter(Boolean).join(' ')}
