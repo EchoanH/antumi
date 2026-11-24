@@ -61,7 +61,7 @@ describe('PullRequestService', () => {
     store = new PullRequestStore(database)
     task = Task.parse({ ...tasks.create('Add PRs'), details: 'Open pull requests from tasks', status: 'review', repos: [{ path: repo, worktreePath: worktree, branch: 'antumi/abc', startRef: 'refs/remotes/origin/main', start: { ref: 'origin/main', commit: start, note: null, at: 0 } }], dependsOn: [], agent: 'claude', createdAt: 0, updatedAt: 0 })
     const taskService = { get: (id: string) => { if (id !== task.id) throw new Error('task missing'); return task } }
-    const gitService = new GitService({ ...taskService, list: () => [task], isLaunching: () => false }, { get: () => { throw new Error('no conversation') }, listAll: () => [], recordGitChange: async () => {}, isGitPending: () => false }, favorites)
+    const gitService = new GitService({ ...taskService, list: () => [task], isLaunching: () => false }, { get: () => { throw new Error('no conversation') }, listAll: () => [], recordGitChange: () => {}, isGitPending: () => false }, favorites)
     calls = []
     reply = () => Response.json([])
     now = 1_000_000

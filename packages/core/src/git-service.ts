@@ -4,6 +4,7 @@ import { checkGitOperation } from '@antumi/protocol'
 import type { TaskService } from './task-service'
 import type { ConversationService } from './conversation-service'
 import { git, gitOrNull } from './git-changes'
+import { folderHead } from './conversation-changes'
 import { projectHead } from './workspace'
 import { commitAll } from './project-commit'
 import { Rejection } from './rejection'
@@ -25,6 +26,10 @@ const validBranchName = (dir: string) => async (name: string) => {
 
 export class GitService {
   private readonly locked = new Set<string>()
+  // Who waits for a repository's lock to go, by its key.
+  private readonly unlocking = new Map<string, Set<() => void>>()
+  // How long a message waits for a git operation in its repository to end; a test may shorten it.
+  guardWaitMs = 30_000
   constructor(private readonly tasks: Pick<TaskService, 'get' | 'list' | 'isLaunching'>, private readonly conversations: Pick<ConversationService, 'get' | 'listAll' | 'recordGitChange' | 'isGitPending'>, private readonly favorites: GitFavoriteStore, private readonly changed: () => void = () => {}) {}
 
   private directory(target: GitTarget): string {
@@ -84,11 +89,38 @@ export class GitService {
     return { project: workspaces[0]?.path ?? directory, directory, workspaces }
   }
 
+  // A message waits a while for a git operation in its repository rather than failing at once: the
+  // user who started one often writes the moment it looks done.
   async guardAgent(dirs: readonly string[]): Promise<void> {
+    const deadline = Date.now() + this.guardWaitMs
     for (const dir of dirs) {
       const key = await repositoryKey(dir)
-      if (key && this.locked.has(key)) throw new Rejection('git-busy', 'Git 操作进行中，请完成后再发送消息。')
+      while (key && this.locked.has(key)) {
+        if (!await this.unlocked(key, deadline - Date.now())) throw new Rejection('git-busy', 'Git 操作进行中，请完成后再发送消息。')
+      }
     }
+  }
+
+  // Whether the key's lock went within ms.
+  private unlocked(key: string, ms: number): Promise<boolean> {
+    if (ms <= 0) return Promise.resolve(false)
+    const waiters = this.unlocking.get(key) ?? new Set<() => void>()
+    this.unlocking.set(key, waiters)
+    return new Promise((resolve) => {
+      const done = () => { clearTimeout(timer); resolve(true) }
+      const timer = setTimeout(() => { waiters.delete(done); resolve(false) }, ms)
+      waiters.add(done)
+    })
+  }
+
+  private unlock(keys: readonly string[]): void {
+    for (const key of keys) {
+      this.locked.delete(key)
+      const waiters = this.unlocking.get(key)
+      this.unlocking.delete(key)
+      waiters?.forEach((done) => done())
+    }
+    this.changed()
   }
 
   // Holds the repositories' lock for run, and refuses while an agent works in one of those checkouts.
@@ -112,7 +144,7 @@ export class GitService {
     this.changed()
     try {
       return await run()
-    } finally { keys.forEach((key) => this.locked.delete(key)); this.changed() }
+    } finally { this.unlock(keys) }
   }
 
   // Whether an agent works, waits or starts in dir's checkout. One in another worktree of the same
@@ -130,14 +162,12 @@ export class GitService {
     return false
   }
 
+  // Tasks share a few repositories: each folder is asked for its repository once, all at the same time.
   private async protectedRefs(key: string): Promise<Set<string>> {
-    const refs = new Set<string>()
-    for (const task of this.tasks.list()) {
-      for (const repo of task.repos) {
-        if (repo.branch && (await repositoryKey(repo.worktreePath ?? repo.path) ?? await repositoryKey(repo.path)) === key) refs.add(`refs/heads/${repo.branch}`)
-      }
-    }
-    return refs
+    const repos = this.tasks.list().flatMap((task) => task.repos.filter((repo) => repo.branch))
+    const folders = [...new Set(repos.flatMap((repo) => repo.worktreePath ? [repo.worktreePath, repo.path] : [repo.path]))]
+    const keys = new Map(await Promise.all(folders.map(async (folder) => [folder, await repositoryKey(folder)] as const)))
+    return new Set(repos.filter((repo) => (keys.get(repo.worktreePath ?? repo.path) ?? keys.get(repo.path)) === key).map((repo) => `refs/heads/${repo.branch}`))
   }
 
   async status(target: GitTarget): Promise<GitStatus> {
@@ -283,26 +313,23 @@ export class GitService {
       const after = await projectHead(dir)
       const moved = ['switch', 'detach', 'merge', 'rebase', 'pull', 'continue', 'abort', 'resolve'].includes(action.kind) || (action.kind === 'update' && action.ref === `refs/heads/${status.branch}`) || (action.kind === 'create' && action.checkout) || (action.kind === 'rename' && action.ref === `refs/heads/${status.branch}`)
       if (moved) {
-        // Every conversation in this checkout hears of it. Conversations share folders, so each
-        // folder is asked for its checkout once, all at the same time.
+        // Every conversation in this checkout hears of it. Hundreds of conversations share a few
+        // folders, so each folder is asked for its checkout, and its head, once, all at the same time.
         const conversations = this.conversations.listAll()
         const root = await gitOrNull(dir, ['rev-parse', '--show-toplevel'])
         const folders = [...new Set(conversations.flatMap((conversation) => conversation.projectPaths))]
         const roots = await Promise.all(folders.map((folder) => gitOrNull(folder, ['rev-parse', '--show-toplevel'])))
         const here = new Set(folders.filter((_, index) => roots[index] === root))
+        const checkedOut = action.kind === 'switch' || action.kind === 'detach' || (action.kind === 'create' && action.checkout)
+        const starts = new Map(checkedOut ? await Promise.all([...here].map(async (folder) => [folder, await folderHead(folder)] as const)) : [])
         for (const conversation of conversations) {
           for (const project of conversation.projectPaths) {
-            if (here.has(project)) {
-              await this.conversations.recordGitChange(conversation.id, project, after.branch ?? '分离 HEAD', action.kind === 'switch' || action.kind === 'detach' || (action.kind === 'create' && action.checkout))
-            }
+            if (here.has(project)) this.conversations.recordGitChange(conversation.id, project, after.branch ?? '分离 HEAD', starts.get(project) ?? undefined)
           }
         }
       }
       return result
-    } finally {
-      this.locked.delete(key)
-      this.changed()
-    }
+    } finally { this.unlock([key]) }
   }
 
   private async perform(dir: string, key: string, status: GitStatus, action: GitAction): Promise<GitResult> {

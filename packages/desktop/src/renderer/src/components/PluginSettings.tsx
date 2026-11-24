@@ -1,8 +1,9 @@
 import { getLocale, t, tr } from '../i18n'
 import { useEffect, useId, useRef, useState } from 'react'
-import { githubRepository, type PluginInfo, type PluginInstallSource, type RecommendedPlugin } from '@antumi/protocol'
+import { githubRepository, type PluginInstallSource, type RecommendedPlugin } from '@antumi/protocol'
 import { perform, receivePlugins, showError, useCore } from '../core-store'
-import { pluginPageLabel } from '../plugin-pages'
+import { pluginName } from '../plugin-name'
+import { checkMaintenanceUpdates, useMaintenanceUpdates } from '../maintenance-updates'
 import { pickPlugin } from '../desktop-bridge'
 import { Segmented, SettingsGroup, Toggle } from './SettingsControls'
 import { ChatPicker } from './ChatPicker'
@@ -13,16 +14,11 @@ function RepositoryLink({ repository }: { repository: string }) {
   return <a className="plugin-repository" href={`https://github.com/${repository}`} target="_blank" rel="noreferrer" data-tooltip={t('PluginSettings.openOnGitHub')}>{repository}</a>
 }
 
-// What the plugin brings, by name: its sources, else its pages, else its id. Never empty: it labels
-// the plugin's switch.
-function pluginName(plugin: PluginInfo): string {
-  const names = plugin.sources.length > 0 ? plugin.sources.map((source) => source.name) : plugin.pages.map((page) => pluginPageLabel(page, getLocale()))
-  return names.join('、') || plugin.id
-}
-
 type PluginActionTarget = 'top' | 'install' | { pluginId: string }
 
 export function PluginSettings() {
+  const checking = useMaintenanceUpdates((s) => s.checking)
+  const checkError = useMaintenanceUpdates((s) => s.error)
   const ids = useId()
   const [tab, setTab] = useState<'installed' | 'recommended' | null>(null)
   const [filter, setFilter] = useState('')
@@ -55,6 +51,8 @@ export function PluginSettings() {
     })
     return () => { active = false }
   }, [rpc])
+
+  useEffect(() => { if (rpc?.features.includes('plugin-update-check')) void checkMaintenanceUpdates() }, [rpc])
 
   const run = async (action: Parameters<typeof perform>[0], message: string, at: PluginActionTarget = 'top', done?: () => void) => {
     if (busy) return
@@ -129,6 +127,8 @@ export function PluginSettings() {
         ]} onChange={setTab} />
         <button type="button" className="button" aria-expanded={installOpen} aria-controls={`${ids}-install`} disabled={busy || looking} onClick={() => setInstallOpen(!installOpen)}><DownloadIcon />{t('PluginSettings.manualInstall')}</button>
       </div>
+      {rpc?.features.includes('plugin-update-check') && <div className="update-actions"><button className="button ghost" disabled={checking || busy} onClick={() => void checkMaintenanceUpdates(true)}>{checking ? t('AppUpdate.checking') : t('AppUpdate.checkNow')}</button></div>}
+      {checkError && <p className="update-error" role="status">{t('Updates.checkFailed')} · {checkError}</p>}
       {status?.at === 'top' && <p className="settings-status" role="status" data-ok>{status.text}</p>}
       <div id={`${ids}-install`} className="plugin-install-panel" hidden={!installOpen}>
         <SettingsGroup title={t('PluginSettings.installFromElsewhere')} icon={<DownloadIcon />}>
@@ -205,6 +205,8 @@ export function PluginSettings() {
               </div>
               <Toggle labelId={`${ids}-${plugin.id}`} checked={plugin.enabled} disabled={busy} onChange={(enabled) => { void run((connection) => connection.call('plugins.setEnabled', { id: plugin.id, enabled }), enabled ? t('PluginSettings.pluginEnabled') : t('PluginSettings.pluginDisabled')) }} />
             </div>
+            {plugin.update?.availability === 'available' && <p className="settings-status" role="status">{t('Updates.pluginVersion', { version: plugin.update.latestVersion ?? '' })}</p>}
+            {plugin.update?.error && <p className="update-error" role="status">{t('Updates.checkFailed')} · {plugin.update.error}</p>}
             {plugin.problem && <p className="settings-status" role="status">{plugin.problem}</p>}
             <div className="plugin-actions">
               {(plugin.origin.kind !== 'bundled' || recommended.some((entry) => entry.id === plugin.id)) && <button className="button plugin-update" disabled={busy} aria-busy={updating} onClick={() => { void run((connection) => connection.call('plugins.update', { id: plugin.id }), t('PluginSettings.checkedAndAppliedAvailableUpdates'), { pluginId: plugin.id }) }}>{updating && <span className="chat-spinner" aria-hidden="true" />}{updating ? t('PluginSettings.checkingAndUpdating') : t('PluginSettings.checkAndUpdate')}</button>}

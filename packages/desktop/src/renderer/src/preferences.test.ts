@@ -30,6 +30,14 @@ it('preserves the pinned agents and their order after restarting', async () => {
   expect(usePreferences.getState().pinnedAgentIds).toEqual(ids)
 })
 
+it('remembers the release already introduced after restarting', async () => {
+  const { setPreference } = await import('./preferences')
+  setPreference('releaseNotesVersion', '0.22.0-beta.3')
+  vi.resetModules()
+  const { usePreferences } = await import('./preferences')
+  expect(usePreferences.getState().releaseNotesVersion).toBe('0.22.0-beta.3')
+})
+
 describe('project color preferences', () => {
   it('persists color choices and loads them after a restart', async () => {
     const { setPreference } = await import('./preferences')

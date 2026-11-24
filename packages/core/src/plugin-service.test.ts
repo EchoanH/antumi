@@ -194,6 +194,73 @@ describe('plugin installation and activation', () => {
     expect(await readFile(path.join(root, 'credentials.json'), 'utf8')).toBe(beforeCredentials)
   })
 
+  it('checks without activating a package and persists cached results across restarts', async () => {
+    await release('antumi.github', 'github')
+    await plugins.installRecommended('antumi.github')
+    const fetch = await release('antumi.github', 'github', '1.1.0')
+    const checking = plugins.checkUpdates()
+    expect(plugins.checkUpdates()).toBe(checking)
+    const result = await checking
+    expect(result[0]).toMatchObject({ version: '1.0.0', versions: ['1.0.0'], update: { availability: 'available', latestVersion: '1.1.0', error: null } })
+    expect(fetch).toHaveBeenCalledTimes(2)
+    await plugins.close()
+    plugins = createService()
+    await plugins.load()
+    await plugins.checkUpdates()
+    expect(fetch).toHaveBeenCalledTimes(2)
+    await plugins.checkUpdates(true)
+    expect(fetch).toHaveBeenCalledTimes(4)
+    expect((await plugins.update('antumi.github')).update).toBeUndefined()
+    expect((await plugins.checkUpdates())[0]?.update?.availability).toBe('current')
+  })
+
+  it('does not start candidate code, ignores unrelated release tag versions and validates compatibility', async () => {
+    await release('antumi.github', 'github')
+    await plugins.installRecommended('antumi.github')
+    const directory = path.join(root, 'candidate')
+    const manifest = await pluginFixture(directory, { id: 'antumi.github', source: 'github', version: '1.1.0' })
+    const url = 'https://github.com/flyhero/antumi-plugins/releases/download/github-v99.0.0/plugin.zip'
+    const serve = (engines: { antumi: string }, id = manifest.id) => {
+      const archive = pluginZip({ 'manifest.json': JSON.stringify({ ...manifest, id, engines }), 'main.mjs': 'throw new Error("must never execute candidate code")' })
+      vi.stubGlobal('fetch', vi.fn(async (input: string) => input === url ? new Response(new Uint8Array(archive)) : new Response(JSON.stringify([{ tag_name: 'github-v99.0.0', assets: [{ name: 'plugin.zip', browser_download_url: url }] }]))))
+    }
+    serve(manifest.engines)
+    expect((await plugins.checkUpdates())[0]).toMatchObject({ version: '1.0.0', problem: null, update: { availability: 'available', latestVersion: '1.1.0' } })
+    serve({ antumi: '>=99.0.0' })
+    expect((await plugins.checkUpdates(true))[0]).toMatchObject({ version: '1.0.0', update: { availability: 'error', latestVersion: null } })
+    serve(manifest.engines, 'other.plugin')
+    expect((await plugins.checkUpdates(true))[0]?.update?.error).toContain('ID 不匹配')
+  })
+
+  it('keeps local installs manual and records network failures without touching active plugins', async () => {
+    await install('1.0.0')
+    await release('antumi.github', 'github')
+    await plugins.installRecommended('antumi.github')
+    const fetch = vi.fn(async () => { throw new Error('offline') })
+    vi.stubGlobal('fetch', fetch)
+    const checked = await plugins.checkUpdates()
+    expect(checked.find((entry) => entry.id === 'demo.source')?.update).toMatchObject({ availability: 'manual', latestVersion: null })
+    expect(checked.find((entry) => entry.id === 'antumi.github')).toMatchObject({ version: '1.0.0', problem: null, update: { availability: 'error' } })
+    const calls = fetch.mock.calls.length
+    await plugins.checkUpdates()
+    expect(fetch).toHaveBeenCalledTimes(calls)
+  })
+
+  it('lets uninstall finish while checking and never resurrects its stale result', async () => {
+    await release('antumi.github', 'github')
+    await plugins.installRecommended('antumi.github')
+    let respond: (response: Response) => void = () => {}
+    const response = new Promise<Response>((resolve) => { respond = resolve })
+    const fetch = vi.fn(() => response)
+    vi.stubGlobal('fetch', fetch)
+    const checking = plugins.checkUpdates()
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalled())
+    await plugins.uninstall('antumi.github')
+    respond(new Response('', { status: 404 }))
+    expect(await checking).toEqual([])
+    expect(plugins.list()).toEqual([])
+  })
+
   it('keeps old Jira data untouched until an explicit install, then reuses all instances and credentials', async () => {
     await config.save({ provider: 'jira', instance: 'default', enabled: false, settings: { site: 'https://acme.atlassian.net', jql: 'project = ACME' } })
     await config.save({ provider: 'jira', instance: 'other', enabled: true, settings: { site: 'https://other.atlassian.net', jql: 'assignee = currentUser()' } })

@@ -49,7 +49,7 @@ function CliMaintenance({ kind, check }: { kind: AgentKind; check: EnvironmentCh
   const operationVisible = status && status.phase !== 'idle' && !backendOutdated
   const updateAvailable = status?.availability === 'available'
   const error = status?.error && !backendOutdated ? cliErrorText(status.error) : null
-  const path = status?.path ?? check.path
+  const path = check.path ?? status?.path
   const channelText = cliChannelText(status?.channel)
   // Only core proves how a CLI was installed; a guessed command could install a second copy.
   const upgradeCommand = status?.upgradeCommand ?? null
@@ -142,8 +142,11 @@ function AgentRow({ kind, check, enabled, last }: { kind: AgentKind; check: Envi
   const disabled = usePreferences((s) => s.disabledAgents)
   const probes = useProviderProbes((s) => s.probes)
   const readiness = agentReadiness(kind, environment, disabled, providers, probes)
-  const currentVersion = useCore((s) => s.agentCli[kind]?.currentVersion)
-  const version = currentVersion ?? check.version ?? (check.status === 'unknown' ? t('InstalledAgentsSettings.versionUnknown') : null)
+  const currentVersion = useCore((s) => {
+    const cli = s.agentCli[kind]
+    return cli?.path === check.path ? cli.currentVersion : null
+  })
+  const version = check.requiresStandaloneCli ? null : currentVersion ?? check.version ?? (check.status === 'unknown' ? t('InstalledAgentsSettings.versionUnknown') : null)
   return (
     <div className="settings-row agent-row" data-off={!enabled || undefined}>
       <span className="agent-row-icon" aria-hidden="true"><AgentIcon agent={kind} /></span>
@@ -159,7 +162,9 @@ function AgentRow({ kind, check, enabled, last }: { kind: AgentKind; check: Envi
           )}
         </div>
         {readiness.state === 'ready' && readiness.via === 'account' && readiness.authSource === 'native-provider' && <p className="settings-row-description">{t('InstalledAgentsSettings.nativeProviderHint')}</p>}
-        {check.status === 'unknown' && <p className="settings-row-description">{tr('InstalledAgentsSettings.checkWhetherTheCliCanStart', { value1: checkStatusText(check), value2: agentDescriptor(kind, getLocale()).environment.outdated?.hint ?? '' })}</p>}
+        {check.requiresStandaloneCli ? (
+          <Fix label={checkStatusText(check)} command={agentDescriptor(kind, getLocale()).environment.install} />
+        ) : check.status === 'unknown' && <p className="settings-row-description">{tr('InstalledAgentsSettings.checkWhetherTheCliCanStart', { value1: checkStatusText(check), value2: agentDescriptor(kind, getLocale()).environment.outdated?.hint ?? '' })}</p>}
         {(readiness.state === 'needs-account' || readiness.state === 'needs-provider' || readiness.state === 'unknown-auth' || readiness.state === 'authorize-on-use') && <Fix label={t('InstalledAgentsSettings.signIn')} command={agentDescriptor(kind, getLocale()).environment.signIn} />}
         <CliMaintenance kind={kind} check={check} />
       </div>

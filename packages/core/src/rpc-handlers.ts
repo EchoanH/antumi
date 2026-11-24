@@ -332,6 +332,7 @@ export function createRpcHandlers(
     'plugins.recommended': () => pluginService().recommended(),
     'plugins.installRecommended': ({ id }) => pluginService().installRecommended(id),
     'plugins.list': () => pluginService().list(),
+    'plugins.checkUpdates': ({ refresh }) => pluginService().checkUpdates(refresh),
     'plugins.install': ({ source }) => pluginService().install(source),
     'plugins.githubPackages': ({ repository }) => pluginService().githubPackages(repository),
     'plugins.update': ({ id }) => pluginService().update(id),

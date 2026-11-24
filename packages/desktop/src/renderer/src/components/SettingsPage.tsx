@@ -72,6 +72,7 @@ import { SupportSettings } from './SupportSettings'
 import { ProjectConfigDialog, projectConfigSummary } from './ProjectConfigDialog'
 import { useOccludesBrowser } from '../browser-occlusion'
 import { UpdateSettings } from './UpdateNotice'
+import { SettingsUpdateCount } from './SettingsUpdateCount'
 import { PetSettings } from './PetSettings'
 import { AppearanceSettings } from './AppearanceSettings'
 import { KeyboardShortcutSettings } from './KeyboardShortcutSettings'
@@ -947,10 +948,9 @@ export function SettingsPage() {
     const own = SECTIONS.filter((section) => section.id !== 'about' && section.id !== 'support' && (section.id !== 'notifications' || canNotify() || canShowRequestPopup()))
       .flatMap((section) => (section.id === 'agents' ? [
         section, ...(accounts ? [ACCOUNTS_SECTION] : []), ...(modelProviders ? [MODEL_PROVIDERS_SECTION] : []), ...(run || permissions ? [RUN_PERMISSIONS_SECTION] : []),
-        CONVERSATION_SECTION, ...(chatCommands ? [CHAT_COMMANDS_SECTION] : []), ...(sessionImport ? [SESSION_IMPORT_SECTION] : []),
-        ...(skills ? [SKILLS_SECTION] : []), ...(mcp ? [MCP_SECTION] : [])
+        CONVERSATION_SECTION, ...(chatCommands ? [CHAT_COMMANDS_SECTION] : []), ...(sessionImport ? [SESSION_IMPORT_SECTION] : [])
       ] : [section]))
-    return [...own, ...(plugins ? [PLUGINS_SECTION] : []), ...sourceSections(sources ?? []), ...(knowledge ? [KNOWLEDGE_SECTION] : []), ...(browser ? [BROWSER_SECTION] : []), ...(phones ? [MOBILE_SECTION] : []), ...update, ...(storage ? [STORAGE_SECTION] : []), ...(backendLocation ? [BACKEND_LOCATION_SECTION] : []), ...support, ...(wireLog ? [DEBUG_SECTION] : [])]
+    return [...own, ...(plugins ? [PLUGINS_SECTION] : []), ...sourceSections(sources ?? []), ...(knowledge ? [KNOWLEDGE_SECTION] : []), ...(browser ? [BROWSER_SECTION] : []), ...(phones ? [MOBILE_SECTION] : []), ...(skills ? [SKILLS_SECTION] : []), ...(mcp ? [MCP_SECTION] : []), ...update, ...(storage ? [STORAGE_SECTION] : []), ...(backendLocation ? [BACKEND_LOCATION_SECTION] : []), ...support, ...(wireLog ? [DEBUG_SECTION] : [])]
   }, [sources, browser, phones, storage, knowledge, skills, mcp, sessionImport, accounts, modelProviders, chatCommands, wireLog, plugins, run, permissions, backendLocation, locale])
   const requestedId = useCore((state) => state.settingsSection)
   const activeId = requestedId === 'run' ? 'permissions' : requestedId ?? SECTIONS[0]?.id ?? ''
@@ -997,6 +997,7 @@ export function SettingsPage() {
                   >
                     <section.Icon />
                     {section.title}
+                    <SettingsUpdateCount section={section.id} />
                   </button>
                 ))}
             </div>

@@ -135,7 +135,11 @@ export const MESSAGES = {
   "SourceWriteback.state.failed": {"zh": "失败", "en": "Failed"},
   "SourceWriteback.state.uncertain": {"zh": "结果待确认", "en": "Result unknown"},
   "SourceWriteback.rules": {"zh": "回写", "en": "Write back"},
-  "SourceWriteback.rulesHint": {"zh": "从这个来源导入的任务，按下面的规则把进展写回事项。状态填平台上显示的名字，多个用 | 隔开，取第一个能流转到的；留空不改。不会把状态往回改。登录用的 Token 需要有写权限。", "en": "Tasks imported from this source write their progress back by these rules. Enter status names as the tracker shows them, | between alternatives; the first one the issue can move to is used, and empty leaves it alone. A status is never moved backwards. The sign-in token needs write access."},
+  "SourceWriteback.rulesHint": {"zh": "从这个来源导入的任务，按下面的规则把进展写回事项。不会把状态往回改。登录用的 Token 需要有写权限。", "en": "Tasks imported from this source write their progress back by these rules. A status is never moved backwards. The sign-in token needs write access."},
+  "SourceWriteback.namesHint": {"zh": "自己填的状态写平台上显示的名字，多个用 | 隔开，取第一个能流转到的；留空不改。", "en": "Type status names as the tracker shows them, | between alternatives; the first one the issue can move to is used, and empty leaves it alone."},
+  "SourceWriteback.keepStatus": {"zh": "不改状态", "en": "Leave status alone"},
+  "SourceWriteback.customStatus": {"zh": "自己填…", "en": "Type a name…"},
+  "SourceWriteback.postSummaryAlone": {"zh": "发 Agent 写的总结评论", "en": "Post the Agent’s summary as a comment"},
   "SourceWriteback.onStart": {"zh": "开始执行时，状态改为", "en": "When the task starts, set status to"},
   "SourceWriteback.onReview": {"zh": "提交验收时，状态改为", "en": "When handed in for review, set status to"},
   "SourceWriteback.onDone": {"zh": "验收通过时，状态改为", "en": "When accepted, set status to"},
@@ -10810,6 +10814,10 @@ export const MESSAGES = {
     "zh": "已找到，版本未知",
     "en": "Found; version unknown"
   },
+  "environmentText.standaloneCliRequired": {
+    "zh": "已找到桌面版，请通过 npm 安装独立 CLI",
+    "en": "Desktop app found. Install the standalone CLI with npm."
+  },
   "environmentText.installed": {
     "zh": "已安装 {value1}",
     "en": "Installed {value1}"
@@ -13653,4 +13661,20 @@ export const MESSAGES = {
   "BackendLocation.problemPtyLoadSsh": {"zh": "「{host}」上的后端没能加载终端组件。", "en": "The backend on {host} could not load its terminal component."},
   "BackendLocation.problemStartSsh": {"zh": "「{host}」上的后端没能启动。", "en": "The backend on {host} did not start."},
   "BackendLocation.problemStartSshFix": {"zh": "完整日志在服务器上的 {log}。", "en": "The full log is in {log} on the server."},
+  "Updates.title": {"zh": "可用更新", "en": "Available updates"},
+  "Updates.settings": {"zh": "更新设置", "en": "Update settings"},
+  "Updates.availableCount": {"zh": "有 {count} 项更新", "en": "{count} {count, plural, one {update} other {updates}} available"},
+  "Updates.none": {"zh": "已没有待处理的更新。", "en": "No updates remaining."},
+  "Updates.checkFailed": {"zh": "检查更新失败", "en": "Could not check for updates"},
+  "Updates.pluginVersion": {"zh": "可更新至 {version}", "en": "Update available: {version}"},
+  "Updates.agentInUse": {"zh": "使用中，空闲后可升级", "en": "In use; upgrade when idle"},
+  "Updates.backendAgents": {"zh": "升级当前连接后端上的 Agent。", "en": "Updates agents on the connected backend."},
+  "Updates.upgradeInstructions": {"zh": "查看升级方式", "en": "How to upgrade"},
+  "Updates.updatedTo": {"zh": "已更新至 v{version}", "en": "Updated to v{version}"},
+  "Updates.noNotes": {"zh": "此版本暂无更新说明。", "en": "No release notes are available for this version."},
+  "Updates.highlights": {"zh": "更新摘要", "en": "Highlights"},
+  "Updates.fullChangelog": {"zh": "完整更新日志", "en": "Full release notes"},
+  "Updates.gotIt": {"zh": "知道了", "en": "Got it"},
+  "Updates.currentRelease": {"zh": "本次更新", "en": "What’s new"},
+  "Updates.badge": {"zh": "{count} 项可用更新", "en": "{count} {count, plural, one {update} other {updates}} available"},
 } as const

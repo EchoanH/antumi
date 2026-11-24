@@ -1,9 +1,9 @@
 # DeepSeek Harness
 
-Antumi 支持官方 DSH `0.2.2-rc.3`、`0.2.2-rc.4` 和 `0.2.2-rc.5`，建议安装 `0.2.2-rc.5`。设置 → 外部智能体 显示 CLI 检测结果和安装命令；其他版本（含 `0.2.3-alpha`）尚未验证兼容。
+Antumi 会尝试运行能正常报告版本的官方 DSH。安装命令使用 npm 的 `latest` 标签；已安装的预发布版也可以直接尝试。设置 → 外部智能体 显示检测到的 CLI 版本，能否开启会话由实际启动和 ACP 握手决定。
 
 ```sh
-npm install -g @deepseek-ai/dsh@0.2.2-rc.5
+npm install -g @deepseek-ai/dsh
 ```
 
 DSH 可沿用自己的服务商配置，也能选择 Antumi 设置里的服务商。后者支持 Chat Completions、Responses 和 Anthropic 接口；模型和推理强度以实际目录为准，空闲时可切换。图片支持由 DSH 握手和所选模型决定。回复和思考使用官方 ACP 的已提交语义事件，不伪造逐 token 增量。仅记录实际报告的 token，没有可靠价格时不显示估算费用。
@@ -12,7 +12,8 @@ DSH 可沿用自己的服务商配置，也能选择 Antumi 设置里的服务�
 
 新建会话时选不了模型，模型栏旁会写明原因，点「去设置」到 设置 → 外部智能体 处理：
 
-- **版本未验证兼容**：Antumi 接受上面列出的三个 RC，设置页会列出支持版本并推荐安装 rc.5。预发布版的内部接口可能变化，未列出的版本暂不启用。不带版本号的 `npm install -g @deepseek-ai/dsh` 装的是 npm 上标为 `latest` 的版本，它不一定在已验证列表里。
+- **会话启动失败**：新版或预发布版可能改变 ACP 或插件接口。已确认 `0.2.3-alpha.2` 能完成版本检测和 ACP 初始化，但配合当前插件创建会话会失败。如果升级后无法使用，可以用 `npm install -g @deepseek-ai/dsh@<版本号>` 恢复到此前能用的版本。
+- **Windows 只找到桌面版**：用上面的命令安装 npm 版。如果桌面版命令排在 PATH 前面，Antumi 会继续查找并使用 PATH 上能正常报告版本的 npm 版。
 - **DeepSeek Harness 首次准备失败**：首次使用要安装随 Antumi 提供的运行时插件，DSH 用 pnpm 从网络下载依赖。请先确认 `pnpm --version` 能运行（`npm install -g pnpm`），网络能访问 npm 源，然后关掉新会话页重新打开即可重试，已有配置不会被清理。
 - **尚未安装 Agent**：执行上面的安装命令后，在 设置 → 外部智能体 里重新检测。
 
@@ -56,13 +57,13 @@ core 使用通用 ACP driver，按握手能力调用 `session/resume`。计划�
 
 默认 `pnpm test` 使用假 CLI 和协议帧，并测试实际文件写入、符号链接、保护目录、恢复握手、计划卡及日志重放。不会查找或执行用户已安装的 DSH，也不调用真实模型。
 
-显式集成检查分别使用已安装的 rc.3、rc.4、rc.5 CLI，同一份打包插件、独立 DSH home 和本地假服务商：
+显式集成检查可针对任意已安装的 DSH CLI 运行，使用同一份打包插件、独立 DSH home 和本地假服务商：
 
 ```sh
 node scripts/build-plugins.mjs
 pnpm test:dsh-runtime --dsh /absolute/path/to/@deepseek-ai/dsh/lib/bin.js
 ```
 
-运行时插件的内部依赖仍固定在 rc.3；新版 CLI 沿用同一份插件。新增支持版本前，须对该 CLI 重跑以上集成检查，而不是直接放宽版本上限。
+运行时插件的内部依赖仍固定在 rc.3，保证同一份插件可以复现构建。已通过集成检查的 CLI 包括 `0.2.2-rc.3`、`0.2.2-rc.4` 和 `0.2.2-rc.5`。
 
 检查覆盖三种服务商协议、MCP 共存和凭据隔离、多项目写入与命令、越界拒绝、提问、计划审批、取消及只读恢复。测试目录位于系统临时目录和仓库忽略的 `work/`，结束后清理；命令沙箱检查需要主机能启动 DSH 的原生沙箱。

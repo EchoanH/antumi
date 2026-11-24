@@ -26,6 +26,7 @@ let defaultIsland: z.infer<typeof IslandPreference> = 'requests'
 // This window's UI preferences. They shape how the desktop looks and behaves,
 // not what a task is, so they stay on this client instead of going to core.
 const Preferences = z.object({
+  releaseNotesVersion: z.string().nullable().catch(null),
   panelShortcuts: ShortcutSettings.catch({ version: 1 }),
   language: LanguagePreference.catch('system'),
   theme: z.enum(['system', 'light', 'dark']).catch('system'),

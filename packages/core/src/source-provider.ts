@@ -1,5 +1,5 @@
 import type { SourceCommentState, SourceCommentOptions, SourceCommentPage } from '@antumi/protocol'
-import type { LoginNotice, LoginPrompt, SettingField, SourceCommentResult, SourceIssue, SourceStatusResult, SourceTransitions } from '@antumi/protocol'
+import type { LoginNotice, LoginPrompt, SettingField, SourceCommentResult, SourceIssue, SourceStatusResult, SourceTransitions, WritebackRuleHints } from '@antumi/protocol'
 
 // The seam a task source plugs into. Core owns everything around it (settings and credential
 // storage, polling, the inbox, turning issues into tasks); a provider only talks to its tracker.
@@ -38,6 +38,8 @@ export type SourceProvider = {
   readonly writeback?: 1
   // With writeback: false when the tracker takes no comments, only status moves.
   readonly writebackComment?: false
+  // How settings offer each stage's status; a stage set to false has none on this tracker.
+  readonly writebackRules?: WritebackRuleHints
   transitions?(settings: SourceSettings, credential: SourceCredential, key: string, signal: AbortSignal): Promise<SourceTransitions>
   transition?(settings: SourceSettings, credential: SourceCredential, key: string, id: string, signal: AbortSignal): Promise<SourceStatusResult>
   comment?(settings: SourceSettings, credential: SourceCredential, key: string, comment: { markdown: string; writeId: string }, signal: AbortSignal): Promise<SourceCommentResult>

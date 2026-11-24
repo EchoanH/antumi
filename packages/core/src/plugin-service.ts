@@ -17,7 +17,7 @@ import recommended from './plugins-recommended.json' with { type: 'json' }
 import type { BrowserService } from './browser-service'
 import { pluginBrowserRequest } from './plugin-browser'
 
-const Installed = z.object({ manifest: PluginManifest, enabled: z.boolean(), versions: z.array(PluginVersion), origin: PluginInfo.shape.origin })
+const Installed = z.object({ manifest: PluginManifest, enabled: z.boolean(), versions: z.array(PluginVersion), origin: PluginInfo.shape.origin, update: PluginInfo.shape.update })
 type Installed = z.infer<typeof Installed>
 const Registry = z.object({ version: z.literal(1), plugins: z.array(Installed), owners: z.record(z.string(), z.string()) })
 type Registry = z.infer<typeof Registry>
@@ -31,6 +31,7 @@ export class PluginService {
   // Saved records this version cannot read (a newer Antumi's, say), written back as they were.
   private unread: unknown[] = []
   private pending: Promise<unknown> = Promise.resolve()
+  private checking: Promise<PluginInfo[]> | null = null
   private closing = false
   private readonly catalog = recommended.map((entry) => RecommendedPlugin.parse(entry))
 
@@ -176,7 +177,8 @@ export class PluginService {
     return this.registry.plugins.map((record) => ({
       id: record.manifest.id, version: record.manifest.version, sources: record.manifest.contributes.sources, pages: record.manifest.contributes.pages,
       enabled: record.enabled, versions: [...record.versions].sort(rcompare), origin: record.origin,
-      problem: this.problems.get(record.manifest.id) ?? null
+      problem: this.problems.get(record.manifest.id) ?? null,
+      ...(record.update ? { update: record.update } : {})
     }))
   }
 
@@ -192,6 +194,55 @@ export class PluginService {
     return this.serialize(async () => {
       const record = this.record(id)
       return this.installInner(this.updateSource(record), id)
+    })
+  }
+
+  // Inspect the package without starting its backend or changing the active version.
+  checkUpdates(refresh = false): Promise<PluginInfo[]> {
+    if (this.closing) return Promise.reject(new Error('插件服务正在关闭'))
+    this.checking ??= this.inspectUpdates(refresh).finally(() => { this.checking = null })
+    return this.checking
+  }
+
+  private async inspectUpdates(refresh: boolean): Promise<PluginInfo[]> {
+    const installed = [...this.registry.plugins]
+    const records: Installed[] = []
+    for (const record of installed) {
+      if (this.closing) break
+      const ttl = record.update?.error ? 5 * 60_000 : 60 * 60_000
+      if (!refresh && record.update && Date.now() - record.update.checkedAt < ttl) {
+        records.push(record)
+        continue
+      }
+      let update: NonNullable<Installed['update']>
+      if (record.origin.kind === 'local' || (record.origin.kind === 'bundled' && !this.catalog.some((entry) => entry.id === record.manifest.id))) {
+        update = { availability: 'manual', latestVersion: null, checkedAt: Date.now(), error: null }
+      } else {
+        const staging = await mkdtemp(path.join(this.root, '.check-'))
+        try {
+          await stagePlugin(this.updateSource(record), staging)
+          const manifest = await readManifest(staging, this.antumiVersion)
+          if (manifest.id !== record.manifest.id) throw new Error('更新包的插件 ID 不匹配')
+          update = { availability: rcompare(manifest.version, record.manifest.version) < 0 ? 'available' : 'current', latestVersion: manifest.version, checkedAt: Date.now(), error: null }
+        } catch (error) {
+          update = { availability: 'error', latestVersion: null, checkedAt: Date.now(), error: this.message(error) }
+        } finally { await rm(staging, { recursive: true, force: true }) }
+      }
+      records.push({ ...record, update })
+    }
+    if (records.length === installed.length && records.every((record, index) => record === installed[index])) return this.list()
+    return this.serialize(async () => {
+      // An install or removal may finish while the network check is in flight.
+      const plugins = this.registry.plugins.map((current) => {
+        const checked = records.find((record) => record.manifest.id === current.manifest.id && record.manifest.version === current.manifest.version && isDeepStrictEqual(record.origin, current.origin))
+        return checked ? { ...current, update: checked.update } : current
+      })
+      const next = { ...this.registry, plugins }
+      await this.save(next)
+      this.registry = next
+      const result = this.list()
+      this.changed(result)
+      return result
     })
   }
 
@@ -247,6 +298,7 @@ export class PluginService {
   async close(): Promise<void> {
     this.closing = true
     for (const plugin of this.loaded.values()) plugin.process.stop()
+    await this.checking?.catch(() => {})
     await this.pending.catch(() => {})
     for (const plugin of this.loaded.values()) plugin.process.stop()
   }
@@ -343,6 +395,7 @@ export class PluginService {
 
   private async activate(record: Installed, candidate?: Loaded, checked: Loaded | undefined = candidate): Promise<void> {
     const id = record.manifest.id
+    if (this.registry.plugins.find((entry) => entry.manifest.id === id)?.manifest.version !== record.manifest.version) record = { ...record, update: undefined }
     const ids = record.manifest.contributes.sources.map((source) => source.id)
     await this.sources.pause(ids)
     try {
