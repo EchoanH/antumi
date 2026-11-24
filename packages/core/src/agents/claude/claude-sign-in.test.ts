@@ -2,8 +2,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { claudeAuthStatus, parseClaudeAuthStatus } from './claude-sign-in'
-import { claudeSignedIn, readClaudeUsage } from './claude-usage'
+import { claudeAuthStatus, parseClaudeAuthentication, parseClaudeAuthStatus } from './claude-sign-in'
+import { claudeAuthentication, claudeSignedIn, readClaudeUsage } from './claude-usage'
 
 let root: string
 let bin: string
@@ -27,6 +27,13 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }) })
 
 describe('parseClaudeAuthStatus', () => {
+  it('reports only authentication sources proven by the CLI', () => {
+    expect(parseClaudeAuthentication(0, '{"loggedIn":true,"authMethod":"api_key"}')).toEqual({ signedIn: true, authSource: 'native-provider' })
+    expect(parseClaudeAuthentication(0, '{"loggedIn":true,"apiProvider":"bedrock"}')).toEqual({ signedIn: true, authSource: 'native-provider' })
+    expect(parseClaudeAuthentication(0, '{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty"}')).toEqual({ signedIn: true, authSource: 'account' })
+    expect(parseClaudeAuthentication(0, '{"loggedIn":true}')).toEqual({ signedIn: true })
+    expect(parseClaudeAuthentication(1, '{"loggedIn":false,"authMethod":"api_key"}')).toEqual({ signedIn: false })
+  })
   it('trusts the answer only when the exit code agrees with it', () => {
     expect(parseClaudeAuthStatus(0, '{"loggedIn":true,"authMethod":"oauth_token"}')).toBe(true)
     expect(parseClaudeAuthStatus(1, '{"loggedIn":false,"authMethod":"none"}\n')).toBe(false)
@@ -72,6 +79,15 @@ describe('claudeAuthStatus', () => {
 })
 
 describe('Claude sign-in without a subscription', () => {
+  it('uses the active CLI method even when an earlier subscription credential remains', async () => {
+    const home = path.join(root, 'account')
+    mkdirSync(home)
+    writeFileSync(path.join(home, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 'test-old-token' } }))
+    answers(0, { loggedIn: true, authMethod: 'api_key' })
+    expect(await claudeAuthentication(home)).toEqual({ signedIn: true, authSource: 'native-provider' })
+    fakeClaude('process.exit(3)')
+    expect(await claudeAuthentication(home)).toEqual({ signedIn: true, authSource: 'account' })
+  })
   it('takes a subscription at its word, without the CLI', async () => {
     answers(1, { loggedIn: false })
     const home = path.join(root, 'account')

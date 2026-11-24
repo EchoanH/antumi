@@ -9,7 +9,7 @@ import { codexCommand } from './codex-command'
 import { prepareCodexLockdown } from './codex-lockdown'
 import { codexProviderModels } from './codex-provider'
 import { codexTranscripts } from './codex-transcripts'
-import { hasCodexCredentials, readCodexUsage, useCodexResetCredit } from './codex-usage'
+import { codexAuthentication, hasCodexCredentials, readCodexUsage, useCodexResetCredit } from './codex-usage'
 
 export const codex: AgentAdapter = {
   warmup: { probe: { command: 'codex', args: ['mcp', 'list', '--json'], stdin: null, output: 'stdout' }, args: codexWarmupArgs },
@@ -34,6 +34,7 @@ export const codex: AgentAdapter = {
   // The ChatGPT app runs Codex from a CLI inside its bundle, which puts no codex on the PATH.
   discovery: { commands: ['codex'], applications: { darwin: ['ChatGPT.app', 'Codex.app'] } },
   installation: (platform) => ({ agent: 'codex', shell: platform === 'win32' ? 'powershell' : 'bash', command: 'npm install -g @openai/codex' }),
+  authentication: codexAuthentication,
   usage: readCodexUsage,
   useResetCredit: useCodexResetCredit,
   accounts: codexAccounts,

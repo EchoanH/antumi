@@ -158,6 +158,7 @@ function AgentRow({ kind, check, enabled, last }: { kind: AgentKind; check: Envi
             </span>
           )}
         </div>
+        {readiness.state === 'ready' && readiness.via === 'account' && readiness.authSource === 'native-provider' && <p className="settings-row-description">{t('InstalledAgentsSettings.nativeProviderHint')}</p>}
         {check.status === 'unknown' && <p className="settings-row-description">{tr('InstalledAgentsSettings.checkWhetherTheCliCanStart', { value1: checkStatusText(check), value2: agentDescriptor(kind, getLocale()).environment.outdated?.hint ?? '' })}</p>}
         {(readiness.state === 'needs-account' || readiness.state === 'needs-provider' || readiness.state === 'unknown-auth' || readiness.state === 'authorize-on-use') && <Fix label={t('InstalledAgentsSettings.signIn')} command={agentDescriptor(kind, getLocale()).environment.signIn} />}
         <CliMaintenance kind={kind} check={check} />

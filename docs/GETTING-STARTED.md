@@ -22,7 +22,9 @@
 
 ## 模型服务商
 
-**用 Agent 自己的账号可以跳过。** 想用火山方舟、智谱 GLM、Kimi 这类编程套餐，或让 OpenCode、Pi、DeepSeek Harness 回答时才要。
+**已有账号或服务商配置可以直接沿用。** 输入框的 **服务商 → 沿用本机配置** 使用 Agent 现有的账号或服务商，包括 CC Switch 为 Claude Code / Codex 配好的中转 API，无需登录官方账号或重新填写 Key。设置 → 外部智能体 会区分「已就绪 · 登录账号」和「已就绪 · 本机服务商配置」；旧版后端仍显示通用就绪状态。切换 CC Switch 后，新启动的 Agent 进程读取新配置，正在运行的进程需要重新启动。
+
+想在 Antumi 单独管理编程套餐或 API，再按下面的步骤添加服务商。
 
 ![设置 → 服务商 → 添加服务商：选套餐，填 API Key](assets/guide/provider.png)
 

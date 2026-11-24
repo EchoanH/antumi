@@ -8,6 +8,13 @@ const check = (agent: AgentKind, fields: Partial<EnvironmentCheck> = {}): Enviro
 const provider = ModelProvider.parse({ id: 'test', name: 'Test', preset: 'custom', anthropic: { baseUrl: 'https://api.example.com', auth: 'api_key', env: {} }, openai: null, models: [{ id: 'model', label: null, contextWindow: null, maxOutput: null, efforts: [] }], defaultModel: 'model', smallModel: 'model', agents: ['claude', 'codex', 'opencode'], hasKey: true, revision: 0, createdAt: 0, updatedAt: 0 })
 
 describe('agentReadiness', () => {
+  it('preserves a native provider source without treating it as an Antumi provider selection', () => {
+    const environment = check('codex', { signedIn: true, authSource: 'native-provider' })
+    expect(agentReadiness('codex', environment, [], [])).toEqual({ state: 'ready', via: 'account', authSource: 'native-provider' })
+    expect(environmentProblems(environment, { providers: [], disabled: [] })).toEqual([])
+    expect(agentReadiness('codex', check('codex', { signedIn: false, authSource: 'native-provider' }), [], []).state).toBe('needs-account')
+    expect(EnvironmentCheck.parse(check('codex').checks[0]).authSource).toBeUndefined()
+  })
   it('waits for facts and does not offer installation for an agent an older core never reports', () => {
     expect(agentReadiness('claude', null, [], [])).toEqual({ state: 'checking' })
     expect(agentReadiness('codex', check('claude'), [], [])).toEqual({ state: 'unsupported' })

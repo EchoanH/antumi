@@ -12,6 +12,7 @@
 ### 改进
 
 - 只装了 ChatGPT 桌面版时，「设置 → 本机 Agent」可一键安装 Codex CLI。
+- 服务商入口明确标注「沿用本机配置」，Claude Code 和 Codex 的就绪状态可区分本机服务商与登录账号。
 - DeepSeek Harness 新增支持 0.2.2-rc.4 和 rc.5，保留 rc.3；外部智能体设置会列出支持的版本。
 
 ### 修复

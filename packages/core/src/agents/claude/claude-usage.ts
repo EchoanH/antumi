@@ -4,11 +4,11 @@ import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { z } from 'zod'
-import type { ResetCredit, ResetCredits, UsageWindow } from '@antumi/protocol'
+import type { AgentAuthentication, ResetCredit, ResetCredits, UsageWindow } from '@antumi/protocol'
 import { planLaunch } from '@antumi/protocol/node'
 import { fetchUsageJson, parseJson, type UsageReading, type UsageReport } from '../../usage-source'
 import { claudeDefaultHome, claudeKeychainService } from './claude-account'
-import { claudeAuthStatus } from './claude-sign-in'
+import { claudeAuthStatus, readClaudeAuthentication } from './claude-sign-in'
 
 // The same endpoint Claude Code's /usage reads; it only accepts the OAuth token of a Claude subscription.
 // `cedar_ember` is Claude Code's name for the usage-limit resets promotion; asking adds its state.
@@ -274,6 +274,13 @@ async function claudeCliVersion(): Promise<string> {
 export async function claudeSignedIn(home?: string): Promise<boolean | null> {
   if (Credentials.safeParse(parseJson(await readCredentials(home))).success) return true
   return claudeAuthStatus(home)
+}
+
+export async function claudeAuthentication(home?: string): Promise<AgentAuthentication> {
+  const status = await readClaudeAuthentication(home)
+  if (status.signedIn !== null) return status
+  if (Credentials.safeParse(parseJson(await readCredentials(home))).success) return { signedIn: true, authSource: 'account' }
+  return status
 }
 
 export async function readClaudeUsage(home?: string): Promise<UsageReading> {

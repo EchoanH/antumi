@@ -16,7 +16,7 @@ import { randomBytes } from 'node:crypto'
 import { mkdir, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
-import { coreUrl, untrustedSource, AGENT_KINDS, agentReadiness, agentDescriptor, PROTOCOL_VERSION, quotaVerdict, usageAccount, usageReadable, type AgentKind, type AgentUsage, type ChatItem } from '@antumi/protocol'
+import { coreUrl, untrustedSource, AGENT_KINDS, agentReadiness, agentDescriptor, PROTOCOL_VERSION, quotaVerdict, usageAccount, usageReadable, type AgentAuthentication, type AgentKind, type AgentUsage, type ChatItem } from '@antumi/protocol'
 import packageJson from '../package.json' with { type: 'json' }
 import { removeCoreEndpoint, antumiPaths, writeCoreEndpoint } from '@antumi/protocol/node'
 import { adapterOf } from './agents'
@@ -416,6 +416,7 @@ await pets.load()
 const usageSources: Partial<Record<AgentKind, UsageSource>> = {}
 const resetCreditUses: Partial<Record<AgentKind, ResetCreditUse>> = {}
 const signedIn: Partial<Record<AgentKind, () => Promise<boolean | null>>> = {}
+const authentication: Partial<Record<AgentKind, () => Promise<AgentAuthentication>>> = {}
 for (const kind of AGENT_KINDS) {
   const adapter = adapterOf(kind)
   const source = adapter.usage
@@ -428,6 +429,8 @@ for (const kind of AGENT_KINDS) {
   const check = adapter.signedIn
   // The account its next process starts on.
   if (check) signedIn[kind] = () => check(accounts.home(kind, accounts.activeOf(kind)))
+  const identify = adapter.authentication
+  if (identify) authentication[kind] = () => identify(accounts.home(kind, accounts.activeOf(kind)))
 }
 
 const usage = new UsageService(usageSources, (entry) => {
@@ -556,6 +559,7 @@ const environment = new EnvironmentService({
   pathEnv: process.env.PATH ?? '',
   platform: process.platform,
   signedIn,
+  authentication,
   changed: (environment) => server?.broadcast('system.environmentChanged', { environment })
 })
 
