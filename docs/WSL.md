@@ -46,7 +46,7 @@ Windows                                   WSL 发行版
 3. **检查 node-pty**：让装好的 `backend-control.mjs check` 试着加载它。node-pty 自己的报错只留最后试的那个位置（Linux 上永远是不存在的 `prebuilds/linux-x64`），所以加载不了时再单独加载 `build/Release/pty.node` 拿真正的原因。原因是 `GLIBC_…`/`GLIBCXX_…` not found 才说发行版的系统库太旧；别的都当安装包的问题，附上报错。
 4. **替换**：`backend-control.mjs prepare <版本>` 在发行版里跑和本机同一套规矩（`protocol/src/node/backend-lifecycle.ts`）：别的版本的 core 请它退出，daemon 只在不跑东西时才换，答回要启动哪几个。
 5. **启动**：每个由一个分离的 `wsl.exe -d <发行版> --exec env PATH=… /bin/sh -c … node <入口>` 带起来，和本机 `launch()` 一样不随应用退出。Linux 进程留在 `wsl.exe` 的前台，不在发行版里再做一次后台化：有 `wsl.exe` 连着，发行版才不会被回收。分离的 `wsl.exe` 不给程序标准输出，所以输出由那段 `sh` 接到发行版自己的 `~/.antumi/logs/` 里。
-6. **等 core 应答**：`backend-control.mjs endpoint` 答回 core 的端口和令牌。
+6. **等 core 应答**：`backend-control.mjs endpoint` 答回 core 的端口和令牌。core 要把账号、插件、技能等都加载完才监听、写 `core.json`，冷启动的发行版第一次曾超过 30 秒，所以还没答回时 `endpoint` 顺带说这个目录的 `core.mjs` 还在不在跑（查 `/proc/*/cmdline`）：在就最多等三分钟，这次拉起的 core 不在了（拉起后 5 秒宽限）就马上报错，不白等。core.log 里 `listening` 那行带着启动用了几秒。
 
 应用开着的时候，core 没了（比如 `wsl --shutdown` 之后）会在界面再来问它在哪时重新走一遍，最多二十秒一次；旧 daemon 的替换沿用本机那个定时检查，改问 `backend-control.mjs replace-daemon`。
 

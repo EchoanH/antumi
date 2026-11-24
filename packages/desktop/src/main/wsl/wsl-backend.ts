@@ -36,6 +36,7 @@ export type WslBackendOptions = {
   // This app's way to Node for a distro that has none new enough and cannot download it.
   fetchNode?: FetchNode | null
   startWaitMs?: number
+  exitGraceMs?: number
 }
 
 export type WslBackendStart = { ok: true; place: WslBackendPlace; endpoint: CoreEndpoint } | { ok: false; problem: WslBackendProblem }
@@ -86,7 +87,8 @@ export async function ensureWslBackend(options: WslBackendOptions): Promise<WslB
     version: options.version,
     archive: options.archive,
     where: ` in ${place.distro}`,
-    ...(options.startWaitMs === undefined ? {} : { startWaitMs: options.startWaitMs })
+    ...(options.startWaitMs === undefined ? {} : { startWaitMs: options.startWaitMs }),
+    ...(options.exitGraceMs === undefined ? {} : { exitGraceMs: options.exitGraceMs })
   })
   return started.ok ? { ok: true, place, endpoint: started.endpoint } : started
 }

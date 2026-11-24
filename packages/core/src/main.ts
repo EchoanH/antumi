@@ -813,7 +813,8 @@ setInterval(() => void conversations.releaseIdle(), 60_000).unref()
 // Wire logs are for looking at soon after: a week on, they go.
 wire.prune()
 setInterval(() => wire.prune(), 6 * 60 * 60_000).unref()
-console.log(`[antumi-core] listening on 127.0.0.1:${server.port} (home ${paths.home})`)
+// How long it took is what tells a slow machine from a stuck one in a log sent from elsewhere.
+console.log(`[antumi-core] listening on 127.0.0.1:${server.port} (home ${paths.home}) after ${process.uptime().toFixed(1)}s`)
 
 let shuttingDown = false
 async function shutdown(): Promise<void> {

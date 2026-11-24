@@ -1,13 +1,13 @@
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import net from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { antumiPaths, writeCoreEndpoint } from '@antumi/protocol/node'
-import { BACKEND_CONTROL_USAGE, backendControl } from './backend-control'
+import { BACKEND_CONTROL_USAGE, backendControl, coreRuns } from './backend-control'
 
 let home = ''
 const cleanup: (() => unknown)[] = []
@@ -70,9 +70,10 @@ describe('backendControl', () => {
   })
 
   it('gives the running core, or null', async () => {
-    expect(await backendControl(['endpoint'], { home })).toEqual({ answer: { endpoint: null } })
+    expect(await backendControl(['endpoint'], { home, coreRunning: async () => false })).toEqual({ answer: { endpoint: null, coreRunning: false } })
+    expect(await backendControl(['endpoint'], { home, coreRunning: async () => true })).toEqual({ answer: { endpoint: null, coreRunning: true } })
     const port = await fakeCore('2.0.0', process.pid)
-    expect(await backendControl(['endpoint'], { home })).toEqual({ answer: { endpoint: { port, token: 't', pid: process.pid, protocolVersion: 1, version: '2.0.0' } } })
+    expect(await backendControl(['endpoint'], { home, coreRunning: async () => false })).toEqual({ answer: { endpoint: { port, token: 't', pid: process.pid, protocolVersion: 1, version: '2.0.0' } } })
   })
 
   it('says whether node-pty loads, and why not', async () => {
@@ -86,6 +87,26 @@ describe('backendControl', () => {
     const lastPlace = new Error("Failed to load native module: pty.node, checked: build/Release, build/Debug, prebuilds/linux-x64: Error: Cannot find module './prebuilds/linux-x64//pty.node'")
     const failing = await backendControl(['check'], { loadPty: () => Promise.reject(lastPlace), bindingError: () => glibc })
     expect(failing).toEqual({ answer: { node: process.version, arch: process.arch, pty: glibc } })
+  })
+
+  it('finds a core of its own folder among the processes', async () => {
+    const proc = path.join(home, 'proc')
+    const running = async (pid: string, args: string[]) => {
+      await mkdir(path.join(proc, pid), { recursive: true })
+      await writeFile(path.join(proc, pid, 'cmdline'), `${args.join('\0')}\0`)
+    }
+    for (const folder of ['1.0.0-aa', '2.0.0-bb']) {
+      await mkdir(path.join(home, folder), { recursive: true })
+      await writeFile(path.join(home, folder, 'core.mjs'), '')
+    }
+    const core = path.join(home, '2.0.0-bb', 'core.mjs')
+    await running('7', ['node', path.join(home, '1.0.0-aa', 'core.mjs')])
+    await mkdir(path.join(proc, 'self'))
+    expect(await coreRuns(core, proc)).toBe(false)
+    // As launched: the shell first, then the node it execs.
+    await running('12', ['/bin/sh', '-c', 'exec "$@"', 'sh', 'core', '/usr/bin/node', core])
+    expect(await coreRuns(core, proc)).toBe(true)
+    expect(await coreRuns(path.join(home, 'none', 'core.mjs'), proc)).toBe(false)
   })
 
   it('refuses anything else', async () => {

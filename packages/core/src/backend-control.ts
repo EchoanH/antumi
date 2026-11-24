@@ -1,6 +1,8 @@
 import { existsSync } from 'node:fs'
+import { readdir, readFile, realpath } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { CoreEndpoint } from '@antumi/protocol'
 import { backendToStart, retireOldDaemon, runningCore } from '@antumi/protocol/node'
 
@@ -11,7 +13,8 @@ const NODE_PTY = 'node-pty'
 
 export type BackendControlAnswer =
   | { start: ('daemon' | 'core')[] }
-  | { endpoint: CoreEndpoint | null }
+  // With no endpoint yet, whether the core beside this program runs: still loading, or gone.
+  | { endpoint: CoreEndpoint } | { endpoint: null; coreRunning: boolean }
   | { node: string; arch: string; pty: true | string }
 
 export type BackendControlOptions = {
@@ -19,6 +22,7 @@ export type BackendControlOptions = {
   loadPty?: () => Promise<unknown>
   // Why node-pty's Linux binding itself does not load; null when it does or is not there.
   bindingError?: () => string | null
+  coreRunning?: () => Promise<boolean>
 }
 
 export const BACKEND_CONTROL_USAGE = 'usage: backend-control prepare <version> [--keep-newer] | replace-daemon <version> [--keep-newer] | endpoint | check'
@@ -34,7 +38,10 @@ export async function backendControl(args: string[], options: BackendControlOpti
   if (command === 'prepare' && rest.length === 1 && rest[0]) return { answer: { start: await backendToStart(rest[0], options.home, rule) } }
   // As replaceOldDaemon in the desktop app: a daemon to start only once an older one left.
   if (command === 'replace-daemon' && rest.length === 1 && rest[0]) return { answer: { start: (await retireOldDaemon(rest[0], options.home, rule)) ? ['daemon'] : [] } }
-  if (command === 'endpoint' && rest.length === 0) return { answer: { endpoint: await runningCore(options.home) } }
+  if (command === 'endpoint' && rest.length === 0) {
+    const endpoint = await runningCore(options.home)
+    return { answer: endpoint ? { endpoint } : { endpoint: null, coreRunning: await (options.coreRunning ?? coreBesideRuns)() } }
+  }
   if (command === 'check' && rest.length === 0) return { answer: { node: process.version, arch: process.arch, pty: await ptyLoads(options.loadPty, options.bindingError) } }
   return { usage: BACKEND_CONTROL_USAGE }
 }
@@ -62,4 +69,22 @@ function linuxBindingError(): string | null {
   } catch (error) {
     return message(error)
   }
+}
+
+// Core writes its endpoint only once it has loaded everything, which a cold machine takes its time
+// over: a core.mjs of this backend's folder in some process's arguments is one on its way. Linux
+// only, as /proc is; the shell that execs it counts too.
+const coreBesideRuns = () => coreRuns(path.join(path.dirname(fileURLToPath(import.meta.url)), 'core.mjs'))
+
+export async function coreRuns(coreFile: string, proc = '/proc'): Promise<boolean> {
+  const core = await realpath(coreFile).catch(() => null)
+  if (!core) return false
+  for (const pid of await readdir(proc).catch(() => [])) {
+    if (!/^\d+$/.test(pid)) continue
+    const args = (await readFile(path.join(proc, pid, 'cmdline'), 'utf8').catch(() => '')).split('\0')
+    for (const arg of args) {
+      if (arg.endsWith('/core.mjs') && (await realpath(arg).catch(() => null)) === core) return true
+    }
+  }
+  return false
 }

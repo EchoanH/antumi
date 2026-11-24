@@ -31,6 +31,7 @@ export type SshBackendOptions = {
   // This app's way to Node for a server that has none new enough and cannot download it.
   fetchNode?: FetchNode | null
   startWaitMs?: number
+  exitGraceMs?: number
 }
 
 export type SshBackendStart = { ok: true; place: SshBackendPlace; endpoint: CoreEndpoint } | { ok: false; problem: SshBackendProblem }
@@ -139,7 +140,8 @@ export async function ensureSshBackend(options: SshBackendOptions): Promise<SshB
     archive,
     where: ` on ${place.destination}`,
     keepNewer: true,
-    ...(options.startWaitMs === undefined ? {} : { startWaitMs: options.startWaitMs })
+    ...(options.startWaitMs === undefined ? {} : { startWaitMs: options.startWaitMs }),
+    ...(options.exitGraceMs === undefined ? {} : { exitGraceMs: options.exitGraceMs })
   })
   return started.ok ? { ok: true, place, endpoint: started.endpoint } : started
 }

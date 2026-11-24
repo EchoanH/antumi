@@ -193,6 +193,24 @@ describe('ensureWslBackend', () => {
     expect(await problem((call) => (call.argv[2] === 'endpoint' ? { stdout: '{"endpoint":null}\n' } : undefined))).toMatchObject({ kind: 'start', detail: expect.stringContaining('/home/me/.antumi/logs/core.log') })
   })
 
+  it('waits for a core that is still loading, and not for one that is gone', async () => {
+    const LOADING = { stdout: '{"endpoint":null,"coreRunning":true}\n' }
+    const GONE = { stdout: '{"endpoint":null,"coreRunning":false}\n' }
+    let polls = 0
+    const slow = distro((call) => (call.argv[2] === 'endpoint' && ++polls < 3 ? LOADING : undefined))
+    expect(await ensureWslBackend({ distro: 'Ubuntu', version: '1.2.3', archive: archive(), host: slow.host, startWaitMs: 60_000, exitGraceMs: 0 })).toMatchObject({ ok: true, endpoint: { port: 4100 } })
+    expect(polls).toBe(3)
+
+    const gone = distro((call) => (call.argv[2] === 'endpoint' ? GONE : undefined))
+    const exited = await ensureWslBackend({ distro: 'Ubuntu', version: '1.2.3', archive: archive(), host: gone.host, startWaitMs: 60_000, exitGraceMs: 0 })
+    expect(exited).toMatchObject({ ok: false, problem: { kind: 'start', detail: expect.stringContaining('core exited before it listened; see /home/me/.antumi/logs/core.log in Ubuntu') } })
+
+    // A core this start did not launch may be another build's, which this one cannot see.
+    const kept = distro((call) => (call.argv[2] === 'prepare' ? { stdout: '{"start":[]}\n' } : call.argv[2] === 'endpoint' ? GONE : undefined))
+    const waited = await ensureWslBackend({ distro: 'Ubuntu', version: '1.2.3', archive: archive(), host: kept.host, startWaitMs: 0, exitGraceMs: 0 })
+    expect(waited).toMatchObject({ ok: false, problem: { detail: expect.stringContaining('core did not come up') } })
+  })
+
   it('fails the install when the archive is not there', async () => {
     const started = await ensureWslBackend({ distro: 'Ubuntu', version: '1.2.3', archive: { file: join(tmpdir(), 'antumi-no-such-archive.tar.gz'), sha256: 'ab' }, host: distro().host })
     expect(started).toMatchObject({ ok: false, problem: { kind: 'install' } })

@@ -21,8 +21,11 @@ export type LinuxBackendPlace = { node: string; dir: string; home: string; path:
 // The Node the backend is built for and tested on: the major Electron runs it with on every other
 // platform. An older one lacks what core imports (node:sqlite unflagged, zstd in node:zlib).
 const MIN_NODE = [24, 0] as const
-// A cold distro boots first, and core migrates its database before it listens.
-const START_WAIT_MS = 30_000
+// A cold distro boots first, and core loads everything before it listens: on a first start in WSL
+// that took over 30s. Only for as long as the core started runs; one that is gone fails at once.
+const START_WAIT_MS = 180_000
+// From launch until its process shows: wsl.exe or ssh still starting the shell that execs it.
+const EXIT_GRACE_MS = 5_000
 const INSTALL_TIMEOUT_MS = 120_000
 const CONTROL_TIMEOUT_MS = 30_000
 
@@ -77,7 +80,7 @@ const TIDY_SCRIPT = [
 ].join('\n')
 
 const Started = z.object({ start: z.array(z.enum(['daemon', 'core'])) })
-const Endpoint = z.object({ endpoint: CoreEndpoint.nullable() })
+const Endpoint = z.object({ endpoint: CoreEndpoint.nullable(), coreRunning: z.boolean().optional() })
 const Check = z.object({ node: z.string(), arch: z.string(), pty: z.union([z.literal(true), z.string()]) })
 
 // One of backend-control's answers: the last line it printed, as JSON. Null when it gave none.
@@ -170,6 +173,7 @@ export type LinuxBackendOptions = {
   // A machine several apps reach keeps a backend newer than this app's (docs/REMOTE.md 版本).
   keepNewer?: boolean
   startWaitMs?: number
+  exitGraceMs?: number
 }
 
 // ensureBackend() for that machine: installs this build's backend if it is not there, asks an
@@ -188,15 +192,20 @@ export async function ensureLinuxBackend(options: LinuxBackendOptions): Promise<
   if (!prepared.answer) return { ok: false, problem: { kind: 'start', detail: said(prepared.result) } }
   for (const name of prepared.answer.start) launchLinuxBackend(target, place, name)
 
-  const until = Date.now() + (options.startWaitMs ?? START_WAIT_MS)
+  const launched = Date.now()
+  const until = launched + (options.startWaitMs ?? START_WAIT_MS)
+  const log = `${place.home}/.antumi/logs/core.log${options.where ?? ''}`
   for (;;) {
-    const endpoint = await linuxCoreEndpoint(target, place)
-    if (endpoint) {
+    const { answer } = await control(target, place, Endpoint, ['endpoint'])
+    if (answer?.endpoint) {
       // After the start, so what was just asked to leave has left; nothing depends on it.
       await target.run(['/bin/sh', '-c', TIDY_SCRIPT, 'sh', folder, MANAGED_NODE.version])
-      return { ok: true, endpoint }
+      return { ok: true, endpoint: answer.endpoint }
     }
-    if (Date.now() >= until) return { ok: false, problem: { kind: 'start', detail: `core did not come up; see ${place.home}/.antumi/logs/core.log${options.where ?? ''}` } }
+    // Only the core started here: one left running from before may be another build's.
+    const gone = prepared.answer.start.includes('core') && answer?.coreRunning === false && Date.now() - launched >= (options.exitGraceMs ?? EXIT_GRACE_MS)
+    if (gone) return { ok: false, problem: { kind: 'start', detail: `core exited before it listened; see ${log}` } }
+    if (Date.now() >= until) return { ok: false, problem: { kind: 'start', detail: `core did not come up; see ${log}` } }
     await sleep(500)
   }
 }
