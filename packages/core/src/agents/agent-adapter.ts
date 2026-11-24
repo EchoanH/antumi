@@ -1,4 +1,4 @@
-import type { AgentCliInstallation, AgentKind, ChatCatalog, ChatModel, ChatPermissionMode, EnvironmentCheck, KnowledgeBase } from '@antumi/protocol'
+import type { AgentAuthentication, AgentCliInstallation, AgentKind, ChatCatalog, ChatModel, ChatPermissionMode, EnvironmentCheck, KnowledgeBase } from '@antumi/protocol'
 import type { AgentCommand, AgentMcpServer, McpServer } from '../agent-command'
 import type { ChatDriver, ChatPreferences, ChatStageOptions } from '../chat-driver'
 import type { ResetCreditUse, UsageSource } from '../usage-source'
@@ -129,6 +129,8 @@ export interface AgentAdapter {
   detect?(pathEnv: string, platform: NodeJS.Platform): Promise<AgentDetection>
   // null: it could not tell.
   signedIn?(home?: string): Promise<boolean | null>
+  // The CLI's native authentication, where its origin can be identified without exposing keys.
+  authentication?(home?: string): Promise<AgentAuthentication>
   readonly usage?: UsageSource
   readonly accounts?: AccountSupport
   // The folders of the user's own Agent Skills it loads by itself, wherever it runs: shown beside

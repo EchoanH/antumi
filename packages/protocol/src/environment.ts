@@ -13,14 +13,19 @@ export type EnvironmentTool = z.infer<typeof EnvironmentTool>
 export const EnvironmentCheckStatus = z.enum(['ok', 'missing', 'unknown'])
 export type EnvironmentCheckStatus = z.infer<typeof EnvironmentCheckStatus>
 
-export const EnvironmentCheck = z.object({
+export const AgentAuthentication = z.object({
+  signedIn: z.boolean().nullable(),
+  // Omitted by older cores and when the CLI cannot identify its authentication method.
+  authSource: z.enum(['account', 'native-provider']).optional()
+})
+export type AgentAuthentication = z.infer<typeof AgentAuthentication>
+
+export const EnvironmentCheck = AgentAuthentication.extend({
   tool: EnvironmentTool,
   status: EnvironmentCheckStatus,
   version: z.string().nullable(),
   // Where it was found, so the user can tell which install Antumi runs.
   path: z.string().nullable(),
-  // Whether the tool has an account to run with; null for git, and for a tool that is not there.
-  signedIn: z.boolean().nullable(),
   // Older cores leave the reason unknown; a version string alone does not prove incompatibility.
   problem: z.enum(['incompatible-version', 'probe-failed']).optional()
 })

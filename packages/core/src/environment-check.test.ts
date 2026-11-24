@@ -31,6 +31,20 @@ describe('environment check', () => {
     expect(parseVersion('nothing here')).toBeNull()
   })
 
+  it.skipIf(process.platform === 'win32')('reports the active authentication source and notices a switch back to an account', async () => {
+    fakeTool('codex', 'codex-cli 0.170.0')
+    const legacy = vi.fn(async () => false)
+    const identify = vi.fn<() => Promise<{ signedIn: boolean; authSource: 'account' | 'native-provider' }>>()
+      .mockResolvedValueOnce({ signedIn: true, authSource: 'native-provider' })
+      .mockResolvedValueOnce({ signedIn: true, authSource: 'account' })
+    const changed = vi.fn()
+    const service = new EnvironmentService({ pathEnv: bin, platform: process.platform, applicationDirs: [root], signedIn: { codex: legacy }, authentication: { codex: identify }, changed })
+    expect((await service.check()).checks.find((check) => check.tool === 'codex')).toMatchObject({ signedIn: true, authSource: 'native-provider' })
+    expect((await service.check(true)).checks.find((check) => check.tool === 'codex')).toMatchObject({ signedIn: true, authSource: 'account' })
+    expect(legacy).not.toHaveBeenCalled()
+    expect(changed).toHaveBeenCalledTimes(2)
+  })
+
   it.skipIf(process.platform === 'win32')('finds only what the path can run', async () => {
     fakeTool('git', 'git version 9.9.9')
     writeFileSync(path.join(bin, 'claude'), 'not executable')

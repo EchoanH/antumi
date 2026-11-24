@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { hasCodexCredentials, readCodexUsage } from './codex-usage'
+import { codexAuthentication, hasCodexCredentials, readCodexUsage } from './codex-usage'
 
 describe('Codex native authentication', () => {
   let home: string
@@ -23,6 +23,7 @@ describe('Codex native authentication', () => {
   ])('accepts an API key without requesting ChatGPT quota: %j', async (auth) => {
     await writeFile(path.join(home, 'auth.json'), JSON.stringify(auth))
     expect(await hasCodexCredentials()).toBe(true)
+    expect(await codexAuthentication()).toEqual({ signedIn: true, authSource: 'native-provider' })
     expect(await readCodexUsage()).toEqual({ signedIn: true, windows: [], plan: null })
     expect(fetch).not.toHaveBeenCalled()
   })
@@ -86,6 +87,7 @@ describe('Codex native authentication', () => {
     vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ plan_type: 'plus', rate_limit_reset_credits: { available_count: 0 } })))
     expect(await hasCodexCredentials(home)).toBe(true)
     expect(await readCodexUsage(home)).toMatchObject({ signedIn: true, plan: 'plus', windows: [] })
+    expect(await codexAuthentication(home)).toEqual({ signedIn: true, authSource: 'account' })
     expect(fetch).toHaveBeenCalledWith('https://chatgpt.com/backend-api/wham/usage', expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer test-official-token', 'ChatGPT-Account-Id': 'test-account' }) }))
   })
 

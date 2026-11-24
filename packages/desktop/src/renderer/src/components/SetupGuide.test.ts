@@ -11,6 +11,7 @@ import { useProviderProbes } from '../provider-probes'
 import { openSetup, updateSetup } from '../setup-controller'
 import { SetupProgress } from '../setup-progress'
 import { SetupGuide } from './SetupGuide'
+import { ProviderPicker } from './ProviderPicker'
 
 vi.hoisted(() => {
   const matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
@@ -40,6 +41,19 @@ beforeEach(() => {
 })
 
 describe('SetupGuide', () => {
+  it('offers local configuration before any Antumi provider has been added', () => {
+    const html = renderToStaticMarkup(createElement(ProviderPicker, { agent: 'codex', value: null, onChange: () => {} }))
+    expect(html).toContain('沿用本机配置')
+  })
+  it('lets a native relay proceed without an official login or adding another provider', () => {
+    const environment = env(true)
+    environment.checks = environment.checks.map((check) => ({ ...check, authSource: 'native-provider' }))
+    useCore.setState({ environment })
+    const html = render()
+    expect(html).toContain('外部智能体已准备好')
+    expect(html).not.toContain('codex login')
+    expect(html).not.toContain('需要登录账号')
+  })
   it('explains a proven sign-out without inviting the user to confirm an unknown state', () => {
     const html = render()
     expect(html).toContain('需要登录账号')

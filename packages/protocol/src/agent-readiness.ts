@@ -1,13 +1,13 @@
 import type { AgentKind } from './agent'
 import { agentDescriptor } from './agents'
-import type { Environment } from './environment'
+import type { AgentAuthentication, Environment } from './environment'
 import { providerEndpoint, type ModelProvider, type ModelProviderProbe } from './model-provider'
 
 export type ProviderReadiness = Readonly<Record<string, { revision: number; result: ModelProviderProbe | 'running' }>>
 
 export type AgentReadiness =
   | { state: 'checking' | 'unsupported' | 'disabled' | 'missing' | 'cli-missing' | 'incompatible-version' | 'probe-failed' | 'needs-check' | 'needs-account' | 'needs-provider' | 'unknown-auth' | 'authorize-on-use' }
-  | { state: 'ready'; via: 'account' }
+  | { state: 'ready'; via: 'account'; authSource?: AgentAuthentication['authSource'] }
   | { state: 'ready'; via: 'provider'; provider: ModelProvider }
   | { state: 'provider-failed'; provider: ModelProvider; message: string | null }
 
@@ -22,7 +22,7 @@ export function agentReadiness(agent: AgentKind, environment: Pick<Environment, 
   }
   if (check.problem) return { state: check.problem }
   if (check.status === 'unknown') return { state: 'needs-check' }
-  if (check.signedIn === true) return { state: 'ready', via: 'account' }
+  if (check.signedIn === true) return { state: 'ready', via: 'account', ...(check.authSource ? { authSource: check.authSource } : {}) }
   const compatible = providers.filter((entry) => entry.hasKey && providerEndpoint(entry, agent) !== null)
   const failure = (entry: ModelProvider): ModelProviderProbe | null => {
     const probe = probes[entry.id]

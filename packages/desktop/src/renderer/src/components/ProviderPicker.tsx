@@ -1,12 +1,11 @@
 import { t } from '../i18n'
-import { MODEL_PROVIDER_PRESETS, type AgentKind } from '@antumi/protocol'
+import { agentDescriptor, MODEL_PROVIDER_PRESETS, type AgentKind } from '@antumi/protocol'
 import { setSettingsOpen, useCore } from '../core-store'
 import { agentLabel } from '../labels'
 import { servingProviders } from '../model-provider-choice'
 import { ChatPicker, type PickerSize } from './ChatPicker'
 
-// Where a new conversation or task's agent runs: its own account, or one of the user's model
-// providers that serves it. Shown only where there is a provider to pick; '' is the own account.
+// An empty selection preserves the agent's native account or provider configuration.
 export function ProviderPicker({ agent, value, onChange, disabled = false, placement, size }: {
   agent: AgentKind
   value: string | null
@@ -16,7 +15,7 @@ export function ProviderPicker({ agent, value, onChange, disabled = false, place
   size?: PickerSize
 }) {
   const providers = servingProviders(useCore((s) => s.modelProviders), agent)
-  if (providers.length === 0) return null
+  if (agentDescriptor(agent).capabilities.modelProviders.length === 0) return null
   const picked = providers.some((provider) => provider.id === value) ? value : null
   return (
     <ChatPicker

@@ -6,7 +6,7 @@ import { claudeCommand } from './claude-command'
 import { claudeProviderModels } from './claude-provider'
 import { CLAUDE_MODE_NAMES, ClaudeStream } from './claude-stream'
 import { claudeTranscripts } from './claude-transcripts'
-import { claudeSignedIn, readClaudeUsage } from './claude-usage'
+import { claudeAuthentication, claudeSignedIn, readClaudeUsage } from './claude-usage'
 
 export const claude: AgentAdapter = {
   usageTranscripts: { format: 'claude', home: (home) => home ?? claudeDefaultHome() },
@@ -20,6 +20,7 @@ export const claude: AgentAdapter = {
   // Claude Code asks for MCP tools itself, under whatever mode the user set.
   mcpApproval: 'agent',
   signedIn: claudeSignedIn,
+  authentication: claudeAuthentication,
   usage: readClaudeUsage,
   accounts: claudeAccounts,
   // Its plugins carry skills too, laid out by its own version: not read here.

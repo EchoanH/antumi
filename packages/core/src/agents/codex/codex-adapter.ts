@@ -9,7 +9,7 @@ import { codexCommand } from './codex-command'
 import { prepareCodexLockdown } from './codex-lockdown'
 import { codexProviderModels } from './codex-provider'
 import { codexTranscripts } from './codex-transcripts'
-import { hasCodexCredentials, readCodexUsage, useCodexResetCredit } from './codex-usage'
+import { codexAuthentication, hasCodexCredentials, readCodexUsage, useCodexResetCredit } from './codex-usage'
 
 export const codex: AgentAdapter = {
   warmup: { probe: { command: 'codex', args: ['mcp', 'list', '--json'], stdin: null, output: 'stdout' }, args: codexWarmupArgs },
@@ -31,6 +31,7 @@ export const codex: AgentAdapter = {
   // not marked as, so Antumi asks in the chat.
   mcpApproval: 'antumi',
   signedIn: hasCodexCredentials,
+  authentication: codexAuthentication,
   usage: readCodexUsage,
   useResetCredit: useCodexResetCredit,
   accounts: codexAccounts,

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { ResetCreditOutcome, ResetCredits, UsageWindow } from '@antumi/protocol'
+import type { AgentAuthentication, ResetCreditOutcome, ResetCredits, UsageWindow } from '@antumi/protocol'
 import { fetchUsageJson, type UsageReading } from '../../usage-source'
 import { readCodexAuth, type CodexTokens } from './codex-auth'
 
@@ -171,6 +171,11 @@ async function readTokens(home?: string) {
 // Whether Codex has an account here, without asking the service anything.
 export async function hasCodexCredentials(home?: string): Promise<boolean> {
   return (await readCodexAuth(home)) !== null
+}
+
+export async function codexAuthentication(home?: string): Promise<AgentAuthentication> {
+  const auth = await readCodexAuth(home)
+  return auth ? { signedIn: true, authSource: auth.type === 'chatgpt' ? 'account' : 'native-provider' } : { signedIn: false }
 }
 
 // Sent as the Codex client, the one these endpoints serve; same headers as Orca.

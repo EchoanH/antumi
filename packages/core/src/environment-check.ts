@@ -45,6 +45,7 @@ type Options = {
   platform: NodeJS.Platform
   // Whether the tool has an account to run with; left out for one that has none to have.
   signedIn: Partial<Record<EnvironmentTool, () => Promise<boolean | null>>>
+  authentication?: Partial<Record<EnvironmentTool, () => Promise<Pick<EnvironmentCheck, 'signedIn' | 'authSource'>>>>
   applicationDirs?: string[]
   now?: () => number
   changed?: (environment: Environment) => void
@@ -201,18 +202,20 @@ export class EnvironmentService {
   }
 
   private async detectTool(tool: EnvironmentTool): Promise<EnvironmentCheck> {
-    const { pathEnv, platform, signedIn } = this.options
+    const { pathEnv, platform, signedIn, authentication } = this.options
     const detect = isAgentKind(tool) ? adapterOf(tool).detect : undefined
     if (detect) return { tool, ...await detect(pathEnv, platform) }
     const path = await findOnPath(tool, pathEnv, platform)
     if (!path) return { tool, status: 'missing', version: null, path: null, signedIn: null }
     const version = await this.version(path)
+    const auth = authentication?.[tool]
+    const identity = auth ? await auth().catch(() => ({ signedIn: null })) : { signedIn: signedIn[tool] ? await signedIn[tool]().catch(() => null) : null }
     return {
       tool,
       status: version === null ? 'unknown' : 'ok',
       version,
       path,
-      signedIn: signedIn[tool] ? await signedIn[tool]().catch(() => null) : null,
+      ...identity,
       ...(version === null ? { problem: 'probe-failed' as const } : {})
     }
   }
