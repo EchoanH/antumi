@@ -172,12 +172,10 @@ export class ConversationService {
   private worktreeSetup: Pick<WorktreeSetup, 'requireTrusted' | 'setUp'> | null = null
   setWorktreeSetup(setup: Pick<WorktreeSetup, 'requireTrusted' | 'setUp'>): void { this.worktreeSetup = setup }
 
-  async recordGitChange(id: string, project: string, branch: string, resetStart: boolean): Promise<void> {
+  // start: the project's head once a branch was checked out in it, where the conversation's work now begins.
+  recordGitChange(id: string, project: string, branch: string, start?: string): void {
     const conversation = this.get(id)
-    if (resetStart && !conversation.taskId) {
-      const head = await folderHead(project)
-      if (head) this.store.setProjectStart(id, project, head)
-    }
+    if (start && !conversation.taskId) this.store.setProjectStart(id, project, start)
     this.store.setSwitchedBranches(id, { ...this.store.switchedBranches(id), [project]: branch })
     this.changed(this.get(id))
   }

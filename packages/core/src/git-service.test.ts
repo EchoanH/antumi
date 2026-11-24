@@ -22,7 +22,7 @@ describe('Git management', () => {
   let conversations: Conversation[]
   let tasks: Task[]
   let launching: boolean
-  const record = vi.fn(async () => {})
+  const record = vi.fn()
   const commit = (name: string, content: string, message = name) => { writeFileSync(path.join(repo, name), content); git(repo, 'add', '--', name); git(repo, 'commit', '-q', '-m', message); return git(repo, 'rev-parse', 'HEAD') }
   beforeEach(() => {
     root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'antumi-git-management-')))
@@ -120,7 +120,7 @@ describe('Git management', () => {
     expect(git(repo, 'rev-parse', 'HEAD')).not.toBe(before)
     expect(git(repo, 'rev-parse', 'keep-original')).toBe(before)
     expect(git(repo, 'show', 'HEAD:topic.txt')).toBe('topic')
-    expect(record).toHaveBeenCalledWith(target.id, repo, 'topic', false)
+    expect(record).toHaveBeenCalledWith(target.id, repo, 'topic', undefined)
     writeFileSync(path.join(repo, 'topic.txt'), 'unsaved')
     await expect(service.execute(direct, { kind: 'rebase', ref: 'refs/heads/main' })).rejects.toMatchObject({ reason: 'uncommitted-changes' })
   })
@@ -307,12 +307,21 @@ describe('Git management', () => {
   it('creates tracking branches, refuses name collisions and never overwrites work', async () => {
     await service.execute(target, { kind: 'create', name: 'feature', ref: 'refs/remotes/origin/main', checkout: true })
     expect(git(repo, 'rev-parse', '--abbrev-ref', '@{upstream}')).toBe('origin/main')
-    expect(record).toHaveBeenCalledWith(target.id, repo, 'feature', true)
+    expect(record).toHaveBeenCalledWith(target.id, repo, 'feature', git(repo, 'rev-parse', 'HEAD'))
     await expect(service.execute(target, { kind: 'create', name: 'feature', ref: 'HEAD', checkout: false })).rejects.toMatchObject({ reason: 'git-operation-failed' })
     await expect(service.execute(target, { kind: 'create', name: '-bad', ref: 'HEAD', checkout: false })).rejects.toMatchObject({ reason: 'invalid-branch-name' })
     writeFileSync(path.join(repo, 'file.txt'), 'unsaved')
     await expect(service.execute(target, { kind: 'switch', ref: 'refs/heads/main' })).rejects.toMatchObject({ reason: 'uncommitted-changes' })
     expect(git(repo, 'diff')).toContain('unsaved')
+  })
+
+  it('tells every conversation in the checkout of a switch, with where its work now begins', async () => {
+    const others = [1, 2, 3].map(() => Conversation.parse({ ...conversations[0], id: randomUUID() }))
+    conversations.push(...others)
+    git(repo, 'switch', '-q', '-c', 'topic'); const head = commit('topic.txt', 'topic\n'); git(repo, 'switch', '-q', 'main')
+    await service.execute(target, { kind: 'switch', ref: 'refs/heads/topic' })
+    expect(record).toHaveBeenCalledTimes(4)
+    for (const conversation of conversations) expect(record).toHaveBeenCalledWith(conversation.id, repo, 'topic', head)
   })
 
   it('tags a commit and checks one out detached, refusing bad names and unsaved work', async () => {
@@ -329,7 +338,7 @@ describe('Git management', () => {
     await service.execute(target, { kind: 'detach', ref: first })
     expect(git(repo, 'rev-parse', 'HEAD')).toBe(first)
     expect(git(repo, 'branch', '--show-current')).toBe('')
-    expect(record).toHaveBeenCalledWith(target.id, repo, git(repo, 'rev-parse', '--short', 'HEAD'), true)
+    expect(record).toHaveBeenCalledWith(target.id, repo, git(repo, 'rev-parse', '--short', 'HEAD'), first)
   })
 
   it('safely deletes merged branches and remote branches but refuses current and unmerged ones', async () => {

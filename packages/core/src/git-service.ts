@@ -4,6 +4,7 @@ import { checkGitOperation } from '@antumi/protocol'
 import type { TaskService } from './task-service'
 import type { ConversationService } from './conversation-service'
 import { git, gitOrNull } from './git-changes'
+import { folderHead } from './conversation-changes'
 import { projectHead } from './workspace'
 import { commitAll } from './project-commit'
 import { Rejection } from './rejection'
@@ -130,14 +131,12 @@ export class GitService {
     return false
   }
 
+  // Tasks share a few repositories: each folder is asked for its repository once, all at the same time.
   private async protectedRefs(key: string): Promise<Set<string>> {
-    const refs = new Set<string>()
-    for (const task of this.tasks.list()) {
-      for (const repo of task.repos) {
-        if (repo.branch && (await repositoryKey(repo.worktreePath ?? repo.path) ?? await repositoryKey(repo.path)) === key) refs.add(`refs/heads/${repo.branch}`)
-      }
-    }
-    return refs
+    const repos = this.tasks.list().flatMap((task) => task.repos.filter((repo) => repo.branch))
+    const folders = [...new Set(repos.flatMap((repo) => repo.worktreePath ? [repo.worktreePath, repo.path] : [repo.path]))]
+    const keys = new Map(await Promise.all(folders.map(async (folder) => [folder, await repositoryKey(folder)] as const)))
+    return new Set(repos.filter((repo) => (keys.get(repo.worktreePath ?? repo.path) ?? keys.get(repo.path)) === key).map((repo) => `refs/heads/${repo.branch}`))
   }
 
   async status(target: GitTarget): Promise<GitStatus> {
@@ -283,18 +282,18 @@ export class GitService {
       const after = await projectHead(dir)
       const moved = ['switch', 'detach', 'merge', 'rebase', 'pull', 'continue', 'abort', 'resolve'].includes(action.kind) || (action.kind === 'update' && action.ref === `refs/heads/${status.branch}`) || (action.kind === 'create' && action.checkout) || (action.kind === 'rename' && action.ref === `refs/heads/${status.branch}`)
       if (moved) {
-        // Every conversation in this checkout hears of it. Conversations share folders, so each
-        // folder is asked for its checkout once, all at the same time.
+        // Every conversation in this checkout hears of it. Hundreds of conversations share a few
+        // folders, so each folder is asked for its checkout, and its head, once, all at the same time.
         const conversations = this.conversations.listAll()
         const root = await gitOrNull(dir, ['rev-parse', '--show-toplevel'])
         const folders = [...new Set(conversations.flatMap((conversation) => conversation.projectPaths))]
         const roots = await Promise.all(folders.map((folder) => gitOrNull(folder, ['rev-parse', '--show-toplevel'])))
         const here = new Set(folders.filter((_, index) => roots[index] === root))
+        const checkedOut = action.kind === 'switch' || action.kind === 'detach' || (action.kind === 'create' && action.checkout)
+        const starts = new Map(checkedOut ? await Promise.all([...here].map(async (folder) => [folder, await folderHead(folder)] as const)) : [])
         for (const conversation of conversations) {
           for (const project of conversation.projectPaths) {
-            if (here.has(project)) {
-              await this.conversations.recordGitChange(conversation.id, project, after.branch ?? '分离 HEAD', action.kind === 'switch' || action.kind === 'detach' || (action.kind === 'create' && action.checkout))
-            }
+            if (here.has(project)) this.conversations.recordGitChange(conversation.id, project, after.branch ?? '分离 HEAD', starts.get(project) ?? undefined)
           }
         }
       }
