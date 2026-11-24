@@ -30,6 +30,7 @@ export function runPlugin(options: Omit<SourceOptions, 'sources'> & { sources?: 
     throw new Error('Plugin sources must match the manifest exactly')
   }
   if (manifest.contributes.sources.some((entry) => entry.commentSync === 1 && !sources.get(entry.id)?.comments)) throw new Error('Comment sync capability requires a comments implementation')
+  if (manifest.contributes.sources.some((entry) => { const source = sources.get(entry.id); return entry.writeback === 1 && !(source?.transitions && source.transition && (source.comment || entry.writebackComment === false)) })) throw new Error('Writeback capability requires transitions, transition and comment implementations')
   const input = options.input ?? process.stdin
   const output = options.output ?? process.stdout
   const env = options.env ?? process.env
@@ -162,6 +163,21 @@ export function runPlugin(options: Omit<SourceOptions, 'sources'> & { sources?: 
         if (!source.image) throw new SourceError('request-failed', '来源不支持读取评论图片')
         const image = await source.image(settings, credential, key, id, signal)
         return { name: image.name, base64: Buffer.from(image.bytes).toString('base64') }
+      }
+      case 'transitions': {
+        const { settings, credential, key } = pluginSchemas.transitions.params.parse(params)
+        if (!source.transitions) throw new SourceError('request-failed', '来源不支持回写')
+        return source.transitions(settings, credential, key, signal)
+      }
+      case 'transition': {
+        const { settings, credential, key, id } = pluginSchemas.transition.params.parse(params)
+        if (!source.transition) throw new SourceError('request-failed', '来源不支持回写')
+        return source.transition(settings, credential, key, id, signal)
+      }
+      case 'comment': {
+        const { settings, credential, key, markdown, writeId } = pluginSchemas.comment.params.parse(params)
+        if (!source.comment) throw new SourceError('request-failed', '来源不支持回写')
+        return source.comment(settings, credential, key, { markdown, writeId }, signal)
       }
       case 'fetch': {
         const { settings, credential, key, images } = pluginSchemas.fetch.params.parse(params)

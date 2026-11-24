@@ -1,5 +1,5 @@
 import type { SourceCommentState, SourceCommentOptions, SourceCommentPage } from '@antumi/protocol'
-import type { LoginNotice, LoginPrompt, SettingField, SourceIssue } from '@antumi/protocol'
+import type { LoginNotice, LoginPrompt, SettingField, SourceCommentResult, SourceIssue, SourceStatusResult, SourceTransitions } from '@antumi/protocol'
 
 // The seam a task source plugs into. Core owns everything around it (settings and credential
 // storage, polling, the inbox, turning issues into tasks); a provider only talks to its tracker.
@@ -33,6 +33,14 @@ export type SourceProvider = {
   comments?(settings: SourceSettings, credential: SourceCredential, key: string, signal: AbortSignal, options: SourceCommentOptions): Promise<SourceCommentPage>
   // An image a comment names by id; core checks it as it does the issue's images.
   image?(settings: SourceSettings, credential: SourceCredential, key: string, id: string, signal: AbortSignal): Promise<{ name: string; bytes: Uint8Array }>
+  // Writing back to the issue (writeback: 1): the statuses it can move to now, a move by an id
+  // transitions gave, and a comment. See docs/SOURCE-WRITEBACK.md.
+  readonly writeback?: 1
+  // With writeback: false when the tracker takes no comments, only status moves.
+  readonly writebackComment?: false
+  transitions?(settings: SourceSettings, credential: SourceCredential, key: string, signal: AbortSignal): Promise<SourceTransitions>
+  transition?(settings: SourceSettings, credential: SourceCredential, key: string, id: string, signal: AbortSignal): Promise<SourceStatusResult>
+  comment?(settings: SourceSettings, credential: SourceCredential, key: string, comment: { markdown: string; writeId: string }, signal: AbortSignal): Promise<SourceCommentResult>
   readonly settings: readonly SettingField[]
   // Checks and canonicalizes settings before they are saved; throws SourceError('invalid-settings').
   normalizeSettings(values: SourceSettings): Record<string, string> | Promise<Record<string, string>>

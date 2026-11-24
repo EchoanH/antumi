@@ -62,6 +62,47 @@ runSourcePlugin({ manifest: ${JSON.stringify(manifest)}, sources: [{
   } finally { await rm(directory, { recursive: true, force: true }) }
 }, 20_000)
 
+it('writes back through an SDK plugin that declares it', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'antumi-sdk-writeback-'))
+  const manifest = PluginManifest.parse({
+    id: 'test.writeback', version: '0.1.0', engines: { antumi: '>=0.15.11 <1.0.0' },
+    contributes: { sources: [{ id: 'demo', name: 'Demo', settings: [], writeback: 1 }] },
+    entry: { runtime: 'node', main: 'main.mjs' }
+  })
+  try {
+    const artifact = await build({
+      stdin: {
+        contents: `import { runSourcePlugin } from '@antumi/plugin-sdk'
+runSourcePlugin({ manifest: ${JSON.stringify(manifest)}, sources: [{
+  id: 'demo', normalizeSettings: (settings) => settings, login: async () => { throw new Error('unused') },
+  list: async () => [], fetch: async () => { throw new Error('unused') },
+  transitions: async (_settings, _credential, key) => ({ status: 'Open', statusCategory: 'todo', options: [{ id: key + ':start', name: 'In Progress', category: 'doing' }] }),
+  transition: async (_settings, _credential, _key, id) => ({ status: id.endsWith(':start') ? 'In Progress' : 'Open', statusCategory: 'doing' }),
+  comment: async (_settings, _credential, key, comment) => ({ id: comment.writeId, url: 'https://example.com/' + key })
+}] })`,
+        resolveDir: fileURLToPath(new URL('../../plugin-sdk/', import.meta.url)), loader: 'ts'
+      },
+      bundle: true, platform: 'node', format: 'esm', target: 'node22', write: false
+    })
+    const output = artifact.outputFiles[0]
+    if (!output) throw new Error('Missing plugin build')
+    const main = path.join(directory, 'main.mjs')
+    await writeFile(main, output.contents)
+    const runtime = new PluginProcess(manifest, main, {})
+    try {
+      const provider = (await runtime.providers())[0]
+      if (!provider?.transitions || !provider.transition || !provider.comment) throw new Error('Missing writeback')
+      const credential = { kind: 'token', payload: {} }
+      const signal = new AbortController().signal
+      expect(provider.writeback).toBe(1)
+      expect(await provider.transitions({}, credential, 'D-1', signal)).toMatchObject({ options: [{ id: 'D-1:start' }] })
+      expect(await provider.transition({}, credential, 'D-1', 'D-1:start', signal)).toEqual({ status: 'In Progress', statusCategory: 'doing' })
+      const writeId = '0b5c2f4e-1e6d-4a8b-9c3d-7f1e2a3b4c5d'
+      expect(await provider.comment({}, credential, 'D-1', { markdown: 'Done', writeId }, signal)).toEqual({ id: writeId, url: 'https://example.com/D-1' })
+    } finally { runtime.stop() }
+  } finally { await rm(directory, { recursive: true, force: true }) }
+}, 20_000)
+
 it('calls an SDK page in a fresh backend process and preserves handler errors', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'antumi-sdk-page-host-'))
   const manifest = PluginManifest.parse({
