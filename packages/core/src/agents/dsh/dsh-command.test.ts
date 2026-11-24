@@ -3,7 +3,7 @@ import { DSH_CONFIG_ENV, DSH_PROVIDER_KEY_ENV } from '@antumi/protocol'
 import type { AgentLaunch } from '../agent-adapter'
 import type { ProviderLaunch } from '../../provider-launch'
 import { dshCommand, dshProvider, dshProviderModels, dshRuntimeConfig, DSH_PROVIDER_ENV } from './dsh-command'
-import { dshCompatible, dshInstallation } from './dsh-cli'
+import { dshInstallation } from './dsh-cli'
 
 const launch: AgentLaunch = { providerSessionId: null, resume: false, handoffPath: null, extraProjects: ['/extra'] }
 const provider: ProviderLaunch = {
@@ -41,17 +41,8 @@ describe('DSH launch configuration', () => {
     expect(dshRuntimeConfig({ ...launch, knowledgeBase: { path: '/vault', write: true } })).toMatchObject({ workDirs: ['/extra', '/vault'], noEdit: [] })
   })
 
-  it('accepts only tested releases and offers the recommended installation on each host platform', () => {
-    expect(dshCompatible('0.2.2-rc.3')).toBe(true)
-    expect(dshCompatible('0.2.2-rc.4')).toBe(true)
-    expect(dshCompatible('0.2.2-rc.5')).toBe(true)
-    expect(dshCompatible('0.2.2-rc.2')).toBe(false)
-    expect(dshCompatible('0.2.2-rc.6')).toBe(false)
-    expect(dshCompatible('0.2.3-alpha.2')).toBe(false)
-    expect(dshCompatible('0.2.1-rc.2')).toBe(false)
-    expect(dshCompatible('0.2.0')).toBe(false)
-    expect(dshCompatible(null)).toBe(false)
-    expect(dshInstallation('win32')).toMatchObject({ agent: 'dsh', shell: 'powershell', command: expect.stringContaining('@0.2.2-rc.5') })
+  it('installs the default npm release on each supported host platform', () => {
+    expect(dshInstallation('win32')).toMatchObject({ agent: 'dsh', shell: 'powershell', command: 'npm install -g @deepseek-ai/dsh' })
     expect(dshInstallation('linux')?.shell).toBe('bash')
     expect(dshInstallation('freebsd')).toBeNull()
   })

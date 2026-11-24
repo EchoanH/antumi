@@ -17,7 +17,6 @@ import { codearts } from './codearts'
 
 export type { AgentDescriptor, AgentModeText } from './agent-descriptor'
 export { modelPrice } from './model-prices'
-export { DSH_VERSIONS, DSH_VERSION } from './dsh-versions'
 
 // One entry per agent kind: one left out fails to compile.
 export const AGENT_DESCRIPTORS = { claude, codex, cursor, opencode, pi, dsh, antigravity, zcode, kimi, gemini, codebuddy, codearts } satisfies Record<AgentKind, AgentDescriptor>

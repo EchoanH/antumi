@@ -10810,6 +10810,10 @@ export const MESSAGES = {
     "zh": "已找到，版本未知",
     "en": "Found; version unknown"
   },
+  "environmentText.standaloneCliRequired": {
+    "zh": "已找到桌面版，请通过 npm 安装独立 CLI",
+    "en": "Desktop app found. Install the standalone CLI with npm."
+  },
   "environmentText.installed": {
     "zh": "已安装 {value1}",
     "en": "Installed {value1}"

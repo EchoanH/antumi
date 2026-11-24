@@ -4,6 +4,14 @@
 
 ## 未发布
 
+### 改进
+
+- Antumi 可直接尝试运行新版 DeepSeek Harness，安装命令会选用 npm 默认发布版。
+
+### 修复
+
+- Windows 上 DeepSeek Harness 桌面版排在前面时，Antumi 会选用已安装且能启动的 npm 版。
+
 ## 0.22.0-beta.3 — 2026-11-24
 
 ### 新功能

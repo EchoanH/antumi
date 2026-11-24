@@ -17,6 +17,7 @@ export function agentNames(): string {
 
 export function checkStatusText(check: EnvironmentCheck): string {
   if (check.status === 'missing') return t('AgentPicker.notInstalled')
+  if (check.requiresStandaloneCli) return t('environmentText.standaloneCliRequired')
   const outdated = isAgentKind(check.tool) ? agentDescriptor(check.tool, getLocale()).environment.outdated : undefined
   if (check.status === 'unknown') return outdated && check.problem === 'incompatible-version' ? `${outdated.status}（${check.version ?? ''}）` : t('environmentText.foundVersionUnknown')
   return check.version ? t('environmentText.installed', { value1: check.version }) : t('InstalledAgentsSettings.installed')

@@ -1,5 +1,6 @@
 import type { AgentDescriptor } from './agent-descriptor'
-import { DSH_VERSION, DSH_VERSIONS } from './dsh-versions'
+
+const install = 'npm install -g @deepseek-ai/dsh'
 
 export const dsh: AgentDescriptor = {
   label: 'DeepSeek Harness',
@@ -19,9 +20,8 @@ export const dsh: AgentDescriptor = {
   capabilities: { unattended: true, bypass: true, autoMode: false, pathMentions: false, optionsWhileBusy: false, skills: true, userMcp: true, modelProviders: ['openai-chat', 'openai-responses', 'anthropic'], accounts: false },
   environment: {
     role: '通过 Antumi 专用 profile 运行；首次使用时准备随应用提供的运行时插件。',
-    install: `npm install -g @deepseek-ai/dsh@${DSH_VERSION}`,
-    signIn: '在 DSH 中配置模型服务商，或在 Antumi 的服务商设置中添加 API Key',
-    outdated: { status: `支持的 DSH 版本：${DSH_VERSIONS.join('、')}`, hint: `，建议安装 ${DSH_VERSION}` }
+    install,
+    signIn: '在 DSH 中配置模型服务商，或在 Antumi 的服务商设置中添加 API Key'
   },
   usageWhere: '在所用模型服务商处查看',
   translations: { en: {
@@ -34,9 +34,8 @@ export const dsh: AgentDescriptor = {
     },
     environment: {
       role: 'Runs in an Antumi profile; prepares the bundled runtime plugin on first use.',
-      install: `npm install -g @deepseek-ai/dsh@${DSH_VERSION}`,
-      signIn: 'Configure a model provider in DSH, or add an API key in Antumi provider settings',
-      outdated: { status: `Supported DSH versions: ${DSH_VERSIONS.join(', ')}`, hint: `; recommended: ${DSH_VERSION}` }
+      install,
+      signIn: 'Configure a model provider in DSH, or add an API key in Antumi provider settings'
     },
     usageWhere: 'Check with your model provider'
   } }

@@ -27,7 +27,9 @@ export const EnvironmentCheck = AgentAuthentication.extend({
   // Where it was found, so the user can tell which install Antumi runs.
   path: z.string().nullable(),
   // Older cores leave the reason unknown; a version string alone does not prove incompatibility.
-  problem: z.enum(['incompatible-version', 'probe-failed']).optional()
+  problem: z.enum(['incompatible-version', 'probe-failed']).optional(),
+  // The command comes from the desktop app and the agent needs a standalone CLI.
+  requiresStandaloneCli: z.literal(true).optional()
 })
 export type EnvironmentCheck = z.infer<typeof EnvironmentCheck>
 
