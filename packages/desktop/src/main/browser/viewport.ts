@@ -1,6 +1,6 @@
 import type { Rectangle, WebContents } from 'electron'
 import type { BrowserViewport } from '@antumi/protocol'
-import { mobileUserAgent } from './user-agent'
+import { mobileClientHints, mobileUserAgent } from './user-agent'
 
 export type DeviceClass = 'phone' | 'tablet' | 'desktop'
 
@@ -29,21 +29,9 @@ export async function applyViewport(webContents: WebContents, viewport: BrowserV
   await debug.sendCommand('Emulation.setTouchEmulationEnabled', { enabled: mobile, ...(mobile ? { maxTouchPoints: 5 } : {}) })
   // An empty user agent lifts the override: the tab's own again, which follows the site it is on.
   await debug.sendCommand('Emulation.setUserAgentOverride', mobile
-    ? { userAgent: mobileUserAgent(process.versions.chrome, device === 'phone'), platform: 'Linux armv8l', userAgentMetadata: clientHints(device === 'phone') }
+    ? { userAgent: mobileUserAgent(process.versions.chrome, device === 'phone'), platform: 'Linux armv8l', userAgentMetadata: mobileClientHints(process.versions.chrome, device === 'phone') }
     : { userAgent: '' })
   if (device !== deviceOf(previous) && /^https?:\/\//i.test(webContents.getURL())) webContents.reload()
-}
-
-function clientHints(phone: boolean) {
-  const major = process.versions.chrome.split('.')[0] ?? '0'
-  return {
-    brands: [{ brand: 'Chromium', version: major }, { brand: 'Google Chrome', version: major }, { brand: 'Not.A/Brand', version: '99' }],
-    platform: 'Android',
-    platformVersion: '10.0.0',
-    architecture: '',
-    model: phone ? 'K' : '',
-    mobile: phone
-  }
 }
 
 // Where a view held at a size goes within the panel: as large as fits at that aspect, centred,

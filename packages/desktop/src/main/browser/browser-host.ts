@@ -10,8 +10,8 @@ import { HostGate } from './host-gate'
 import { startHostServer, type HostServer } from './host-server'
 import { startTabProxy } from './tab-cdp-proxy'
 import { TabRegistry, type Tab } from './tabs'
-import { chromeUserAgent, wantsChromeUserAgent } from './user-agent'
-import { applyViewport } from './viewport'
+import { chromeUserAgent, mobileClientHints, mobileRequestHeaders, mobileUserAgent, siteUserAgent, type SiteUserAgent } from './user-agent'
+import { applyViewport, deviceOf } from './viewport'
 import type { WindowSlot } from './window-slot'
 import { bindBrowserShortcuts } from './browser-shortcuts'
 import { BrowserCapture } from './browser-capture'
@@ -27,18 +27,25 @@ const READY: BrowserStatus = { state: 'ready', running: true }
 
 type Navigation = BrowserHostResult<'navigate'>
 
-// A session's two names for itself: its own (Electron's), and Chrome's for Google (see
-// wantsChromeUserAgent). Requests to Google say Chrome here; a tab's pages there do so through
-// followSiteUserAgent. Set up once a session: Electron keeps one header listener per session.
-const sessionAgents = new WeakMap<Session, { own: string; chrome: string }>()
-function siteUserAgents(target: Session): { own: string; chrome: string } {
+// Requests that may need another name: Google's, and what its sign-in loads from elsewhere.
+const GOOGLE_REQUESTS = ['*://google.com/*', '*://*.google.com/*', '*://accounts.youtube.com/*', '*://*.gstatic.com/*', '*://*.googleusercontent.com/*']
+
+// A session's names for itself, one a siteUserAgent. A tab's pages take theirs through
+// followSiteUserAgent; requests to Google say Chrome here, and every request from a tab on Google's
+// sign-in says Android, so a page never contradicts itself. Set up once a session: Electron keeps
+// one header listener per session.
+const sessionAgents = new WeakMap<Session, Record<SiteUserAgent, string>>()
+function siteUserAgents(target: Session): Record<SiteUserAgent, string> {
   const known = sessionAgents.get(target)
   if (known) return known
   const own = target.getUserAgent()
-  const agents = { own, chrome: chromeUserAgent(own, process.versions.chrome) }
+  const agents = { own, chrome: chromeUserAgent(own, process.versions.chrome), android: mobileUserAgent(process.versions.chrome, true) }
   sessionAgents.set(target, agents)
-  target.webRequest.onBeforeSendHeaders({ urls: ['*://google.com/*', '*://*.google.com/*', '*://accounts.youtube.com/*'] }, (request, callback) => {
-    callback({ requestHeaders: { ...request.requestHeaders, 'User-Agent': agents.chrome } })
+  const hints = mobileClientHints(process.versions.chrome, true)
+  target.webRequest.onBeforeSendHeaders({ urls: GOOGLE_REQUESTS }, (request, callback) => {
+    if (request.webContents?.getUserAgent() === agents.android) callback({ requestHeaders: mobileRequestHeaders(request.requestHeaders, agents.android, hints) })
+    else if (siteUserAgent(request.url) !== 'own') callback({ requestHeaders: { ...request.requestHeaders, 'User-Agent': agents.chrome } })
+    else callback({})
   })
   return agents
 }
@@ -47,21 +54,31 @@ function siteUserAgents(target: Session): { own: string; chrome: string } {
 // A redirect across that line (V2EX's 「Sign in with Google」) is started again instead: changing
 // the user agent mid-redirect trips a Chromium check that takes the whole app down, and changing
 // it once the redirect is under way makes Chromium reload the page it came from.
-function followSiteUserAgent(contents: WebContents): void {
+// heldAtSize: whether the tab is held at a phone's or a tablet's size, which already passes for
+// Android (applyViewport) and keeps doing so.
+function followSiteUserAgent(contents: WebContents, heldAtSize: () => boolean): void {
   const agents = siteUserAgents(contents.session)
-  const agentFor = (url: string) => wantsChromeUserAgent(url) ? agents.chrome : agents.own
+  const become = (agent: string) => {
+    const wasAndroid = contents.getUserAgent() === agents.android
+    contents.setUserAgent(agent)
+    // navigator.userAgentData, which only the debugger sets.
+    if ((agent !== agents.android && !wasAndroid) || heldAtSize() || !contents.debugger.isAttached()) return
+    void contents.debugger.sendCommand('Emulation.setUserAgentOverride', agent === agents.android
+      ? { userAgent: agent, platform: 'Linux armv8l', userAgentMetadata: mobileClientHints(process.versions.chrome, true) }
+      : { userAgent: '' }).catch(() => {})
+  }
   contents.on('did-start-navigation', (details) => {
     if (!details.isMainFrame || details.isSameDocument) return
-    const agent = agentFor(details.url)
-    if (contents.getUserAgent() !== agent) contents.setUserAgent(agent)
+    const agent = agents[siteUserAgent(details.url)]
+    if (contents.getUserAgent() !== agent) become(agent)
   })
   contents.on('will-redirect', (details) => {
-    const agent = agentFor(details.url)
+    const agent = agents[siteUserAgent(details.url)]
     if (!details.isMainFrame || contents.getUserAgent() === agent) return
     details.preventDefault()
     setImmediate(() => {
       if (contents.isDestroyed()) return
-      contents.setUserAgent(agent)
+      become(agent)
       contents.loadURL(details.url).catch(() => {})
     })
   })
@@ -148,7 +165,7 @@ export async function startBrowserHost(slot: WindowSlot, hostFile: string, confi
     view.setBounds({ x: 0, y: 0, ...BROWSER_VIEWPORT })
     const contents = view.webContents
     gate.install(contents.session)
-    followSiteUserAgent(contents)
+    followSiteUserAgent(contents, () => deviceOf(tabOf(contents.id)?.viewport ?? null) !== 'desktop')
     await contents.loadURL('about:blank')
     let proxy = await startTabProxy(contents)
     let browser = await chromium.connectOverCDP(proxy.endpoint).catch((error: unknown) => {

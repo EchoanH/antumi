@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chromeUserAgent, mobileUserAgent, wantsChromeUserAgent } from './user-agent'
+import { chromeUserAgent, mobileClientHints, mobileRequestHeaders, mobileUserAgent, siteUserAgent } from './user-agent'
 
 describe('chromeUserAgent', () => {
   it('drops the app and Electron, keeping the platform and Chrome major', () => {
@@ -24,9 +24,26 @@ describe('mobileUserAgent', () => {
   })
 })
 
-describe('wantsChromeUserAgent', () => {
-  it('claims Chrome on Google alone, where its sign-in refuses an embedded browser', () => {
-    for (const url of ['https://accounts.google.com/v3/signin', 'https://www.google.com/', 'https://google.com/', 'https://accounts.youtube.com/accounts/SetSID']) expect(wantsChromeUserAgent(url)).toBe(true)
-    for (const url of ['https://www.v2ex.com/signin', 'https://linux.do/login', 'https://google.com.evil.test/', 'https://notgoogle.com/', 'about:blank', 'file:///google.com', 'nonsense']) expect(wantsChromeUserAgent(url)).toBe(false)
+describe('siteUserAgent', () => {
+  it('is Android on Google sign-in, where an embedded browser is refused', () => {
+    for (const url of ['https://accounts.google.com/v3/signin', 'https://accounts.youtube.com/accounts/SetSID']) expect(siteUserAgent(url)).toBe('android')
+  })
+
+  it('is Chrome on the rest of Google and its own everywhere else', () => {
+    for (const url of ['https://www.google.com/', 'https://google.com/', 'https://docs.google.com/document/d/1']) expect(siteUserAgent(url)).toBe('chrome')
+    for (const url of ['https://www.v2ex.com/signin', 'https://linux.do/login', 'https://accounts.google.com.evil.test/', 'https://notgoogle.com/', 'about:blank', 'file:///google.com', 'nonsense']) expect(siteUserAgent(url)).toBe('own')
+  })
+})
+
+describe('mobileRequestHeaders', () => {
+  it('replaces the user agent and every client hint, keeping the rest', () => {
+    const headers = { 'User-Agent': 'Electron', 'sec-ch-ua': '"Chromium";v="152"', 'sec-ch-ua-mobile': '?0', 'sec-ch-ua-platform': '"macOS"', 'sec-ch-ua-full-version-list': '"Chromium";v="152.0.1"', Accept: 'text/html' }
+    expect(mobileRequestHeaders(headers, 'Android Chrome', mobileClientHints('152.0.7977.130', true))).toEqual({
+      Accept: 'text/html',
+      'User-Agent': 'Android Chrome',
+      'Sec-CH-UA': '"Chromium";v="152", "Google Chrome";v="152", "Not.A/Brand";v="99"',
+      'Sec-CH-UA-Mobile': '?1',
+      'Sec-CH-UA-Platform': '"Android"'
+    })
   })
 })

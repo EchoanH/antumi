@@ -1,8 +1,7 @@
-// What Chrome itself would send on this machine. Electron's own names the app and Electron, and
-// Google's sign-in refuses a browser that says it is embedded in an app, so sites that log in
-// through Google could not be used at all. Sent to Google alone (wantsChromeUserAgent): elsewhere
-// a page that claims Chrome without being it fails Cloudflare's checks on some sites, V2EX's among
-// them, and their challenge never lets it through.
+// What Chrome itself would send on this machine, for Google's pages (siteUserAgent): Electron's own
+// names the app and Electron. Sent to Google alone: elsewhere a page that claims Chrome without
+// being it fails Cloudflare's checks on some sites, V2EX's among them, and their challenge never
+// lets it through.
 export function chromeUserAgent(electron: string, chromeVersion: string): string {
   const platform = /^Mozilla\/5\.0 (\([^)]*\))/.exec(electron)?.[1]
   const major = chromeVersion.split('.')[0]
@@ -19,11 +18,43 @@ export function mobileUserAgent(chromeVersion: string, phone: boolean): string {
   return `Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 ${phone ? 'Mobile ' : ''}Safari/537.36`
 }
 
-// Where the built-in browser says it is Chrome: Google's own pages, its sign-in among them.
-// Everywhere else it says what it is.
-export function wantsChromeUserAgent(url: string): boolean {
+// The client hints that go with mobileUserAgent, as Chrome on Android gives them.
+export function mobileClientHints(chromeVersion: string, phone: boolean) {
+  const major = chromeVersion.split('.')[0] ?? '0'
+  return {
+    brands: [{ brand: 'Chromium', version: major }, { brand: 'Google Chrome', version: major }, { brand: 'Not.A/Brand', version: '99' }],
+    platform: 'Android',
+    platformVersion: '10.0.0',
+    architecture: '',
+    model: phone ? 'K' : '',
+    mobile: phone
+  }
+}
+
+// A request as Chrome on Android sends it: client hints included, which Electron fills in for the
+// desktop it runs on whatever the user agent says.
+export function mobileRequestHeaders(headers: Record<string, string>, userAgent: string, hints: ReturnType<typeof mobileClientHints>): Record<string, string> {
+  const kept = Object.fromEntries(Object.entries(headers).filter(([name]) => !/^(user-agent|sec-ch-ua(-.*)?)$/i.test(name)))
+  return {
+    ...kept,
+    'User-Agent': userAgent,
+    'Sec-CH-UA': hints.brands.map(({ brand, version }) => `"${brand}";v="${version}"`).join(', '),
+    'Sec-CH-UA-Mobile': hints.mobile ? '?1' : '?0',
+    'Sec-CH-UA-Platform': `"${hints.platform}"`
+  }
+}
+
+export type SiteUserAgent = 'own' | 'chrome' | 'android'
+
+// What the built-in browser says it is on a site. Google's sign-in refuses a browser embedded in an
+// app and tells Electron from desktop Chrome however well it claims to be one, but lets Chrome on
+// Android through, so there it is a phone. The rest of Google gets desktop Chrome, its pages laid out
+// for a desktop. Everywhere else it says what it is.
+export function siteUserAgent(url: string): SiteUserAgent {
   try {
     const { protocol, hostname } = new URL(url)
-    return (protocol === 'https:' || protocol === 'http:') && (hostname === 'google.com' || hostname.endsWith('.google.com') || hostname === 'accounts.youtube.com')
-  } catch { return false }
+    if (protocol !== 'https:' && protocol !== 'http:') return 'own'
+    if (hostname === 'accounts.google.com' || hostname === 'accounts.youtube.com') return 'android'
+    return hostname === 'google.com' || hostname.endsWith('.google.com') ? 'chrome' : 'own'
+  } catch { return 'own' }
 }
