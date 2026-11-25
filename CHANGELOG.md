@@ -13,6 +13,8 @@
 ### 修复
 
 - Antigravity 在 WSL 中可通过 Windows 默认浏览器授权，安装后不再误报「未找到 CLI」。
+- Antigravity 等待浏览器授权时可停止会话，取消后可重试首条消息。
+- Linux 或 macOS 缺少 `unzip` 时可通过 Python 3 安装 Antigravity；两者都没有时会在下载前提示。
 - 配置智能体、新建会话等处选择 Antigravity 的其他模型时，不再无法选择推理强度。
 
 - 终端选中文字后可用 Ctrl+C 或 Ctrl+Shift+C 复制，不再误中断命令。

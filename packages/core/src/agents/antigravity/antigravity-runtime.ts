@@ -95,10 +95,17 @@ export function antigravityInstallation(platform: NodeJS.Platform, host: Host = 
     agent: 'antigravity',
     shell: 'bash',
     command: [
-      `d=${quoted(dir)}; z="$(mktemp -d)/agy-acp.zip"`,
+      `(set -o pipefail; if command -v unzip >/dev/null; then extractor=unzip; elif command -v python3 >/dev/null; then extractor=python3; else printf '%s\\n' '安装 Antigravity 需要 unzip 或 Python 3，请安装其中一个后重试。' >&2; exit 1; fi`,
+      `d=${quoted(dir)}`,
+      'tmp="$(mktemp -d)"',
+      `trap 'rm -rf -- "$tmp"' EXIT`,
+      'z="$tmp/agy-acp.zip"',
       `curl -fL --progress-bar ${quoted(url)} -o "$z"`,
       `echo "${pin.sha256}  $z" | ${sum}`,
-      `rm -rf "$d.partial" && mkdir -p "$d.partial" && unzip -q "$z" -d "$d.partial" && rm -rf "$d" && mv "$d.partial" "$d" && rm -f "$z"`
+      `rm -rf "$d.partial" && mkdir -p "$d.partial"`,
+      `if [ "$extractor" = unzip ]; then unzip -q "$z" -d "$d.partial"; else python3 -I -m zipfile -e "$z" "$d.partial" && chmod u+x "$d.partial/${pin.server}" "$d.partial/localharness_external"; fi`,
+      `test -x "$d.partial/${pin.server}" && test -x "$d.partial/localharness_external"`,
+      `rm -rf "$d" && mv "$d.partial" "$d")`
     ].join(' && ')
   }
 }

@@ -10,6 +10,8 @@ Antumi 通过 Google 的 **Antigravity ACP 服务**接入 Antigravity。Zed、Je
 2. 核对压缩包的 SHA-256；Google 不发布校验和，这里的值钉在 `core/src/agents/antigravity/antigravity-runtime.ts`；
 3. 先解压到 `~/.antumi/runtimes/antigravity-acp/1.4.1.partial`，再改名为 `1.4.1`。中途失败的安装不会被当成已安装。
 
+在 Linux（含 WSL）和 macOS 上优先使用 `unzip`，也可以用 Python 3 解压。两种工具都没有时，安装命令会在下载前提示。
+
 压缩包里有 `agy_acp_server` 和与它放在同一目录的 `localharness_external`。支持 macOS 和 Linux（x64、arm64），以及 Windows（x64、arm64）。在 Linux 上按 registry 的写法以 `--uid=` 启动；不加这个参数时，以 root 身份启动的服务会降权成 nobody。
 
 升级版本的步骤：改 `ANTIGRAVITY_VERSION`，把各平台的地址和 SHA-256 都换掉，再从 registry 下载每个压缩包核对哈希。
@@ -19,6 +21,7 @@ Antumi 通过 Google 的 **Antigravity ACP 服务**接入 Antigravity。Zed、Je
 Antumi 用 `oauth-personal`（Google 账号）认证：
 
 - 第一次对话时，服务会在浏览器打开 Google 登录页，并通过本机回环地址接收回调，最长等 5 分钟。这一步计入启动等待时间（`startTimeoutMs`，6 分钟）。
+- 在等待授权时可以停止会话或取消启动。Antumi 会结束这次启动，不会发送首条消息；要继续时可以重试。
 - 在 WSL 中没有显式设置 `BROWSER` 时，Antumi 用 Windows 默认浏览器打开授权页。仅打开「外部智能体」或点击「检查更新」不会触发授权，需要在 Antigravity 会话中发送第一条消息。
 - Antumi 启动服务时设置 `AGY_ACP_FORCE_FILE_STORAGE=1`，登录凭据存在 `~/.gemini/antigravity-acp/acp_token.json`（权限 0600），而不是 macOS 钥匙串。原因是读钥匙串里别的程序存的条目，每次都会弹授权框，而读用量需要凭据。所以在 Zed、JetBrains 里登录过的账号（存在钥匙串里）在 Antumi 里还要再登录一次。外部智能体 的「已登录」就是查这个文件。
 - 没登录时，Antumi 不去探测模型目录，免得没人操作就弹出登录页。模型列表要等第一次对话打开会话后才有。
