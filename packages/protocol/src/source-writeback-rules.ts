@@ -78,7 +78,7 @@ export const NO_WRITEBACK_OPTIONS: WritebackOptions = WritebackOptions.parse({})
 // A type a plugin knows its tracker has (manifest writebackTypes), with what its stages can be.
 // mode off: left alone until the user makes a lane for it, as a pull request is.
 export const WritebackType = z.object({
-  id: Id, name: z.string().min(1).max(100), translations: TextTranslations.optional(),
+  id: Id, label: z.string().min(1).max(100), translations: TextTranslations.optional(),
   mode: z.enum(['on', 'off']).default('on'),
   rules: WritebackRuleHints.optional()
 })

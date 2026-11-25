@@ -39,7 +39,7 @@ it('takes the rules of the lane that names the type, the one naming its scope fi
 })
 
 it('leaves a type the plugin marks off alone until the user makes a lane for it', () => {
-  const types = [WritebackType.parse({ id: 'pr', name: 'Pull Request', mode: 'off' })]
+  const types = [WritebackType.parse({ id: 'pr', label: 'Pull Request', mode: 'off' })]
   const pr = { type: { id: 'pr' } }
   expect(resolveLane(saved, [], types, pr).off).toBe(true)
   expect(resolveLane(saved, [WritebackLane.parse({ typeId: 'pr' })], types, pr)).toMatchObject({ lane: 'pr', off: false })

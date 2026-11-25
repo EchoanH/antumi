@@ -4,29 +4,40 @@ import {
   SOURCE_REPORT_LIMIT,
   MAX_WRITEBACK_COMMENT,
   pickTransition,
+  sourceOwnership,
+  type SourceOwnership,
+  type SourceReport,
   type SourceTransitions,
   type SourceUpdateTarget,
   type SourceWrite,
   type SourceWriteback as WritebackView,
+  type SourceWritePlan,
   type SourceWriteTrigger,
   type Task,
-  type TaskSource
+  type TaskSource,
+  type TaskStatus,
+  type WritebackOptions
 } from '@antumi/protocol'
 import { Rejection } from './rejection'
 import type { SourceService } from './source-service'
-import { itemKey, type SourceWritebackStore } from './source-writeback-store'
+import { itemKey, type SourceWritebackStore, type StoredIntent } from './source-writeback-store'
+import type { TaskWriteLink } from './task-store'
 
 // Writing back to the issue a task or an investigation came from: by hand, or by the source's rules
-// as the task starts, goes for review and is accepted. See docs/SOURCE-WRITEBACK.md.
+// as the task starts, goes for review and is accepted. See docs/SOURCE-WRITEBACK.md. A rule's write
+// starts as an intent saved with the task's status change, and is worked out when delivered, from
+// the issue as it then is: whose it is, its type's lane, where it can go (docs/SOURCE-AUTOMATION.md).
 
 export type WritebackOwner = { target: SourceUpdateTarget; source: TaskSource; conversationId: string | null }
 type Hooks = {
   owner(target: SourceUpdateTarget): WritebackOwner | null
   // The agent's last complete reply in a conversation, for a rule's comment with no summary.
   lastReply(conversationId: string): string | null
+  // A comment an agent's words go into, made fit for the tracker: no secret, no path of this machine.
+  sanitize?(owner: WritebackOwner, text: string): string
   changed(view: WritebackView): void
 }
-type Sources = Pick<SourceService, 'writer' | 'writebackRules'>
+type Sources = Pick<SourceService, 'writer' | 'writebackFor' | 'writebackWanted'>
 export type Condense = (conversationId: string, platform: string, reply: string, guidance: string) => Promise<string | null>
 type Writer = NonNullable<ReturnType<SourceService['writer']>>
 type Trigger = Exclude<SourceWriteTrigger, 'manual'>
@@ -34,13 +45,28 @@ type Trigger = Exclude<SourceWriteTrigger, 'manual'>
 // Failures that say the tracker refused, so the write did not happen.
 const DEFINITE = new Set(['source-auth-failed', 'source-forbidden', 'source-not-found', 'source-bad-query', 'source-invalid-settings', 'source-not-configured'])
 
-const TRIGGER: Partial<Record<Task['status'], Trigger>> = { running: 'start', review: 'review', done: 'done' }
+const TRIGGER: Partial<Record<TaskStatus, Trigger>> = { running: 'start', review: 'review', done: 'done' }
+// How long after each failed try a status move is tried again, before it is given up on.
+const RETRY_MS = [60_000, 5 * 60_000, 15 * 60_000]
+
+// The stage a status change brings a task from an issue to, if any. Going on after review is not
+// a start.
+export function intentFor(before: Pick<Task, 'status' | 'source'>, status: TaskStatus): Trigger | null {
+  const trigger = TRIGGER[status]
+  return trigger && before.source && !(trigger === 'start' && before.status !== 'pending') ? trigger : null
+}
+
+// What the guard found and where the rule came from, kept on each record a rule makes.
+type Mark = { guard: SourceOwnership; lane: string }
 
 export class SourceWriteback {
   // One write at a time per issue, rules and the user alike, in the order asked.
   private readonly queues = new Map<string, Promise<unknown>>()
   // The last reply rewritten as a summary by the small model; null when that cannot be done.
   private condense: Condense | undefined
+  private readonly delivering = new Set<number>()
+  private timer: ReturnType<typeof setTimeout> | undefined
+  private closed = false
 
   constructor(
     private readonly store: SourceWritebackStore,
@@ -74,7 +100,7 @@ export class SourceWriteback {
       const transitions = await writer.transitions()
       const option = transitions.options.find((each) => each.id === id)
       if (!option) throw new Rejection('source-writeback-stale', '事项的状态已经变了，请重新选择')
-      return this.moveTo(owner, writer, option, 'manual')
+      return (await this.moveTo(owner, writer, option, 'manual')).write
     })
   }
 
@@ -98,98 +124,222 @@ export class SourceWriteback {
       // The same write id again, so a tracker that dedupes by it (Linear) finds a comment that did go.
       if (write.kind === 'comment') return this.send(writer, this.save({ ...write, state: 'pending', reason: null, updatedAt: this.now() }))
       this.save({ ...write, state: 'skipped', reason: '已重试', updatedAt: this.now() }, false)
-      return this.moveByNames(owner, writer, write.detail, write.trigger)
+      return (await this.moveByNames(owner, writer, write.detail, write.trigger)).write
     })
   }
 
-  saveReport(target: SourceUpdateTarget, text: string): WritebackView {
+  saveReport(target: SourceUpdateTarget, text: string, result: Pick<SourceReport, 'outcome' | 'verification' | 'question' | 'blocker'> = {}): WritebackView {
     if (!this.hooks.owner(target)) throw new Rejection('source-none', '这个会话不是从来源事项来的')
     const report = text.trim().slice(0, MAX_SOURCE_REPORT)
     if (!report) throw new Rejection('source-writeback-empty', '总结不能为空')
     if (report.length > SOURCE_REPORT_LIMIT) throw new Rejection('source-report-too-long', `总结有 ${report.length} 字，超过 ${SOURCE_REPORT_LIMIT} 字。请压缩到 2 到 4 句、300 字以内，去掉过程、commit 号和本地路径，再调用一次。`)
-    this.store.saveReport(target, { text: report, updatedAt: this.now() })
+    const extra = Object.fromEntries(Object.entries(result).flatMap(([key, value]) => (typeof value === 'string' && value.trim() ? [[key, value.trim()]] : [])))
+    this.store.saveReport(target, { text: report, updatedAt: this.now(), ...extra })
     return this.emit(target)
   }
 
-  // A task's status changed: the source's rule for it, if any, runs in the background. Its result,
-  // failure included, is only recorded; the task's move never waits on the tracker.
-  taskMoved(before: Task, after: Task): void {
-    const trigger = TRIGGER[after.status]
-    // Going on after review is not a start, and a redo that starts again does not move it twice.
-    if (!trigger || !after.source || (trigger === 'start' && before.status !== 'pending')) return
-    const target: SourceUpdateTarget = { kind: 'task', id: after.id }
-    if (trigger === 'start' && this.store.ruleWrites(target).some((write) => write.trigger === 'start' && write.state === 'sent')) return
-    const rules = this.sources.writebackRules(after.source.provider, after.source.instance)
+  // For TaskService to save with a status change, in its transaction: the task's move and the note
+  // that it is still to be written back are both there after a crash, or neither is.
+  journal(before: Task, status: TaskStatus): TaskWriteLink | null {
+    const trigger = intentFor(before, status)
+    return trigger ? this.store.intentLink(before.id, trigger, this.now()) : null
+  }
+
+  // A task's status changed and its intent is saved: deliver what is due, in the background. The
+  // result, failure included, is only recorded; the task's move never waits on the tracker.
+  taskMoved(): void {
+    void this.drain()
+  }
+
+  // Delivers every intent that is due, also the ones a restart or a failed try left behind.
+  async drain(): Promise<void> {
+    if (this.closed) return
+    const due = this.store.dueIntents(this.now()).filter((intent) => !this.delivering.has(intent.id))
+    await Promise.all(due.map(async (intent) => {
+      this.delivering.add(intent.id)
+      try {
+        await this.deliver(intent)
+      } catch (error) {
+        console.error(`[antumi-core] writing back for task ${intent.taskId} failed:`, error instanceof Error ? error.message : error)
+        this.store.dropIntent(intent.id)
+      } finally {
+        this.delivering.delete(intent.id)
+      }
+    }))
+    this.schedule()
+  }
+
+  close(): void {
+    this.closed = true
+    clearTimeout(this.timer)
+  }
+
+  private schedule(): void {
+    clearTimeout(this.timer)
+    const next = this.store.nextIntentAt()
+    if (next === null || this.closed) return
+    this.timer = setTimeout(() => void this.drain(), Math.max(1000, next - this.now()))
+    this.timer.unref()
+  }
+
+  // What the rules would write at a stage the task has not reached. Nothing is written, and the
+  // small model is not asked: a comment with no summary yet is said to be written later.
+  async plan(target: SourceUpdateTarget, trigger: Trigger): Promise<SourceWritePlan> {
+    const { owner, writer } = this.require(target)
+    const facts = await writer.transitions()
+    const { lane, off, rules, options } = this.sources.writebackFor(owner.source.provider, owner.source.instance, facts)
+    const guard = sourceOwnership(facts)
     const rule = rules[trigger]
-    const wantsComment = 'comment' in rule && rule.comment
-    if (!rule.status && !wantsComment) return
+    const actions: SourceWritePlan['actions'] = []
+    if (!off && rule.status) {
+      const blocked = trigger === 'start' && this.started(target) ? '开始执行时已经改过一次' : statusBlock(guard, facts, options)
+      const picked = blocked ? null : pickTransition(facts, rule.status)
+      actions.push(blocked ? { kind: 'status', detail: rule.status, will: false, reason: blocked }
+        : !picked ? { kind: 'status', detail: rule.status, will: false, reason: unreachable(rule.status, facts) }
+        : 'skip' in picked ? { kind: 'status', detail: rule.status, will: false, reason: skipped(picked.skip, facts) }
+        : { kind: 'status', detail: picked.option.name, will: true, reason: null })
+    }
+    if (!off && 'comment' in rule && rule.comment) {
+      const report = this.store.report(target)
+      const text = report ? this.composed(owner, report) : ''
+      const blocked = guard === 'other' ? notMine(facts)
+        : trigger === 'done' && this.commented(target) ? '提交验收时已经发过总结'
+        : report && this.posted(target, text) ? '同样的总结已经发过' : null
+      actions.push({ kind: 'comment', detail: text, will: !blocked, reason: blocked ?? (report ? null : '还没有总结，到时会把 Agent 最后一条回复压缩成总结') })
+    }
+    return { target, trigger, ownership: guard, dryRun: options.dryRun, lane, off, status: facts.status, actions }
+  }
+
+  private async deliver(intent: StoredIntent): Promise<void> {
+    const target: SourceUpdateTarget = { kind: 'task', id: intent.taskId }
     const owner = this.hooks.owner(target)
-    const writer = owner && this.sources.writer(owner.source)
-    if (!owner || !writer) return
-    void this.queued(owner.source, async () => {
-      if (rule.status) await this.moveByNames(owner, writer, rule.status, trigger)
-      // Asked here, in the issue's queue, so a review comment still on its way counts.
-      if (wantsComment && !(trigger === 'done' && this.commented(target))) await this.ruleComment(owner, writer, trigger)
-    }).catch((error: unknown) => console.error(`[antumi-core] writing back to ${itemKey(owner.source)} failed:`, error instanceof Error ? error.message : error))
+    // The task is gone or no longer from an issue, or no rule asks for anything at this stage.
+    if (!owner || !this.sources.writebackWanted(owner.source.provider, owner.source.instance, intent.trigger)) return this.store.dropIntent(intent.id)
+    await this.queued(owner.source, () => this.deliverNow(owner, intent))
+  }
+
+  private async deliverNow(owner: WritebackOwner, intent: StoredIntent): Promise<void> {
+    const { trigger } = intent
+    const writer = this.sources.writer(owner.source)
+    // Not signed in, or its plugin is being changed: worth waiting for, then given up on.
+    if (!writer) return this.again(intent) ? undefined : this.giveUp(owner, intent, '来源没有连接，没有回写')
+    let facts: SourceTransitions
+    try {
+      facts = await writer.transitions()
+    } catch (error) {
+      return !refused(error) && this.again(intent) ? undefined : this.giveUp(owner, intent, reasonOf(error))
+    }
+    const { lane, off, rules, options } = this.sources.writebackFor(owner.source.provider, owner.source.instance, facts)
+    if (off) return this.store.dropIntent(intent.id)
+    const rule = rules[trigger]
+    const mark: Mark = { guard: sourceOwnership(facts), lane }
+    let pending = false
+    if (rule.status && !intent.statusDone && !(trigger === 'start' && this.started(owner.target))) {
+      const blocked = statusBlock(mark.guard, facts, options)
+      if (blocked) this.save(this.record(owner, 'status', trigger, rule.status, null, { state: 'skipped', reason: blocked, ...mark }))
+      else {
+        const previous = intent.lastWrite ? this.store.write(intent.lastWrite) : undefined
+        if (previous?.state === 'failed') this.save({ ...previous, state: 'skipped', reason: `已自动重试（${previous.reason ?? '失败'}）`, updatedAt: this.now() }, false)
+        const moved = await this.moveByNames(owner, writer, rule.status, trigger, { facts, mark, dryRun: options.dryRun, attempts: intent.attempts })
+        if (moved.again && intent.attempts < RETRY_MS.length) {
+          pending = true
+          intent = { ...intent, lastWrite: moved.write.id }
+        }
+      }
+    }
+    if ('comment' in rule && rule.comment && !intent.commentDone) {
+      if (mark.guard === 'other') this.save(this.record(owner, 'comment', trigger, '', null, { state: 'skipped', reason: notMine(facts), ...mark }))
+      // A comment made for this very change, before a restart: once is enough.
+      else if (!this.store.ruleWrites(owner.target).some((write) => write.kind === 'comment' && write.trigger === trigger && write.createdAt >= intent.createdAt && (write.state === 'sent' || write.state === 'uncertain'))
+        && !(trigger === 'done' && this.commented(owner.target))) await this.ruleComment(owner, writer, trigger, rules.guidance, mark, options.dryRun)
+    }
+    if (!pending) return this.store.dropIntent(intent.id)
+    this.store.saveIntent({ ...intent, commentDone: true, attempts: intent.attempts + 1, nextAt: this.now() + (RETRY_MS[intent.attempts] ?? 0) })
+  }
+
+  // Puts an intent off that could not be worked out yet; false once it has had its tries.
+  private again(intent: StoredIntent): boolean {
+    if (intent.attempts >= RETRY_MS.length) return false
+    this.store.saveIntent({ ...intent, attempts: intent.attempts + 1, nextAt: this.now() + (RETRY_MS[intent.attempts] ?? 0) })
+    return true
+  }
+
+  private giveUp(owner: WritebackOwner, intent: StoredIntent, reason: string): void {
+    this.save(this.record(owner, 'status', intent.trigger, '', null, { state: 'failed', reason, attempts: intent.attempts }))
+    this.store.dropIntent(intent.id)
+  }
+
+  private started(target: SourceUpdateTarget): boolean {
+    return this.store.ruleWrites(target).some((write) => write.trigger === 'start' && write.kind === 'status' && write.state === 'sent')
   }
 
   private commented(target: SourceUpdateTarget): boolean {
     return this.store.ruleWrites(target).some((write) => write.kind === 'comment' && (write.state === 'sent' || write.state === 'uncertain'))
   }
 
-  private async ruleComment(owner: WritebackOwner, writer: Writer, trigger: Trigger): Promise<SourceWrite> {
-    if (!writer.comments) return this.save(this.record(owner, 'comment', trigger, '', null, { state: 'skipped', reason: '这个来源不支持发评论' }))
+  private posted(target: SourceUpdateTarget, text: string): boolean {
+    return this.store.ruleWrites(target).some((write) => write.kind === 'comment' && write.detail === text && (write.state === 'sent' || write.state === 'uncertain'))
+  }
+
+  // The summary as it is posted: how to verify the work as a paragraph of its own, and nothing of
+  // this machine in either.
+  private composed(owner: WritebackOwner, report: SourceReport): string {
+    const text = [report.text, report.verification].filter(Boolean).join('\n\n')
+    return this.hooks.sanitize?.(owner, text) ?? text
+  }
+
+  private async ruleComment(owner: WritebackOwner, writer: Writer, trigger: Trigger, guidance: string, mark: Mark, dryRun: boolean): Promise<SourceWrite> {
+    if (!writer.comments) return this.save(this.record(owner, 'comment', trigger, '', null, { state: 'skipped', reason: '这个来源不支持发评论', ...mark }))
     const report = this.store.report(owner.target)
+    const text = report ? this.composed(owner, report) : ''
     // Handed in again with the same summary: once is enough. A rewritten one goes out.
-    if (report && this.store.ruleWrites(owner.target).some((write) => write.kind === 'comment' && write.detail === report.text && (write.state === 'sent' || write.state === 'uncertain'))) {
-      return this.save(this.record(owner, 'comment', trigger, report.text, 'report', { state: 'skipped', reason: '同样的总结已经发过' }))
-    }
-    if (report) return this.post(owner, writer, report.text, trigger, 'report')
+    if (report && this.posted(owner.target, text)) return this.save(this.record(owner, 'comment', trigger, text, 'report', { state: 'skipped', reason: '同样的总结已经发过', ...mark }))
+    if (report) return this.post(owner, writer, text, trigger, 'report', mark, dryRun)
     // A reply is written for the user, headings, steps and questions and all: never posted as it
     // is, only as the small model rewrites it, and nothing when that fails.
     const reply = owner.conversationId ? this.hooks.lastReply(owner.conversationId)?.trim() : null
-    if (!reply || !owner.conversationId) return this.save(this.record(owner, 'comment', trigger, '', null, { state: 'skipped', reason: 'Agent 没有写总结，也没有可用的回复，没有发评论' }))
-    const { guidance } = this.sources.writebackRules(owner.source.provider, owner.source.instance)
+    if (!reply || !owner.conversationId) return this.save(this.record(owner, 'comment', trigger, '', null, { state: 'skipped', reason: 'Agent 没有写总结，也没有可用的回复，没有发评论', ...mark }))
     const condensed = await this.condense?.(owner.conversationId, owner.source.name, reply, guidance).catch((error: unknown) => {
       console.error('[antumi-core] condensing the last reply for an issue failed:', error instanceof Error ? error.message : error)
       return null
     }) ?? null
-    if (condensed) return this.post(owner, writer, condensed, trigger, 'last-reply')
-    return this.save(this.record(owner, 'comment', trigger, '', null, { state: 'skipped', reason: 'Agent 没有写总结，最后一条回复也没能压缩成总结，没有发评论' }))
+    if (condensed) return this.post(owner, writer, this.hooks.sanitize?.(owner, condensed) ?? condensed, trigger, 'last-reply', mark, dryRun)
+    return this.save(this.record(owner, 'comment', trigger, '', null, { state: 'skipped', reason: 'Agent 没有写总结，最后一条回复也没能压缩成总结，没有发评论', ...mark }))
   }
 
-  private async moveByNames(owner: WritebackOwner, writer: Writer, names: string, trigger: SourceWriteTrigger): Promise<SourceWrite> {
-    let transitions: SourceTransitions
-    try {
-      transitions = await writer.transitions()
-    } catch (error) {
-      return this.save(this.record(owner, 'status', trigger, names, null, { state: 'failed', reason: reasonOf(error) }))
+  // again: the move failed in a way another try may mend. A rule passes what it already read of
+  // the issue; by hand it is read here.
+  private async moveByNames(owner: WritebackOwner, writer: Writer, names: string, trigger: SourceWriteTrigger, rule?: { facts: SourceTransitions; mark: Mark; dryRun: boolean; attempts: number }): Promise<{ write: SourceWrite; again: boolean }> {
+    const extra = rule ? { ...rule.mark, ...(rule.attempts ? { attempts: rule.attempts } : {}) } : {}
+    let transitions = rule?.facts
+    if (!transitions) {
+      try {
+        transitions = await writer.transitions()
+      } catch (error) {
+        return { write: this.save(this.record(owner, 'status', trigger, names, null, { state: 'failed', reason: reasonOf(error) })), again: false }
+      }
     }
     const picked = pickTransition(transitions, names)
-    if (!picked) {
-      const reason = `没有可流转到的状态「${names}」，当前是「${transitions.status}」`
-      return this.save(this.record(owner, 'status', trigger, names, null, { state: 'skipped', reason }))
-    }
-    if ('skip' in picked) {
-      const reason = picked.skip === 'already' ? `已经是「${transitions.status}」` : `当前「${transitions.status}」比目标更靠后，不往回改`
-      return this.save(this.record(owner, 'status', trigger, names, null, { state: 'skipped', reason, result: transitions.status }))
-    }
-    return this.moveTo(owner, writer, picked.option, trigger)
+    if (!picked) return { write: this.save(this.record(owner, 'status', trigger, names, null, { state: 'skipped', reason: unreachable(names, transitions), ...extra })), again: false }
+    if ('skip' in picked) return { write: this.save(this.record(owner, 'status', trigger, names, null, { state: 'skipped', reason: skipped(picked.skip, transitions), result: transitions.status, ...extra })), again: false }
+    if (rule?.dryRun) return { write: this.save(this.record(owner, 'status', trigger, picked.option.name, null, { state: 'skipped', reason: DRY_RUN, planned: true, ...extra })), again: false }
+    return this.moveTo(owner, writer, picked.option, trigger, extra)
   }
 
-  private async moveTo(owner: WritebackOwner, writer: Writer, option: SourceTransitions['options'][number], trigger: SourceWriteTrigger): Promise<SourceWrite> {
-    const write = this.save(this.record(owner, 'status', trigger, option.name, null, { state: 'pending' }))
+  private async moveTo(owner: WritebackOwner, writer: Writer, option: SourceTransitions['options'][number], trigger: SourceWriteTrigger, extra: Partial<SourceWrite> = {}): Promise<{ write: SourceWrite; again: boolean }> {
+    const write = this.save(this.record(owner, 'status', trigger, option.name, null, { state: 'pending', ...extra }))
     try {
       const result = await writer.transition(option.id)
-      return this.save({ ...write, state: 'sent', result: result.status, updatedAt: this.now() })
+      return { write: this.save({ ...write, state: 'sent', result: result.status, updatedAt: this.now() }), again: false }
     } catch (error) {
       // A move is safe to try again: the next one reads where the issue is first.
-      return this.save({ ...write, state: 'failed', reason: reasonOf(error), updatedAt: this.now() })
+      return { write: this.save({ ...write, state: 'failed', reason: reasonOf(error), updatedAt: this.now() }), again: !refused(error) }
     }
   }
 
-  private post(owner: WritebackOwner, writer: Writer, text: string, trigger: SourceWriteTrigger, origin: SourceWrite['origin']): Promise<SourceWrite> {
-    return this.send(writer, this.save(this.record(owner, 'comment', trigger, text, origin, { state: 'pending' })))
+  private async post(owner: WritebackOwner, writer: Writer, text: string, trigger: SourceWriteTrigger, origin: SourceWrite['origin'], mark?: Mark, dryRun = false): Promise<SourceWrite> {
+    if (dryRun) return this.save(this.record(owner, 'comment', trigger, text, origin, { state: 'skipped', reason: DRY_RUN, planned: true, ...mark }))
+    return this.send(writer, this.save(this.record(owner, 'comment', trigger, text, origin, { state: 'pending', ...mark })))
   }
 
   // A comment's write id is its record's id, the same on every try.
@@ -199,12 +349,11 @@ export class SourceWriteback {
       return this.save({ ...write, state: 'sent', result: result.id, url: result.url, updatedAt: this.now() })
     } catch (error) {
       // A comment that may have gone through is not posted again unasked: a duplicate is worse.
-      const definite = error instanceof Rejection && DEFINITE.has(error.reason)
-      return this.save({ ...write, state: definite ? 'failed' : 'uncertain', reason: reasonOf(error), updatedAt: this.now() })
+      return this.save({ ...write, state: refused(error) ? 'failed' : 'uncertain', reason: reasonOf(error), updatedAt: this.now() })
     }
   }
 
-  private record(owner: WritebackOwner, kind: SourceWrite['kind'], trigger: SourceWriteTrigger, detail: string, origin: SourceWrite['origin'], fields: Pick<SourceWrite, 'state'> & Partial<Pick<SourceWrite, 'reason' | 'result'>>): SourceWrite {
+  private record(owner: WritebackOwner, kind: SourceWrite['kind'], trigger: SourceWriteTrigger, detail: string, origin: SourceWrite['origin'], fields: Pick<SourceWrite, 'state'> & Partial<Pick<SourceWrite, 'reason' | 'result' | 'guard' | 'lane' | 'planned' | 'attempts'>>): SourceWrite {
     const at = this.now()
     const { provider, instance, key } = owner.source
     return { id: randomUUID(), target: owner.target, provider, instance, key, kind, trigger, detail, origin, result: null, url: null, reason: null, createdAt: at, updatedAt: at, ...fields }
@@ -238,6 +387,21 @@ export class SourceWriteback {
     void tail.then(() => { if (this.queues.get(key) === tail) this.queues.delete(key) })
     return result
   }
+}
+
+const DRY_RUN = '演练模式，没有写入'
+
+const refused = (error: unknown) => error instanceof Rejection && DEFINITE.has(error.reason)
+const unreachable = (names: string, transitions: SourceTransitions) => `没有可流转到的状态「${names}」，当前是「${transitions.status}」`
+const skipped = (skip: 'already' | 'backwards', transitions: SourceTransitions) => skip === 'already' ? `已经是「${transitions.status}」` : `当前「${transitions.status}」比目标更靠后，不往回改`
+const holders = (facts: SourceTransitions) => (facts.assignees ?? []).map((user) => user.name || user.id).join('、')
+const notMine = (facts: SourceTransitions) => `事项现在归 ${holders(facts)}，不归你，没有改动`
+
+// Why a rule leaves the status alone: the issue is someone else's, or shared and the source does
+// not count that as the user's. One of no one's, or one the plugin cannot say whose, goes ahead.
+function statusBlock(guard: SourceOwnership, facts: SourceTransitions, options: WritebackOptions): string | null {
+  if (guard === 'other') return notMine(facts)
+  return guard === 'shared' && !options.sharedCounts ? `事项同时分配给了 ${holders(facts)}，没有改状态` : null
 }
 
 function reasonOf(error: unknown): string {

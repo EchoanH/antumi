@@ -456,7 +456,11 @@ export const MIGRATIONS = [
   `CREATE TABLE source_writes (id TEXT PRIMARY KEY, target TEXT NOT NULL, item TEXT NOT NULL, created_at INTEGER NOT NULL, data TEXT NOT NULL);
    CREATE INDEX source_writes_target ON source_writes(target, created_at);
    CREATE INDEX source_writes_item ON source_writes(item);
-   CREATE TABLE source_reports (target TEXT PRIMARY KEY, data TEXT NOT NULL);`
+   CREATE TABLE source_reports (target TEXT PRIMARY KEY, data TEXT NOT NULL);`,
+  // A task's status change still to be written back to its issue (docs/SOURCE-AUTOMATION.md), put
+  // here in the change's own transaction and gone once delivered. next_at: when to try, or try again.
+  `CREATE TABLE source_intents (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, next_at INTEGER NOT NULL DEFAULT 0, data TEXT NOT NULL);
+   CREATE INDEX source_intents_due ON source_intents(next_at);`
 ]
 
 
@@ -580,8 +584,10 @@ function groupBy<T extends { taskId: string }>(rows: T[]): Map<string, T[]> {
   return groups
 }
 
-// A source writes its linkage in the task transaction, using the same connection.
-export type TaskCreationLink = { id: string; write(db: DatabaseSync): void }
+// Another store writes its part in the task's transaction, using the same connection: the two
+// are saved together or not at all.
+export type TaskWriteLink = { write(db: DatabaseSync): void }
+export type TaskCreationLink = TaskWriteLink & { id: string }
 
 export class TaskStore {
   private readonly db: DatabaseSync
@@ -742,7 +748,7 @@ export class TaskStore {
     return this.require(id)
   }
 
-  update(id: string, patch: TaskPatch): Task {
+  update(id: string, patch: TaskPatch, link?: TaskWriteLink): Task {
     this.transaction(() => {
       const sets: string[] = []
       const values: SQLInputValue[] = []
@@ -806,6 +812,7 @@ export class TaskStore {
         const insert = this.db.prepare('INSERT INTO task_dependencies (task_id, depends_on) VALUES (?, ?)')
         patch.dependsOn.forEach((dependency) => insert.run(id, dependency))
       }
+      link?.write(this.db)
     })
     return this.require(id)
   }

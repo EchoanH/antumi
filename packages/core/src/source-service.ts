@@ -17,7 +17,9 @@ import {
   SourceStatusResult,
   SourceTransitions,
   EMPTY_WRITEBACK,
+  NO_WRITEBACK_OPTIONS,
   applicableWriteback,
+  resolveLane,
   MAX_WRITEBACK_COMMENT,
   type AgentKind,
   type Conversation,
@@ -29,6 +31,9 @@ import {
   type SourceProblem,
   type SourceSnapshot,
   type SourceWritebackConfig,
+  type WritebackLane,
+  type WritebackOptions,
+  type WritebackStage,
   type Task,
   type TaskImage,
   type TaskSource
@@ -272,14 +277,14 @@ export class SourceService {
         provider: provider.id,
         name: provider.name,
         settings: [...provider.settings],
-        ...(this.writes(provider) ? { writeback: true, writebackComments: !!provider.comment, ...(provider.writebackRules ? { writebackRules: provider.writebackRules } : {}) } : {}),
+        ...(this.writes(provider) ? { writeback: true, writebackComments: !!provider.comment, ...(provider.writebackRules ? { writebackRules: provider.writebackRules } : {}), ...(provider.writebackTypes?.length ? { writebackTypes: [...provider.writebackTypes] } : {}) } : {}),
         instances: instances.map((entry) => ({
           instance: entry.instance,
           enabled: entry.enabled,
           // A record saved before a field existed shows that field's default.
           settings: { ...this.defaults(provider), ...entry.settings },
           credential: this.credentialStatus(provider, entry.instance),
-          ...(this.writes(provider) ? { writeback: this.writebackRules(provider.id, entry.instance) } : {}),
+          ...(this.writes(provider) ? { writeback: this.writebackRules(provider.id, entry.instance), writebackLanes: this.config.get(provider.id, entry.instance)?.writebackLanes ?? [], writebackOptions: this.config.get(provider.id, entry.instance)?.writebackOptions ?? NO_WRITEBACK_OPTIONS } : {}),
           ...(this.automatic ? { autoInvestigation: this.automatic.info(provider.id, entry.instance) } : {})
         }))
       }
@@ -898,12 +903,44 @@ export class SourceService {
     return provider ? applicableWriteback(saved, provider.writebackRules, !!provider.comment) : saved
   }
 
-  async saveWriteback(id: string, instance: string, writeback: SourceWritebackConfig): Promise<SourceDescriptor> {
+  // The rules for one issue, from what the tracker says it is: its type's lane, or the source's
+  // own, held to what the tracker can do for that type.
+  writebackFor(id: string, instance: string, issue: Pick<SourceTransitions, 'type' | 'scope'>): { lane: string; off: boolean; rules: SourceWritebackConfig; options: WritebackOptions } {
+    const provider = this.providers.find((entry) => entry.id === id)
+    const saved = this.config.get(id, instance)
+    const types = provider?.writebackTypes ?? []
+    const found = resolveLane(saved?.writeback ?? EMPTY_WRITEBACK, saved?.writebackLanes ?? [], types, issue)
+    const hints = types.find((type) => type.id === issue.type?.id)?.rules ?? provider?.writebackRules
+    return { ...found, rules: provider ? applicableWriteback(found.rules, hints, !!provider.comment) : found.rules, options: saved?.writebackOptions ?? NO_WRITEBACK_OPTIONS }
+  }
+
+  // Whether any rule, the source's own or a lane's, asks for something at this stage: asked before
+  // the tracker is, so a source with no rules costs no call.
+  writebackWanted(id: string, instance: string, stage: WritebackStage): boolean {
+    const saved = this.config.get(id, instance)
+    const wants = (rule: { status: string; comment?: boolean } | undefined) => !!rule && (!!rule.status || !!rule.comment)
+    return wants(saved?.writeback?.[stage]) || (saved?.writebackLanes ?? []).some((lane) => lane.mode === 'on' && wants(lane[stage]))
+  }
+
+  // lanes and options left out stay as saved: a client from before them sends neither.
+  async saveWriteback(id: string, instance: string, writeback: SourceWritebackConfig, lanes?: readonly WritebackLane[], options?: WritebackOptions): Promise<SourceDescriptor> {
     const provider = this.provider(id)
     if (!this.writes(provider)) throw new Rejection('source-writeback-unsupported')
     const configured = this.configured(provider, instance)
     if (!configured) throw new Rejection('source-not-configured', `${id} is not set up`)
-    await this.config.save({ ...this.config.get(id, instance), provider: id, instance, enabled: configured.enabled, settings: { ...configured.settings }, writeback: applicableWriteback(writeback, provider.writebackRules, !!provider.comment) })
+    const previous = this.config.get(id, instance)
+    const keys = new Set<string>()
+    for (const lane of lanes ?? []) {
+      const key = `${lane.typeId}\u0000${lane.scopeId ?? ''}`
+      if (keys.has(key)) throw new Rejection('source-writeback-duplicate-lane', '同一种事项只能有一条规则')
+      keys.add(key)
+    }
+    await this.config.save({
+      ...previous, provider: id, instance, enabled: configured.enabled, settings: { ...configured.settings },
+      writeback: applicableWriteback(writeback, provider.writebackRules, !!provider.comment),
+      ...(lanes ? { writebackLanes: [...lanes] } : {}),
+      ...(options ? { writebackOptions: options } : {})
+    })
     this.events.listChanged(this.list())
     return this.descriptor(id)
   }

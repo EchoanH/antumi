@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { SourceId, SourceWritebackConfig } from '@antumi/protocol'
+import { SourceId, SourceWritebackConfig, WritebackLane, WritebackOptions } from '@antumi/protocol'
 import { readJsonIfExists, writePrivateJson } from '@antumi/protocol/node'
 
 export const InstanceConfig = z.object({
@@ -8,7 +8,12 @@ export const InstanceConfig = z.object({
   enabled: z.boolean(),
   settings: z.record(z.string(), z.string()),
   // The rules for writing back to issues (docs/SOURCE-WRITEBACK.md); absent, none.
-  writeback: SourceWritebackConfig.optional()
+  writeback: SourceWritebackConfig.optional(),
+  // Rules for single issue types, and how rules run (docs/SOURCE-AUTOMATION.md). Fields beside
+  // writeback, and the file's version unchanged: a core from before them drops them on its next
+  // save, where a version it does not know would have it take the whole file for none.
+  writebackLanes: z.array(WritebackLane).max(50).optional(),
+  writebackOptions: WritebackOptions.optional()
 })
 export type InstanceConfig = z.infer<typeof InstanceConfig>
 

@@ -139,7 +139,7 @@ export function createRpcHandlers(
     if (!mobile) throw new Rejection('mobile-unavailable')
     return mobile
   }
-  const hello = () => ({ protocolVersion: PROTOCOL_VERSION, serverVersion: packageJson.version, home: { path: homedir(), windows: process.platform === 'win32' }, features: CORE_FEATURES.filter((feature) => (feature !== 'agent-profiles' || Boolean(profiles)) && (feature !== 'project-star' || Boolean(projectStar)) && (feature !== 'bookmarks' || Boolean(bookmarks)) && (feature !== 'browser-history' || Boolean(browserHistory)) && (feature !== 'browser-sites' || Boolean(browserSites)) && (feature !== 'pets' || Boolean(pets)) && (feature !== 'squads' || Boolean(squads)) && (feature !== 'squad-calls' || Boolean(squadCalls)) && (!['plugins', 'plugin-recommendations', 'plugin-packages', 'plugin-pages'].includes(feature) || Boolean(plugins)) && (!['skills-library', 'skills-search', 'skills-activation'].includes(feature) || Boolean(skills)) && (feature !== 'mcp-servers' || Boolean(mcpServers)) && (feature !== 'small-model-stats' || Boolean(smallModels)) && (!['model-providers', 'model-provider-models', 'cc-switch-import'].includes(feature) || Boolean(modelProviders)) && (feature !== 'agent-accounts' || Boolean(accounts)) && (feature !== 'pull-requests' || Boolean(pullRequests)) && (feature !== 'mobile' || Boolean(mobile)) && (!['channels', 'channel-readiness', 'channel-tasks'].includes(feature) || Boolean(channels)) && (feature !== 'attachment-sweep' || Boolean(attachments.sweeper)) && (feature !== 'source-writeback' || Boolean(writeback))) })
+  const hello = () => ({ protocolVersion: PROTOCOL_VERSION, serverVersion: packageJson.version, home: { path: homedir(), windows: process.platform === 'win32' }, features: CORE_FEATURES.filter((feature) => (feature !== 'agent-profiles' || Boolean(profiles)) && (feature !== 'project-star' || Boolean(projectStar)) && (feature !== 'bookmarks' || Boolean(bookmarks)) && (feature !== 'browser-history' || Boolean(browserHistory)) && (feature !== 'browser-sites' || Boolean(browserSites)) && (feature !== 'pets' || Boolean(pets)) && (feature !== 'squads' || Boolean(squads)) && (feature !== 'squad-calls' || Boolean(squadCalls)) && (!['plugins', 'plugin-recommendations', 'plugin-packages', 'plugin-pages'].includes(feature) || Boolean(plugins)) && (!['skills-library', 'skills-search', 'skills-activation'].includes(feature) || Boolean(skills)) && (feature !== 'mcp-servers' || Boolean(mcpServers)) && (feature !== 'small-model-stats' || Boolean(smallModels)) && (!['model-providers', 'model-provider-models', 'cc-switch-import'].includes(feature) || Boolean(modelProviders)) && (feature !== 'agent-accounts' || Boolean(accounts)) && (feature !== 'pull-requests' || Boolean(pullRequests)) && (feature !== 'mobile' || Boolean(mobile)) && (!['channels', 'channel-readiness', 'channel-tasks'].includes(feature) || Boolean(channels)) && (feature !== 'attachment-sweep' || Boolean(attachments.sweeper)) && (!['source-writeback', 'source-writeback-lanes'].includes(feature) || Boolean(writeback))) })
   const channelService = (): ChannelService => {
     if (!channels) throw new Rejection('channels-unavailable')
     return channels
@@ -941,11 +941,12 @@ export function createRpcHandlers(
     'sources.writebackTransition': ({ target, id }) => writer().transition(target, id),
     'sources.writebackComment': ({ target, markdown }) => writer().comment(target, markdown),
     'sources.writebackRetry': ({ id }) => writer().retry(id),
-    'sources.saveWriteback': ({ provider, instance, config }) => sources.saveWriteback(provider, instance, config),
+    'sources.saveWriteback': ({ provider, instance, config, lanes, options }) => sources.saveWriteback(provider, instance, config, lanes, options),
+    'sources.writebackPlan': ({ target, trigger }) => writer().plan(target, trigger),
     // A task's chat writes for the task, an investigation for itself.
-    'sources.saveReport': ({ conversationId, text }) => {
+    'sources.saveReport': ({ conversationId, text, ...result }) => {
       const conversation = conversations.get(conversationId)
-      return writer().saveReport(conversation.taskId ? { kind: 'task', id: conversation.taskId } : { kind: 'conversation', id: conversation.id }, text)
+      return writer().saveReport(conversation.taskId ? { kind: 'task', id: conversation.taskId } : { kind: 'conversation', id: conversation.id }, text, result)
     }
   }
 }

@@ -1,4 +1,4 @@
-import type { TaskCreationLink } from './task-store'
+import type { TaskCreationLink, TaskWriteLink } from './task-store'
 import type { AgentProfile } from '@antumi/protocol'
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
@@ -95,6 +95,10 @@ export class TaskService {
   // Told of every status change, after it is saved; it must not throw or block (source writeback).
   private statusListener: ((before: Task, after: Task) => void) | undefined
   setStatusListener(listener: (before: Task, after: Task) => void): void { this.statusListener = listener }
+  // What else is to be saved with a status change, in its transaction: the change and the note of
+  // it are there together after a crash, or neither is (source writeback's intents).
+  private statusJournal: ((before: Task, status: TaskStatus) => TaskWriteLink | null) | undefined
+  setStatusJournal(journal: (before: Task, status: TaskStatus) => TaskWriteLink | null): void { this.statusJournal = journal }
 
   private readonly launching = new Set<string>()
   private gitGuard: ((dirs: readonly string[]) => Promise<void>) | null = null
@@ -918,7 +922,8 @@ export class TaskService {
   // the record is secondary: failing to never fails the move itself.
   private save(id: string, patch: TaskPatch): Task {
     const before = this.store.get(id)
-    const after = this.store.update(id, patch.status && patch.status !== 'pending' ? { ...patch, autoRun: false } : patch)
+    const link = before && patch.status && patch.status !== before.status ? this.statusJournal?.(before, patch.status) ?? undefined : undefined
+    const after = this.store.update(id, patch.status && patch.status !== 'pending' ? { ...patch, autoRun: false } : patch, link)
     if (this.runs && before) {
       try {
         this.runs.transition(before, after, (run, endedAt) =>

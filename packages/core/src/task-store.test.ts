@@ -48,6 +48,19 @@ describe('TaskStore migrations', () => {
     store.close()
   })
 
+  it('saves what another store writes with an update in the same transaction, or neither', () => {
+    const store = new TaskStore(file)
+    const task = store.create('Fix login')
+    const note = (db: DatabaseSync) => { db.prepare("INSERT INTO source_intents(task_id,data) VALUES (?, '{}')").run(task.id) }
+    store.update(task.id, { status: 'running' }, { write: note })
+    expect(() => store.update(task.id, { status: 'review' }, { write: (db) => { note(db); throw new Error('disk full') } })).toThrow('disk full')
+    expect(store.get(task.id)?.status).toBe('running')
+    store.close()
+    const raw = new DatabaseSync(file)
+    expect(raw.prepare('SELECT task_id, next_at FROM source_intents').all()).toEqual([{ task_id: task.id, next_at: 0 }])
+    raw.close()
+  })
+
   it('stores repos in order and dependencies alongside', () => {
     const store = new TaskStore(file)
     const a = store.create('A')

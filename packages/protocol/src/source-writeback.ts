@@ -129,7 +129,9 @@ export const SourceWritePlan = z.object({
   trigger: z.enum(['start', 'review', 'done']),
   ownership: SourceOwnership,
   dryRun: z.boolean(),
+  // The lane the rules come from, and whether it leaves issues of this type alone.
   lane: z.string(),
+  off: z.boolean().default(false),
   status: z.string(),
   actions: z.array(z.object({
     kind: z.enum(['status', 'comment']),

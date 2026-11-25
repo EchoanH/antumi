@@ -54,11 +54,22 @@ Agent 写，Antumi 发。参考 orca 和 multica，但 Agent 只写草稿，不�
 
 插件发评论后返回平台上的评论 ID。core 记下它，评论同步拉回这条时直接当作已读、已送达，不算「新评论」，也不会被「带新评论继续排查」发给 Agent。
 
+## 只写归我的事项，按类型定规则
+
+规则写入前先看事项归谁（[来源事项自动化闭环](SOURCE-AUTOMATION.md) 的「归属判定」）：处理人不是当前账号时，状态和评论都不写；同时分配给了别人时只发评论（来源可以设成也算归我）；没有处理人、或插件报告不了归属时照常写，记录里注明。事项交给测试之后就不归我了，后面的规则自然跳过。手动改状态、发评论不受这个限制。
+
+规则可以按事项类型分开设（泳道）：没单独设的类型用来源自己的规则，某个类型可以整个设成不回写（Pull Request 默认如此）。「验收通过」这一栏在界面上叫「由我关闭」：多数团队里关闭事项不是开发做的，新泳道默认不填。
+
+演练模式下规则走完每一步但不调用写接口，记录里写明本来会写什么。任务详情在提交验收前显示这一步会写什么、不会写的原因。
+
 ## 幂等和失败
+
+- 任务状态变化时，「这一步要回写」的意图和状态变化在同一事务里存库（`source_intents`），写入完成才删。core 在两者之间退出，重启后补上，不会丢，也不会给历史任务补发。
+- 规则的状态写入失败会自动重试（1、5、15 分钟后各一次），每次先读当前状态所以不会重复流转；来源暂时没连接也按同样的节奏等。
 
 - 每次写入有一个 `writeId`（UUID），记录先落库再调用插件。Linear 用它做评论的 ID，重试时平台会认出重复；其他平台没有这种机制。
 - 结果不明（超时、连接中断）记为「结果待确认」，不自动重发评论：重复的评论比漏掉一条更糟。状态写入可以安全地重试，因为下一次会先读当前状态。
-- 认证失败、没有权限、事项不存在：记失败和原因，不重试。其他失败同样只记录，用户可在记录上点「重试」。
+- 认证失败、没有权限、事项不存在：记失败和原因，不重试。评论的其他失败只记录，用户可在记录上点「重试」。
 - 同一个事项的写入串行执行，规则和手动操作排同一个队。
 
 ## 协议
@@ -86,9 +97,10 @@ SDK 0.6.0 起，来源还可以声明 `writebackRules`，告诉设置页每个�
 
 ## 实现
 
-- `core/src/source-writeback.ts`：`SourceWriteback` 负责手动写入、规则触发、状态匹配、串行队列和记录；`source-writeback-store.ts` 在任务数据库里存回写记录（`source_writes`）和总结草稿（`source_reports`）。
-- 规则存在来源实例的配置里（`sources.json` 的 `writeback`），和设置一起保存。
-- `TaskService.save` 是任务状态变化的唯一入口：`pending → running`、`running → review`、`→ done` 时通知 `SourceWriteback`，写入在后台进行，失败不影响任务本身的状态变化。
-- RPC：`sources.writeback`（记录和草稿）、`sources.writebackTransitions`、`sources.writebackTransition`、`sources.writebackComment`、`sources.writebackRetry`、`sources.saveWriteback`、`sources.saveReport`（MCP 工具用）；通知 `sources.writebackChanged`。core 用 `source-writeback` 功能标记告诉客户端；这些方法都不开放给手机。
+- `core/src/source-writeback.ts`：`SourceWriteback` 负责手动写入、意图的投递（归属守卫、泳道、状态匹配、重试）、串行队列和记录；`source-writeback-store.ts` 在任务数据库里存回写记录（`source_writes`）、总结草稿（`source_reports`）和待投递的意图（`source_intents`）。
+- 规则存在来源实例的配置里（`sources.json` 的 `writeback`，以及可选的 `writebackLanes`、`writebackOptions`），和设置一起保存。
+- `TaskService.save` 是任务状态变化的唯一入口：`pending → running`、`running → review`、`→ done` 时，`SourceWriteback.journal` 给出的意图随状态变化一起写入，随后 `drain()` 在后台投递；启动时也 drain 一次。失败不影响任务本身的状态变化。
+- 由规则发出、内容来自 Agent 的评论，发出前过 `channel-output.ts` 的 `redact` 和 `withoutMachinePaths`。总结带 `verification` 时作为单独一段附在后面。
+- RPC：`sources.writeback`（记录和草稿）、`sources.writebackTransitions`、`sources.writebackTransition`、`sources.writebackComment`、`sources.writebackRetry`、`sources.saveWriteback`（可带 `lanes`、`options`，不带表示不变）、`sources.writebackPlan`（预览一步）、`sources.saveReport`（MCP 工具用）；通知 `sources.writebackChanged`。功能标记 `source-writeback`，泳道、演练和预览另有 `source-writeback-lanes`；这些方法都不开放给手机。
 - MCP 工具 `source_report` 只在会话属于带回写来源的任务或排查会话时出现，不需要用户批准（它只写 Antumi 自己的草稿）。
 - 各插件的写法（用到的接口、状态怎么列、需要的 Token 权限、还没用真实账号确认的地方）写在 antumi-plugins 各插件的 README 和 DESIGN。

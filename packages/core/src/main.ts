@@ -8,6 +8,7 @@ import { SourceUpdates, type SourceUpdateOwner } from './source-updates'
 import { SourceUpdateStore } from './source-update-store'
 import { SourceWritebackStore } from './source-writeback-store'
 import { SourceWriteback } from './source-writeback'
+import { redact, withoutMachinePaths } from './channel-output'
 import { reportInstruction } from './source-report-prompt'
 import { AgentProfileStore } from './agent-profile-store'
 import { AgentProfileService, readyAgents } from './agent-profile-service'
@@ -376,10 +377,18 @@ const writeback = new SourceWriteback(new SourceWritebackStore(paths.database), 
     return conversation?.source && !conversation.taskId ? { target, source: conversation.source, conversationId: conversation.id } : null
   },
   lastReply: (conversationId) => conversations.messages(conversationId).findLast((message) => message.role === 'assistant' && message.complete)?.text ?? null,
+  // What an agent wrote goes to a tracker others read: no secret, and no folder of this machine.
+  sanitize: (owner, text) => {
+    const task = owner.target.kind === 'task' ? service.list().find((each) => each.id === owner.target.id) : undefined
+    const folders = task ? task.repos.flatMap((repo) => [repo.worktreePath, repo.path]) : conversations.list().find((each) => each.id === owner.target.id)?.projectPaths ?? []
+    const roots = folders.flatMap((root) => (root ? [{ name: path.basename(root), root }] : []))
+    return redact(withoutMachinePaths(text, os.homedir(), roots)).text
+  },
   changed: (view) => server?.broadcast('sources.writebackChanged', { writeback: view })
 })
 sourceUpdates.setOwnComments((source) => writeback.ownComments(source))
-service.setStatusListener((before, after) => writeback.taskMoved(before, after))
+service.setStatusJournal((before, status) => writeback.journal(before, status))
+service.setStatusListener(() => writeback.taskMoved())
 service.setSourcePrompt(async (task, conversationId, original) => {
   const snapshot = task.sourceSnapshot
   // An agent whose task can be written back to drafts the issue's summary for Antumi to post;
@@ -832,6 +841,8 @@ void analytics.catchUp((stage) => conversations.stageChatItems(stage.conversatio
 sourceInvestigations.start()
 sources.start()
 sourceUpdates.start()
+// Status changes a stop or a failed try left unwritten.
+void writeback.drain()
 // Idle chat agents are checked for once a minute, so one goes within a minute of its limit.
 setInterval(() => void conversations.releaseIdle(), 60_000).unref()
 // Wire logs are for looking at soon after: a week on, they go.
@@ -874,6 +885,7 @@ async function shutdown(): Promise<void> {
   await server?.close()
   await sourceInvestigations?.stop()
   await removeCoreEndpoint(process.pid)
+  writeback.close()
   await sourceUpdates?.close()
   sourceUpdateStore.close()
   store.close()

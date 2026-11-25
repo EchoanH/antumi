@@ -190,6 +190,32 @@ describe('SourceService', () => {
     expect(moved).toEqual(['D-1:go'])
   })
 
+  it('keeps lanes and options a client from before them does not send, and rules an issue by its type', async () => {
+    await service.saveSettings({ provider: 'demo', instance: 'default', settings: { site: 'https://demo.test' } })
+    Object.assign(demo, { writeback: 1, writebackTypes: [{ id: 'pr', label: 'Pull Request', mode: 'off' }, { id: 'bug', label: 'Bug', mode: 'on', rules: { done: false } }] })
+    demo.transitions = async () => ({ status: 'Open', statusCategory: 'todo', options: [] })
+    demo.transition = async () => ({ status: 'Doing', statusCategory: 'doing' })
+    demo.comment = async () => ({ id: '7', url: null })
+    const own = { start: { status: 'Doing' }, review: { status: '', comment: true }, done: { status: 'Closed', comment: false }, guidance: '' }
+    const lanes = [{ typeId: 'bug', name: 'Bug', mode: 'on' as const, review: { status: 'Resolved', comment: true }, done: { status: 'Closed', comment: false } }]
+    expect(service.writebackWanted('demo', 'default', 'start')).toBe(false)
+    const descriptor = await service.saveWriteback('demo', 'default', own, lanes, { dryRun: true, sharedCounts: false })
+    expect(descriptor.writebackTypes?.map((type) => type.id)).toEqual(['pr', 'bug'])
+    expect(descriptor.instances[0]).toMatchObject({ writebackLanes: lanes, writebackOptions: { dryRun: true } })
+    // An older client saves the source's own rules alone, and settings: neither loses the rest.
+    await service.saveWriteback('demo', 'default', { ...own, start: { status: 'Started' } })
+    await service.saveSettings({ provider: 'demo', instance: 'default', settings: { site: 'https://demo.test', query: 'all' } })
+    expect(service.writebackFor('demo', 'default', { type: { id: 'bug', name: 'Bug' } })).toMatchObject({
+      lane: 'bug', off: false, options: { dryRun: true },
+      // The bug's lane, held to what the tracker says a bug can do: no closing stage.
+      rules: { start: { status: 'Started' }, review: { status: 'Resolved', comment: true }, done: { status: '', comment: false } }
+    })
+    expect(service.writebackFor('demo', 'default', { type: { id: 'pr', name: 'Pull Request' } }).off).toBe(true)
+    expect(service.writebackFor('demo', 'default', {})).toMatchObject({ lane: '*', off: false, rules: { done: { status: 'Closed' } } })
+    expect(service.writebackWanted('demo', 'default', 'start')).toBe(true)
+    await expect(service.saveWriteback('demo', 'default', own, [...lanes, ...lanes])).rejects.toThrow()
+  })
+
   it('applies what the plugin says of its stages: no status where it has none, no comment where it takes none', async () => {
     await service.saveSettings({ provider: 'demo', instance: 'default', settings: { site: 'https://demo.test' } })
     await signIn()
