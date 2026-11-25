@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { RpcError, type SourceComment, type SourceIssue, type SourceIssuePreview } from '@antumi/protocol'
 import { useCore } from '../core-store'
@@ -58,7 +59,7 @@ function IssueComments({ provider, instance, issueKey }: { provider: string; ins
     </article>)}
     {loaded && comments.length === 0 && <p className="muted">{t('SourceUpdates.empty')}</p>}
     {busy && <p className="inbox-issue-loading" role="status"><Spinner />{t('SourceUpdates.loading')}</p>}
-    {failure && <p role="alert" className="inbox-issue-error">{failure}</p>}
+    {failure && <p role="alert" className="inbox-issue-error">{failure}<SupportActions error={failure} /></p>}
     {(failure || continuation) && <button type="button" className="button" disabled={busy} onClick={() => void load(continuation)}>{failure ? t('InboxIssueDetail.retry') : t('InboxIssueDetail.moreComments')}</button>}
   </div>
 }
@@ -165,13 +166,13 @@ export function InboxIssueDetail({ provider, instance, name, issue, modal, panel
       <button type="button" className="tool-button inbox-issue-refresh" aria-label={t('InboxIssueDetail.refresh')} disabled={!preview && !failure} onClick={() => { setTab('description'); setAttempt(attempt + 1) }}><RefreshIcon /></button>
     </div>
     <div ref={body} id={`${ids}-body`} className="inbox-issue-body" role="tabpanel" aria-labelledby={`${ids}-${tab}`}>
-      {failure && <div className="inbox-issue-error" role="alert"><p>{failure}</p><button type="button" className="button" onClick={() => setAttempt(attempt + 1)}>{t('InboxIssueDetail.retry')}</button></div>}
+      {failure && <div className="inbox-issue-error" role="alert"><p>{failure}<SupportActions error={failure} /></p><button type="button" className="button" onClick={() => setAttempt(attempt + 1)}>{t('InboxIssueDetail.retry')}</button></div>}
       {!preview && !failure && <p className="inbox-issue-loading" role="status"><Spinner />{t('InboxIssueDetail.loading')}</p>}
       {snapshot && tab === 'description' && <>
         <MarkdownEditor key={`${snapshot.fetchedAt}:${snapshot.imagesFetchedAt}`} value={snapshot.markdown || t('SourceSnapshotCard.originalContentIsEmpty')} label={t('InboxIssueDetail.description')} hint="" readOnly />
         {snapshot.images.length > 0 && <section className="inbox-issue-images" aria-label={t('InboxIssueDetail.images')}><h3>{t('InboxIssueDetail.images')} <span>{snapshot.images.length}</span></h3><ImageStrip images={snapshot.images} onOpen={setViewing} /></section>}
         {imagesLoading && <p className="inbox-issue-loading" role="status"><Spinner />{t('InboxIssueDetail.loadingImages')}</p>}
-        {imageFailure && <div className="inbox-issue-error" role="alert"><p>{t('InboxIssueDetail.imagesFailed', { reason: imageFailure })}</p><button type="button" className="button" onClick={() => setImageAttempt(imageAttempt + 1)}>{t('InboxIssueDetail.retry')}</button></div>}
+        {imageFailure && <div className="inbox-issue-error" role="alert"><p>{t('InboxIssueDetail.imagesFailed', { reason: imageFailure })}<SupportActions error={imageFailure} /></p><button type="button" className="button" onClick={() => setImageAttempt(imageAttempt + 1)}>{t('InboxIssueDetail.retry')}</button></div>}
       </>}
       {preview?.commentsSupported && tab === 'comments' && <IssueComments provider={provider} instance={instance} issueKey={shown.key} />}
     </div>

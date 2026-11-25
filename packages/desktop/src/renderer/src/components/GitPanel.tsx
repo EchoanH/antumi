@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { GitProject } from '@antumi/protocol'
 import { t } from '../i18n'
@@ -93,7 +94,7 @@ export function GitPanel({ windowed = false }: { windowed?: boolean }) {
       </span>
     </div>
     {project && !active && <p className="git-message" role="alert">{t('GitPage.workspaceGone')}</p>}
-    {error && <p className="git-message" role="alert">{error} <button className="button" onClick={() => setRetry((value) => value + 1)}>{t('ChatContextMenu.retry')}</button></p>}
+    {error && <p className="git-message" role="alert">{error}<SupportActions error={error} /> <button className="button" onClick={() => setRetry((value) => value + 1)}>{t('ChatContextMenu.retry')}</button></p>}
     {!rpc?.features.includes('git-projects') ? <p className="inspector-empty muted">{t('GitPage.unsupported')}</p>
       : !selected ? <div className="git-page-empty"><GitIcon /><strong>{t('GitPage.emptyTitle')}</strong><p>{t('GitPage.emptyDescription')}</p></div>
         : !project && !error ? <p className="git-message muted">{t('GitInspector.loadingProject')}</p>

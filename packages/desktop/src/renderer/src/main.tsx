@@ -14,6 +14,8 @@ import { startPanelWindowHost } from './panel-window-host'
 import { startPanelWindowPage, thisPanelKind } from './panel-window-page'
 import { PanelWindow } from './components/PanelWindow'
 import { ConfirmDialog } from './components/ConfirmDialog'
+import { ContactAuthorDialog } from './components/ContactAuthor'
+import { WindowErrorBoundary } from './components/WindowErrorBoundary'
 import { ServerFolderDialog } from './components/ServerFolderDialog'
 import { SettingsPage } from './components/SettingsPage'
 import { applyTitleBar } from './desktop-bridge'
@@ -75,8 +77,11 @@ if (!root) {
 }
 createRoot(root).render(
   <StrictMode>
-    {settingsPreview ? <div className="app"><SettingsPage /></div> : playground ? <PetPlayground /> : popup ? <RequestPopup /> : panelKind ? <PanelWindow kind={panelKind} /> : <App />}
-    <ConfirmDialog />
-    <ServerFolderDialog />
+    <WindowErrorBoundary>
+      {settingsPreview ? <div className="app"><SettingsPage /></div> : playground ? <PetPlayground /> : popup ? <RequestPopup /> : panelKind ? <PanelWindow kind={panelKind} /> : <App />}
+      <ConfirmDialog />
+      <ServerFolderDialog />
+    </WindowErrorBoundary>
+    <ContactAuthorDialog />
   </StrictMode>
 )

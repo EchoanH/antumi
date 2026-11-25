@@ -11577,3 +11577,21 @@ button.squad-member-main { cursor: pointer; }
 .source-updates[data-inspector] .md-editor { min-height: 0; margin-top: 8px; border: 0; border-radius: 0; }
 .source-updates[data-inspector] .md-editor-readonly .cm-editor { max-height: none; }
 .source-updates[data-inspector] .cm-content { padding: 0; }
+
+/* One contact surface, shared by error messages and Help. */
+.support-actions { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-inline-start: 8px; font: inherit; }
+.support-actions > .link-button { margin: 0; white-space: nowrap; font: inherit; text-decoration: none; }
+.support-actions > .link-button:hover { text-decoration: underline; }
+.contact-author-dialog { width: min(440px, calc(100vw - 32px)); overflow-y: auto; border-radius: var(--radius-lg); }
+.contact-author-dialog .modal-body { gap: 16px; }
+.contact-author-dialog p { margin: 0; line-height: 1.6; }
+.contact-author-dialog .modal-close svg { width: 16px; height: 16px; }
+.contact-author-qr { display: block; width: min(240px, 100%); height: auto; align-self: center; border-radius: var(--radius-sm); }
+.contact-author-report summary { cursor: pointer; color: var(--text-muted); }
+.contact-author-report p { margin: 8px 0; font-size: 12px; }
+.contact-author-report textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 12px; }
+.contact-author-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.contact-author-actions > span { flex: 1 1 160px; font-size: 12px; }
+.error-toast { pointer-events: auto; flex-wrap: wrap; }
+.error-toast .toast-message { flex: 1 1 160px; }
+.error-toast .support-actions { margin-inline-start: auto; }

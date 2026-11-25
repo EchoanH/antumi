@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MAX_PLUGIN_PAGE_PARAMS, PLUGIN_PAGE_SCHEME, PluginPageFrameMessage, pluginPageState, type PluginPageHostMessage } from '@antumi/protocol'
 import { leavePluginPage, useCore } from '../core-store'
@@ -163,7 +164,7 @@ export function PluginPageView({ plugin, page, visible = true }: PluginPageRef &
     <div ref={typefaceProbe} className="chat-view plugin-page-typeface" data-width={width} {...typeface} aria-hidden="true" />
     {!supported ? <div className="detail-empty"><div className="detail-empty-body">{t('PluginPage.unavailable')}</div></div>
       : error ? <div className="detail-empty" role="alert"><div className="detail-empty-body">
-        <span>{t('PluginPage.failed', { message: error })}</span>
+        <span>{t('PluginPage.failed', { message: error })}</span><SupportActions error={error} />
         <button type="button" className="button" onClick={() => setGeneration((n) => n + 1)}>{t('PluginPage.retry')}</button>
       </div></div>
       : !src ? <div className="detail-empty" role="status"><div className="detail-empty-body">{t('PluginPage.loading')}</div></div>

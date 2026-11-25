@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { localized, t, tr } from '../i18n'
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { agentDescriptor, HOURLY_EVERY, nextOccurrence, RoutineAgent, type AgentKind, type ChatCatalog, type Routine, type RoutineFields, type RoutineSchedule } from '@antumi/protocol'
@@ -242,7 +243,7 @@ export function RoutineEditor({ routine, template = null, onClose }: { routine: 
 
         <p className="muted routine-editor-mode">{tr('RoutineEditor.runsUnattendedInModeNothingRunsWhileThe', { value1: UNATTENDED_LABEL[mode], value2: <SettingsLink /> })}</p>
 
-        {error && <p className="modal-error" role="alert">{error}</p>}
+        {error && <p className="modal-error" role="alert">{error}<SupportActions error={error} /></p>}
 
         <footer className="modal-footer">
           <button type="button" className="button" onClick={onClose}>{t('ChatCommandSettings.cancel')}</button>

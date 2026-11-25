@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { useState } from 'react'
 import type { UpdateState } from '../../../shared/app-update'
 import { t } from '../i18n'
@@ -75,7 +76,7 @@ export function UpdateActions({ state, onSkip }: { state: UpdateState; onSkip?: 
   return (
     <>
       {state.status === 'ready' && state.automatic && <p className="update-hint" role="status">{t('AppUpdate.installOnNextLaunch')}</p>}
-      {state.error && state.status === 'error' && <p className="update-error">{t('AppUpdate.failed', { reason: updateErrorText(state.error) })}</p>}
+      {state.error && state.status === 'error' && <p className="update-error">{t('AppUpdate.failed', { reason: updateErrorText(state.error) })}<SupportActions error={updateErrorText(state.error)} /></p>}
       {state.status === 'error' && <InstallBlockers blockers={state.blockers} />}
       {!state.canInstall && <p className="update-hint">{isMac() ? t('AppUpdate.manualMac') : t('AppUpdate.manualWindows')}</p>}
       <div className="update-actions">
@@ -141,7 +142,7 @@ export function UpdateSettings() {
         description={t('AppUpdate.automaticDescription')}
         control={(labelId) => <Toggle labelId={labelId} checked={state.automatic} disabled={savingAutomatic || state.status === 'installing' || !window.antumi?.setUpdateAutomatic} onChange={(value) => void changeAutomatic(value)} />}
       />
-      {automaticError && <p className="update-error" role="alert">{t('AppUpdate.automaticSaveFailed')}</p>}
+      {automaticError && <p className="update-error" role="alert">{t('AppUpdate.automaticSaveFailed')}<SupportActions error={t('AppUpdate.automaticSaveFailed')} /></p>}
       <SettingsRow
         label={t('AppUpdate.prerelease')}
         description={t('AppUpdate.prereleaseDescription')}

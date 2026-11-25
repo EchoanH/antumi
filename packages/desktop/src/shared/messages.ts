@@ -1,5 +1,15 @@
 // Application-owned text. Values and external content are passed separately.
 export const MESSAGES = {
+  "ContactAuthor.createIssue": {"zh": "创建 GitHub Issue（预填问题信息）", "en": "Create a GitHub issue with problem details"},
+  "ContactAuthor.title": {"zh": "找作者", "en": "Contact the author"},
+  "ContactAuthor.description": {"zh": "遇到问题了？扫码联系作者，我来帮你看看。", "en": "Having trouble? Scan the WeChat QR code and I’ll help you out."},
+  "ContactAuthor.preview": {"zh": "查看问题信息", "en": "Preview problem details"},
+  "ContactAuthor.reportHint": {"zh": "仅包含版本、系统、语言和本次错误，常见密钥字段已隐藏。复制前可以检查内容，再通过微信发给作者。", "en": "Includes the version, OS, language and this error only. Common secret fields are hidden. Review before copying and sharing via WeChat."},
+  "ContactAuthor.copy": {"zh": "复制问题信息", "en": "Copy problem details"},
+  "ContactAuthor.copied": {"zh": "已复制，可通过微信发给作者。", "en": "Copied. You can send it to the author via WeChat."},
+  "ContactAuthor.copyFailed": {"zh": "复制失败，请展开问题信息后手动复制。", "en": "Could not copy. Expand the problem details and copy them manually."},
+  "ContactAuthor.crashed": {"zh": "界面遇到了异常，可以重新加载，或联系作者帮忙。", "en": "The interface encountered an error. Reload it or contact the author for help."},
+  "ContactAuthor.reload": {"zh": "重新加载", "en": "Reload"},
   "ProfileEditor.basics": {"zh":"基础配置","en":"Basics"},
   "ProfileEditor.basicsHint": {"zh":"身份、指令与模型","en":"Identity, instructions and model"},
   "ProfileEditor.tools": {"zh":"能力与协作","en":"Tools & delegation"},

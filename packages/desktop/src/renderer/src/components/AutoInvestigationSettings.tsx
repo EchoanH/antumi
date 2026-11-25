@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { useEffect, useId, useRef, useState } from 'react'
 import { AgentKind, AutoInvestigationConfig, ChatPermissionMode, agentDescriptor, type AutoInvestigationInfo, type AutoInvestigationRun, type ChatCatalog } from '@antumi/protocol'
 import { t, getLocale } from '../i18n'
@@ -85,7 +86,7 @@ export function AutoInvestigationHistory({ provider, instance, onClose }: { prov
   return <dialog ref={dialog} className="auto-investigation-history" onCancel={(event) => { event.preventDefault(); onClose() }}>
     <header className="auto-investigation-history-header"><h3>{t('AutoInvestigation.history')}</h3><div className="toolbar"><button type="button" className="button ghost" disabled={busy} onClick={() => void load()}>{t('AutoInvestigation.refresh')}</button><button type="button" className="tool-button" aria-label={t('AutoInvestigation.close')} onClick={onClose}><CloseIcon /></button></div></header>
     <div className="auto-investigation-history-body">
-      {error && <p role="alert">{error} <button type="button" className="link-button" onClick={() => void load()}>{t('AutoInvestigation.retry')}</button></p>}
+      {error && <p role="alert">{error}<SupportActions error={error} /> <button type="button" className="link-button" onClick={() => void load()}>{t('AutoInvestigation.retry')}</button></p>}
       {items.length === 0 && !busy && !error && <p className="muted">{t('AutoInvestigation.empty')}</p>}
       {items.map((item) => <article key={item.id} className="auto-investigation-record">
         <div><a href={item.url} target="_blank" rel="noreferrer">{item.key}</a><span className="muted">{autoInvestigationStatus(item.status)}</span><time className="muted">{new Date(item.createdAt).toLocaleString(getLocale())}</time></div>

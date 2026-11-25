@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { useEffect, useId, useState } from 'react'
 import { agentDescriptor, AgentProfileFields, DELEGATION_MODES, AGENT_KINDS, forChannels, allowsChannels, type AgentKind, type AgentProfile, type DelegationMode, type SkillRef, type SkillRepo } from '@antumi/protocol'
 import { useAgentCatalog } from '../agent-models'
@@ -188,7 +189,7 @@ export function AgentProfileEditor({ profile, seed, template, onSaved }: { profi
       </div>
     </div>
     <footer className="profile-editor-save">
-      <div role="status">{problem ? <p className="modal-error" role="alert">{problem}</p> : <><strong>{draft.dirty ? t('ProfileEditor.unsaved') : saved ? t('ProfileEditor.saved') : t(profile ? 'ProfileEditor.savedConfiguration' : 'ProfileEditor.newDraft')}</strong><p>{draft.dirty ? t(draft.persisted ? 'ProfileEditor.draftRetained' : 'ProfileEditor.draftMemory') : t(section === 'channels' ? 'ProfileEditor.independentSave' : 'ProfileEditor.saveHint')}</p></>}</div>
+      <div role="status">{problem ? <p className="modal-error" role="alert">{problem}<SupportActions error={problem} /></p> : <><strong>{draft.dirty ? t('ProfileEditor.unsaved') : saved ? t('ProfileEditor.saved') : t(profile ? 'ProfileEditor.savedConfiguration' : 'ProfileEditor.newDraft')}</strong><p>{draft.dirty ? t(draft.persisted ? 'ProfileEditor.draftRetained' : 'ProfileEditor.draftMemory') : t(section === 'channels' ? 'ProfileEditor.independentSave' : 'ProfileEditor.saveHint')}</p></>}</div>
       {draft.dirty && <button type="button" className="button ghost" disabled={busy} onClick={() => void discard()}>{t('ProfileEditor.discard')}</button>}
       <button type="submit" form={formId} className="button primary" disabled={busy || modelPending || readOnlyUnsupported || platformUnsupported || (!draft.dirty && Boolean(profile))}>{t(busy ? 'ProfileEditor.saving' : 'FileEditor.save')}</button>
     </footer>

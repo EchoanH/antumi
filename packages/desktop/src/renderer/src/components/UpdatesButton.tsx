@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { useState } from 'react'
 import { AGENT_KINDS } from '@antumi/protocol'
 import { receivePlugins, setSettingsOpen, upgradeAgentCli, useCore } from '../core-store'
@@ -62,7 +63,7 @@ export function UpdatesButton() {
       <div className="update-card maintenance-card">
         <div className="maintenance-heading"><span className="update-title">{t('Updates.title')}</span><button className="button ghost" disabled={checking || state?.status === 'checking'} onClick={() => { checkForUpdate(); void checkMaintenanceUpdates(true) }}>{checking || state?.status === 'checking' ? t('AppUpdate.checking') : t('AppUpdate.checkNow')}</button></div>
         {checkError && <p className="update-error" role="status">{t('Updates.checkFailed')} · {checkError}</p>}
-        {error && <p className="update-error" role="alert">{error}</p>}
+        {error && <p className="update-error" role="alert">{error}<SupportActions error={error} /></p>}
         {count === 0 && <p className="muted">{t('Updates.none')}</p>}
         {appUpdate && state?.latest && <section className="maintenance-group">
           <div className="maintenance-heading"><strong>Antumi</strong><span className="muted">{state.current} → {state.latest.version}</span></div>

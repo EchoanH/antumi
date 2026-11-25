@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { t } from '../i18n'
 import { useEffect, useRef, useState } from 'react'
 import { ChatPermissionMode, checkStart, checkStartMode, type AgentKind, type Task } from '@antumi/protocol'
@@ -165,7 +166,7 @@ function LaunchForm({ task, onSquad }: { task: Task; onSquad(): void }) {
         <OtherProjectsHint agent={agent} projectCount={task.repos.length} />
         {agent && !provider && <AgentQuotaHint agent={agent} model={modelText(model)} />}
         {blocker && <p className="modal-error">{reasonText(blocker, blocker)}</p>}
-        {error && <p className="modal-error" role="alert">{error}</p>}
+        {error && <p className="modal-error" role="alert">{error}<SupportActions error={error} /></p>}
         <footer className="modal-footer">
           <button type="button" className="button ghost" disabled={busy} onClick={closeTaskLaunch}>{t('ChatCommandSettings.cancel')}</button>
           <button type="submit" className="button primary" disabled={busy || !agent || blocker !== null}>{busy ? t('DiscussionDraft.starting') : label}</button>

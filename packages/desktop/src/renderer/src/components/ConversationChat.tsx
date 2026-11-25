@@ -1,4 +1,5 @@
 import { TeamCallCard } from './TeamCalls'
+import { SupportActions } from './ContactAuthor'
 import { useTeamCalls } from '../team-calls'
 import { getLocale, t, tr } from '../i18n'
 import { HelperTurnCost } from './HelperTurnCost'
@@ -233,6 +234,7 @@ function ChatDeliveryStatus({ conversationId, message }: { conversationId: strin
   return (
     <div className="chat-user-delivery" data-failed={failed || undefined} role={failed ? 'alert' : 'status'}>
       <span>{failed ? t('ChatDelivery.failed', { reason: message.error ?? t('ChatDelivery.notSent') }) : t('ChatDelivery.sending')}</span>
+      {failed && <SupportActions error={message.error ?? t('ChatDelivery.notSent')} />}
       {failed && <button type="button" className="link-button" disabled={!rpc || delivering || Boolean(surface.sendBlocker) || Boolean(conversation?.starting) || Boolean(conversation?.preparing)} onClick={() => void sendChatDelivery(conversationId, message.ref, surface.prepareSend)}>{t('ChatContextMenu.retry')}</button>}
     </div>
   )
@@ -289,6 +291,7 @@ function InitialMessageEntry({ id, agent, message }: { id: string; agent: AgentK
       {message.phase === 'failed' ? (
         <div className="chat-initial-error chat-notice" data-level="error" role="alert">
           <span>{tr('ConversationChat.firstMessageNotSent', { value1: message.error })}</span>
+          <SupportActions error={message.error ?? undefined} />
           <button type="button" className="button ghost" disabled={!rpc} onClick={() => { if (rpc) void sendInitialMessage(id, rpc) }}>{t('ChatContextMenu.retry')}</button>
         </div>
       ) : (
@@ -327,7 +330,8 @@ function ChatNotice({ conversationId, item }: { conversationId: string; item: No
       {item.action?.stop ? (retrying ? t('ConversationChat.stopping') : t('ConversationChat.stopAndRetry')) : retrying ? t('ConversationChat.reconnecting') : t('ConversationChat.reconnectAndRetry')}
     </button>
   )
-  if (!more) return <div className="chat-notice chat-notice-actionable" data-level={item.level}><span>{text}</span>{action}</div>
+  const support = item.level === 'error' ? <SupportActions error={text} /> : null
+  if (!more) return <div className="chat-notice chat-notice-actionable" data-level={item.level}><span>{text}</span>{action}{support}</div>
   // The words stay out of the button, so an error's output can be selected and copied.
   return (
     <div className="chat-notice chat-notice-long chat-notice-actionable" data-level={item.level}>
@@ -336,6 +340,7 @@ function ChatNotice({ conversationId, item }: { conversationId: string; item: No
       </button>
       <div className="chat-notice-text" data-open={open || undefined} onClick={open ? undefined : () => setOpen(true)}>{open ? text : first}</div>
       {action}
+      {support}
     </div>
   )
 }
@@ -371,7 +376,7 @@ function AssistantReply({ conversationId, item, completedAt, ending, blockKey }:
   return (
     <div ref={box} className="chat-assistant" data-streaming={item.streaming || undefined} data-translated={shown !== text || undefined}>
       {shown && <ChatMarkdown text={shown} highlight={!item.streaming} runnable={!item.streaming} visualization={visualization} />}
-      {failure && <div className="chat-notice" data-level="warning">{failure.detail}</div>}
+      {failure && <div className="chat-notice" data-level="warning">{failure.detail}<SupportActions error={failure.detail} /></div>}
       {(completedAt !== undefined || (parentId && !item.streaming)) && text && (
         <div className="chat-message-actions">
           <CopyButton text={shown} label={shown !== text ? t('ChatContextMenu.copyTranslation') : t('ConversationChat.copyReply')} />
@@ -407,7 +412,7 @@ function Item({ conversationId, item, completedAt, blockKey }: { conversationId:
     case 'question':
       return <ChatRequestLine item={item} />
     case 'turn':
-      return <div className="chat-turn" data-state={item.state}>{compact && item.state === 'completed' ? helperDuration(item) : turnText(item)}{compact && <HelperTurnCost turn={item} />}</div>
+      return <div className="chat-turn" data-state={item.state}>{compact && item.state === 'completed' ? helperDuration(item) : turnText(item)}{item.state === 'failed' && <SupportActions error={turnText(item)} />}{compact && <HelperTurnCost turn={item} />}</div>
     case 'notice':
       return <ChatNotice conversationId={conversationId} item={item} />
     case 'todos':

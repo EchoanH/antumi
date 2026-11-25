@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { t, tr } from '../i18n'
 import { useId, useState, type ReactNode } from 'react'
 import { forChannels, AgentKind, SquadFields, type Squad, type SquadMember } from '@antumi/protocol'
@@ -306,7 +307,7 @@ function SquadEditor({ squad, onDone }: { squad: Squad | null; onDone: (saved: b
           <textarea className="input" value={instructions} maxLength={10000} rows={3} disabled={busy} placeholder={t('Squads.assignmentRulesCollaborationAndAcceptanceCriteriaReadBy')} onChange={(event) => setInstructions(event.target.value)} />
         </label>
       </section>
-      {error && <p className="modal-error" role="alert">{error}</p>}
+      {error && <p className="modal-error" role="alert">{error}<SupportActions error={error} /></p>}
       <footer className="squad-editor-footer">
         <button type="button" className="button ghost" disabled={busy} onClick={() => onDone(false)}>{t('ChatCommandSettings.cancel')}</button>
         <button className="button primary" type="submit" disabled={busy}>{busy ? t('SourceSettingsSection.saving') : squad ? t('FileEditor.save') : t('Squads.createSquad')}</button>

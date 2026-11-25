@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { useState } from 'react'
 import { AgentKind, type ProviderImportPreview, type ProviderImportResult } from '@antumi/protocol'
 import { perform } from '../core-store'
@@ -50,7 +51,7 @@ export function CcSwitchImportSettings({ onDone }: { onDone: () => void }) {
       <button type="submit" className="button" disabled={busy !== null}>{t('CcSwitchImport.read')}</button>
     </form>
     {busy && <p className="settings-note" role="status">{t(`CcSwitchImport.${busy}`)}</p>}
-    {failed && <p className="settings-note" role="alert">{t('CcSwitchImport.failed')}</p>}
+    {failed && <p className="settings-note" role="alert">{t('CcSwitchImport.failed')}<SupportActions error={t('CcSwitchImport.failed')} /></p>}
     {preview && <>
       <p className="settings-note mono">{preview.directory}</p>
       {preview.candidates.length === 0 && <p className="settings-note">{t('CcSwitchImport.empty')}</p>}

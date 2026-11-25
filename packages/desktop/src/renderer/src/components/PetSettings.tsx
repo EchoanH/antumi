@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { useEffect, useId, useRef, useState } from 'react'
 import { comparePetVersions, RpcError } from '@antumi/protocol'
 import { getLocale, t, useLocale } from '../i18n'
@@ -58,7 +59,7 @@ export function PetStylePicker({ labelId }: { labelId: string }) {
       })}
     </div>
     {!supported && <p className="settings-note">{t('Pet.downloadUnavailable')}</p>}
-    {problem && <p className="pet-style-error" role="alert">{problem}</p>}
+    {problem && <p className="pet-style-error" role="alert">{problem}<SupportActions error={problem} /></p>}
   </>
 }
 

@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { localized, t, tr } from '../i18n'
 import { useEffect, useId, useState, type FormEvent } from 'react'
 import { AGENT_KINDS, agentDescriptor, McpServerName, type AgentKind, type McpImportCandidate, type McpProbe, type McpServer, type McpServerInput } from '@antumi/protocol'
@@ -203,7 +204,7 @@ function ProbeResult({ probe }: { probe: McpProbe | 'running' | 'unavailable' })
   if (!probe.ok) {
     return (
       <div className="mcp-probe" data-ok="false">
-        <p className="settings-status" role="status">{tr('McpSettingsSection.connectionFailed', { value1: probe.error })}</p>
+        <p className="settings-status" role="status">{tr('McpSettingsSection.connectionFailed', { value1: probe.error })}<SupportActions error={probe.error ?? t('McpSettingsSection.connectionFailed', { value1: '' })} /></p>
         {probe.stderr && <pre className="mcp-probe-output">{probe.stderr}</pre>}
       </div>
     )
@@ -309,7 +310,7 @@ function ImportPanel({ onDone }: { onDone: (imported: string[]) => void }) {
   return (
     <SettingsGroup title={t('McpSettingsSection.importFromClaudeCodexCursor')} icon={<DownloadIcon />}>
     <div className="chat-command-form">
-      {failed ? <div className="settings-loading" role="status"><p>{t('McpSettingsSection.importFailed')}</p><button type="button" className="button" onClick={() => void load()}>{t('AppUpdate.retry')}</button></div> : candidates === null ? <p className="settings-empty" role="status">{t('McpSettingsSection.readingAgentConfigurations')}</p> : candidates.length === 0 ? <SettingsEmptyState icon={<PlugIcon />} title={t('McpSettingsSection.noImportTitle')} actions={<button type="button" className="button" onClick={() => void load()}>{t('AppUpdate.retry')}</button>}>{t('McpSettingsSection.noMcpServersInAnyAgentSUser')}</SettingsEmptyState> : (
+      {failed ? <div className="settings-loading" role="status"><p>{t('McpSettingsSection.importFailed')}<SupportActions error={t('McpSettingsSection.importFailed')} /></p><button type="button" className="button" onClick={() => void load()}>{t('AppUpdate.retry')}</button></div> : candidates === null ? <p className="settings-empty" role="status">{t('McpSettingsSection.readingAgentConfigurations')}</p> : candidates.length === 0 ? <SettingsEmptyState icon={<PlugIcon />} title={t('McpSettingsSection.noImportTitle')} actions={<button type="button" className="button" onClick={() => void load()}>{t('AppUpdate.retry')}</button>}>{t('McpSettingsSection.noMcpServersInAnyAgentSUser')}</SettingsEmptyState> : (
         <ul className="settings-project-list">
           {candidates.map((candidate) => {
             const key = keyOf(candidate)

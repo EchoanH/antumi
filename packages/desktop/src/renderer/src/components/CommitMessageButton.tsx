@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { t } from '../i18n'
 import { useState } from 'react'
 import { RpcError, type GitTarget } from '@antumi/protocol'
@@ -36,7 +37,7 @@ export function CommitMessageButton({ target, disabled, onMessage }: { target: G
         {busy ? <Spinner /> : <SparkIcon />}
         {busy ? t('CommitMessageButton.generating') : t('CommitMessageButton.generateCommitMessage')}
       </button>
-      {error && <span className="commit-message-error" role="alert">{error}</span>}
+      {error && <span className="commit-message-error" role="alert">{error}<SupportActions error={error} /></span>}
     </span>
   )
 }

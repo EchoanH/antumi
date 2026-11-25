@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { getLocale, localized, t, tr } from '../i18n'
 import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { ChatDecision } from '@antumi/protocol'
@@ -449,7 +450,7 @@ export function OverviewView() {
       {mode === 'limited' && <p className="attention-notice muted">{t('OverviewView.currentCoreProvidesIncompleteTaskChatDetails')}</p>}
       {error && <div className="attention-notice attention-error" role="alert">
         <div>{tr('OverviewView.chatSummariesFailedToLoadItemsMayBe', { value1: <span className="muted">{error}</span> })}</div>
-        <button type="button" className="button ghost" disabled={!connected || loading} onClick={() => void refreshAttentionSummaries()}>{t('ChatContextMenu.retry')}</button>
+        <button type="button" className="button ghost" disabled={!connected || loading} onClick={() => void refreshAttentionSummaries()}>{t('ChatContextMenu.retry')}</button><SupportActions error={error} />
       </div>}
       <div className="overview-kpis" role="group" aria-label={t('OverviewView.workScope')} data-count={ranges.length}>
         {ranges.map(({ value, label }) => <button type="button" key={value} className="overview-kpi" aria-pressed={filter === value}

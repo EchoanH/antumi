@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PullRequestEligibility, Task } from '@antumi/protocol'
 import { useOccludesBrowser } from '../browser-occlusion'
@@ -129,7 +130,7 @@ export function CreatePullRequestDialog({ task, close }: { task: Task; close: ()
                   </span>
                   {eligibility.needsPush && <span className="git-push-tag">{t('PullRequest.willPush')}</span>}
                 </div>
-                {branchesFailed && <p className="pr-note muted" role="alert">{t('PullRequest.branchesFailed')}{' '}<button type="button" className="link-button" disabled={busy} onClick={() => void loadBranches(eligibility)}>{t('AppUpdate.retry')}</button></p>}
+                {branchesFailed && <p className="pr-note muted" role="alert">{t('PullRequest.branchesFailed')}<SupportActions error={t('PullRequest.branchesFailed')} />{' '}<button type="button" className="link-button" disabled={busy} onClick={() => void loadBranches(eligibility)}>{t('AppUpdate.retry')}</button></p>}
                 <input className="input pr-title" aria-label={t('PullRequest.titleField')} placeholder={draft.drafting ? t('PullRequest.drafting') : t('PullRequest.titleField')} value={draft.title} maxLength={256} onChange={(event) => update(eligibility.repoPath, (current) => ({ ...current, title: event.target.value }))} />
                 <textarea className="input pr-body" aria-label={t('PullRequest.body')} placeholder={draft.drafting ? t('PullRequest.drafting') : t('PullRequest.body')} value={draft.body} rows={10} onChange={(event) => update(eligibility.repoPath, (current) => ({ ...current, body: event.target.value }))} />
                 {draft.failed ? <p className="pr-note muted">{t('PullRequest.draftFailed')}</p> : draft.model ? <p className="pr-note muted">{t('PullRequest.draftedBy', { model: draft.model })}</p> : null}
