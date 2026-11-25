@@ -2,8 +2,8 @@ import { ProviderImportPreview, ProviderImportResult } from './provider-import'
 import { z } from 'zod'
 import { AutoInvestigationConfig, AutoInvestigationInfo, AutoInvestigationPage, AutoInvestigationRun } from './source'
 import { SourceCommentOptions, SourceCommentPage, SourceDeliveryInfo, SourceUpdateTarget, SourceUpdateSummary, SourceUpdates } from './source-comments'
-import { MAX_SOURCE_REPORT, MAX_WRITEBACK_COMMENT, SourceTransitions, SourceWrite, SourceWriteback } from './source-writeback'
-import { SourceWritebackConfig } from './source-writeback-rules'
+import { MAX_SOURCE_REPORT, MAX_WRITEBACK_COMMENT, SOURCE_REPORT_LIMIT, SourceOutcome, SourceTransitions, SourceWrite, SourceWriteback } from './source-writeback'
+import { SourceWritebackConfig, WritebackLane, WritebackOptions } from './source-writeback-rules'
 import { BrowserDownload, BrowserDownloadAction, BrowserUploadOptions } from './browser'
 import { ChatReference } from './chat-reference'
 import { AgentProfile, AgentProfileFields, AgentCall, AgentCallResumeCheck, AgentCallWorkspace, DelegationTarget, DirectAgentCall } from './agent-profile'
@@ -971,9 +971,17 @@ export const rpcMethods = {
   'sources.writebackTransition': { params: z.object({ target: SourceUpdateTarget, id: z.string().min(1).max(500) }), result: SourceWrite },
   'sources.writebackComment': { params: z.object({ target: SourceUpdateTarget, markdown: z.string().min(1).max(MAX_WRITEBACK_COMMENT) }), result: SourceWrite },
   'sources.writebackRetry': { params: z.object({ id: z.string().uuid() }), result: SourceWrite },
-  'sources.saveWriteback': { params: InstanceRef.extend({ config: SourceWritebackConfig }), result: SourceDescriptor },
+  // lanes and options left out stay as they are, so a client from before them loses nothing.
+  'sources.saveWriteback': { params: InstanceRef.extend({ config: SourceWritebackConfig, lanes: z.array(WritebackLane).max(50).optional(), options: WritebackOptions.optional() }), result: SourceDescriptor },
   // The agent's summary for the issue, saved by its source_report tool; never posted by it.
-  'sources.saveReport': { params: z.object({ conversationId: z.string().min(1), text: z.string().min(1).max(MAX_SOURCE_REPORT) }), result: SourceWriteback },
+  'sources.saveReport': {
+    params: z.object({
+      conversationId: z.string().min(1), text: z.string().min(1).max(MAX_SOURCE_REPORT),
+      outcome: SourceOutcome.optional(),
+      verification: z.string().max(SOURCE_REPORT_LIMIT).optional(), question: z.string().max(SOURCE_REPORT_LIMIT).optional(), blocker: z.string().max(SOURCE_REPORT_LIMIT).optional()
+    }),
+    result: SourceWriteback
+  },
   // Pull requests for a task's branches (feature pull-requests): one per repo the task writes to.
   // check: whether each can have one opened, and the one it has. draft: a title and description
   // from the small model. create: pushes the branch when the remote lacks its commits, then opens

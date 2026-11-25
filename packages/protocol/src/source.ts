@@ -4,7 +4,7 @@ import { TextTranslations } from './localization'
 import { TaskImage } from './attachments'
 import { AgentKind } from './agent'
 import { ChatPermissionMode } from './chat'
-import { SourceWritebackConfig, WritebackRuleHints } from './source-writeback-rules'
+import { SourceWritebackConfig, WritebackLane, WritebackOptions, WritebackRuleHints, WritebackType } from './source-writeback-rules'
 
 // Where tasks can come from besides being written by hand: an issue tracker, reached through a
 // source provider. A provider may be configured more than once (two Jira sites); each is an instance.
@@ -137,7 +137,10 @@ export const SourceInstanceInfo = z.object({
   credential: CredentialStatus,
   autoInvestigation: AutoInvestigationInfo.optional(),
   // The rules for writing back, when the provider can (docs/SOURCE-WRITEBACK.md).
-  writeback: SourceWritebackConfig.optional()
+  writeback: SourceWritebackConfig.optional(),
+  // The rules for single issue types, and how rules run at all (a dry run); older cores leave both out.
+  writebackLanes: z.array(WritebackLane).max(50).optional(),
+  writebackOptions: WritebackOptions.optional()
 })
 export type SourceInstanceInfo = z.infer<typeof SourceInstanceInfo>
 
@@ -151,6 +154,8 @@ export const SourceDescriptor = z.object({
   writebackComments: z.boolean().optional(),
   // With writeback: what the plugin says each stage's status can be.
   writebackRules: WritebackRuleHints.optional(),
+  // With writeback: the issue types the plugin knows its tracker has, each with its own stages.
+  writebackTypes: z.array(WritebackType).max(32).optional(),
   instances: z.array(SourceInstanceInfo)
 })
 export type SourceDescriptor = z.infer<typeof SourceDescriptor>
@@ -166,6 +171,10 @@ export const SourceIssue = z.object({
   type: z.string().max(100),
   priority: z.string().max(100).nullable(),
   updatedAt: z.number().nullable(),
+  // The type by the tracker's id for it (type is its label), and the project or team the issue is
+  // in: what a writeback lane is keyed by. Plugins from before SDK 0.7 leave them out.
+  typeId: z.string().min(1).max(500).optional(),
+  scope: z.object({ id: z.string().min(1).max(500), name: z.string().max(200) }).optional(),
   // The latest conversation opened to look into it, while that conversation is kept. Older cores
   // leave it out.
   conversationId: z.string().uuid().nullable().optional(),

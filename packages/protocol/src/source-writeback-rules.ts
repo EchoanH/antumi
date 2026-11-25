@@ -8,10 +8,12 @@ export type WritebackStage = typeof WRITEBACK_STAGES[number]
 
 // Status names as the tracker shows them, | between alternatives; empty leaves the status alone.
 const StatusNames = z.string().trim().max(500).default('')
+const StartRule = z.object({ status: StatusNames })
+const StageRule = z.object({ status: StatusNames, comment: z.boolean().default(false) })
 export const SourceWritebackConfig = z.object({
-  start: z.object({ status: StatusNames }).default({ status: '' }),
-  review: z.object({ status: StatusNames, comment: z.boolean().default(false) }).default({ status: '', comment: false }),
-  done: z.object({ status: StatusNames, comment: z.boolean().default(false) }).default({ status: '', comment: false }),
+  start: StartRule.default({ status: '' }),
+  review: StageRule.default({ status: '', comment: false }),
+  done: StageRule.default({ status: '', comment: false }),
   // What this source's team wants in a summary besides the built-in rules, said to the agent.
   guidance: z.string().trim().max(1000).default('')
 })
@@ -48,5 +50,57 @@ export function applicableWriteback(config: SourceWritebackConfig, hints: Writeb
     review: { status: status('review'), comment: comments && config.review.comment },
     done: { status: status('done'), comment: comments && config.done.comment },
     guidance: config.guidance
+  }
+}
+
+// A source takes issues of several types, each with a workflow of its own: a lane is the rules for
+// one type, each stage left out following the source's own. off writes nothing back for the type.
+const Id = z.string().min(1).max(500)
+export const WritebackLane = z.object({
+  typeId: Id,
+  // Only in this project or team; left out, wherever the type turns up.
+  scopeId: Id.optional(),
+  // The type's name when the lane was made, shown once the tracker no longer lists it.
+  name: z.string().max(200).default(''),
+  mode: z.enum(['on', 'off']).default('on'),
+  start: StartRule.optional(),
+  review: StageRule.optional(),
+  done: StageRule.optional()
+})
+export type WritebackLane = z.infer<typeof WritebackLane>
+
+// dryRun: rules go through every step and record what they would write, without writing.
+// sharedCounts: an issue assigned to the user and others counts as the user's.
+export const WritebackOptions = z.object({ dryRun: z.boolean().default(false), sharedCounts: z.boolean().default(false) })
+export type WritebackOptions = z.infer<typeof WritebackOptions>
+export const NO_WRITEBACK_OPTIONS: WritebackOptions = WritebackOptions.parse({})
+
+// A type a plugin knows its tracker has (manifest writebackTypes), with what its stages can be.
+// mode off: left alone until the user makes a lane for it, as a pull request is.
+export const WritebackType = z.object({
+  id: Id, name: z.string().min(1).max(100), translations: TextTranslations.optional(),
+  mode: z.enum(['on', 'off']).default('on'),
+  rules: WritebackRuleHints.optional()
+})
+export type WritebackType = z.infer<typeof WritebackType>
+
+export const WILDCARD_LANE = '*'
+
+// The rules for an issue of this type in this scope: the lane naming both, else the one naming the
+// type, else the source's own. off when the lane, or failing one the type itself, says so.
+export function resolveLane(
+  config: SourceWritebackConfig,
+  lanes: readonly WritebackLane[],
+  types: readonly WritebackType[],
+  issue: { type?: { id: string } | undefined; scope?: { id: string } | undefined }
+): { lane: string; off: boolean; rules: SourceWritebackConfig } {
+  const typeId = issue.type?.id
+  const matching = typeId ? lanes.filter((lane) => lane.typeId === typeId) : []
+  const lane = matching.find((each) => each.scopeId !== undefined && each.scopeId === issue.scope?.id) ?? matching.find((each) => each.scopeId === undefined)
+  if (!lane) return { lane: WILDCARD_LANE, off: types.find((type) => type.id === typeId)?.mode === 'off', rules: config }
+  return {
+    lane: lane.typeId,
+    off: lane.mode === 'off',
+    rules: { start: lane.start ?? config.start, review: lane.review ?? config.review, done: lane.done ?? config.done, guidance: config.guidance }
   }
 }

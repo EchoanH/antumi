@@ -4,7 +4,7 @@ import { MAX_WRITEBACK_COMMENT, SourceCommentResult, SourceStatusResult, SourceT
 import { MAX_ATTACHMENT_BYTES, MAX_TASK_IMAGES } from './attachments'
 import { LoginNotice, LoginPrompt, SettingField, SourceId, SourceIssue, SourceProblem } from './source'
 import { TextTranslations } from './localization'
-import { WritebackRuleHints } from './source-writeback-rules'
+import { WritebackRuleHints, WritebackType } from './source-writeback-rules'
 import { PluginBrowserRequest, PluginBrowserResult, PluginBrowserSite } from './plugin-browser'
 
 export const PLUGIN_PROTOCOL_VERSION = 1
@@ -14,7 +14,9 @@ export const PluginSource = z.object({ id: SourceId, name: z.string().min(1).max
   // With writeback: the tracker takes no comments through its API, only status moves.
   writebackComment: z.literal(false).optional(),
   // With writeback: how settings offer each stage's status (docs/SOURCE-WRITEBACK.md).
-  writebackRules: WritebackRuleHints.optional() })
+  writebackRules: WritebackRuleHints.optional(),
+  // With writeback: the issue types the tracker has, where they are fixed, each with its own stages.
+  writebackTypes: z.array(WritebackType).max(32).optional() })
 // A page the plugin draws itself, which the desktop shows in a sandboxed frame. entry is its HTML,
 // in a directory of its own inside the package: everything in that directory is served to the frame.
 export const PluginPageId = z.string().regex(/^[a-z][a-z0-9-]{0,31}$/)

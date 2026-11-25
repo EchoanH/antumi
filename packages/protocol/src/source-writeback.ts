@@ -22,16 +22,48 @@ export const SourceTransitionOption = z.object({
   id: z.string().min(1).max(500),
   name: z.string().min(1).max(100),
   action: z.string().min(1).max(100).optional(),
-  category: StatusCategory
+  category: StatusCategory,
+  // The status the move ends in, by the tracker's id for it, where it has one.
+  toStatusId: z.string().min(1).max(500).optional()
 })
 export type SourceTransitionOption = z.infer<typeof SourceTransitionOption>
 
+// Someone on the tracker, by an id that stays the same: an account id, a login, a nick.
+export const SourceUser = z.object({ id: z.string().min(1).max(500), name: z.string().max(200) })
+export type SourceUser = z.infer<typeof SourceUser>
+const Named = z.object({ id: z.string().min(1).max(500), name: z.string().max(200) })
+
+// Besides where the issue can go: who it is with and what it is, as the tracker has it now. These
+// are facts only, what to make of them is core's (sourceOwnership, resolveLane); a plugin from
+// before SDK 0.7 leaves them out. See docs/SOURCE-AUTOMATION.md.
 export const SourceTransitions = z.object({
   status: z.string().max(100),
   statusCategory: StatusCategory,
-  options: z.array(SourceTransitionOption).max(100)
+  options: z.array(SourceTransitionOption).max(100),
+  statusId: z.string().min(1).max(500).optional(),
+  // The account these calls run as, and everyone the issue is assigned to; empty when no one is.
+  viewer: SourceUser.optional(),
+  assignees: z.array(SourceUser).max(50).optional(),
+  reporter: SourceUser.nullable().optional(),
+  // The issue's type (a bug, a story) and the project or team it is in.
+  type: Named.optional(),
+  scope: Named.optional()
 })
 export type SourceTransitions = z.infer<typeof SourceTransitions>
+
+// Whose the issue is, to the account Antumi writes as. A rule writes to an issue that is the
+// user's alone, or no one's; never to one that is someone else's, as once it is handed to QA.
+// unknown: the plugin does not say, so a rule runs as it did before there was a guard.
+export const SOURCE_OWNERSHIPS = ['sole', 'unassigned', 'shared', 'other', 'unknown'] as const
+export const SourceOwnership = z.enum(SOURCE_OWNERSHIPS)
+export type SourceOwnership = z.infer<typeof SourceOwnership>
+
+export function sourceOwnership({ viewer, assignees }: Pick<SourceTransitions, 'viewer' | 'assignees'>): SourceOwnership {
+  if (!viewer || !assignees) return 'unknown'
+  if (assignees.length === 0) return 'unassigned'
+  if (!assignees.some((assignee) => assignee.id === viewer.id)) return 'other'
+  return assignees.length === 1 ? 'sole' : 'shared'
+}
 
 export const SourceStatusResult = z.object({ status: z.string().max(100), statusCategory: StatusCategory })
 export type SourceStatusResult = z.infer<typeof SourceStatusResult>
@@ -62,13 +94,52 @@ export const SourceWrite = z.object({
   result: z.string().nullable(),
   url: z.string().nullable(),
   reason: z.string().nullable(),
-  createdAt: z.number(), updatedAt: z.number()
+  createdAt: z.number(), updatedAt: z.number(),
+  // Of a rule's write: whose the issue was found to be, and the lane the rule came from (a type
+  // id, or * for the source's own rules). Absent on a write by hand and on older records.
+  guard: SourceOwnership.optional(),
+  lane: z.string().max(500).optional(),
+  // A dry run: detail is what would have been written, and nothing was.
+  planned: z.boolean().optional(),
+  // How many times a status move was tried before this record of it.
+  attempts: z.number().int().nonnegative().optional()
 })
 export type SourceWrite = z.infer<typeof SourceWrite>
 
-// The summary the agent drafted for the issue; Antumi posts it, never the agent.
-export const SourceReport = z.object({ text: z.string().max(MAX_SOURCE_REPORT), updatedAt: z.number() })
+// How the agent's work on the issue ended: handed over, a question answered, waiting on an answer
+// from the tracker, or stuck. Core acts on it; the agent never writes to the tracker itself.
+export const SOURCE_OUTCOMES = ['delivered', 'answered', 'needs_input', 'blocked'] as const
+export const SourceOutcome = z.enum(SOURCE_OUTCOMES)
+export type SourceOutcome = z.infer<typeof SourceOutcome>
+
+// The summary the agent drafted for the issue; Antumi posts it, never the agent. verification is
+// for whoever checks the work next: how to, and what it touches.
+export const SourceReport = z.object({
+  text: z.string().max(MAX_SOURCE_REPORT), updatedAt: z.number(),
+  outcome: SourceOutcome.optional(),
+  verification: z.string().max(SOURCE_REPORT_LIMIT).optional(),
+  question: z.string().max(SOURCE_REPORT_LIMIT).optional(),
+  blocker: z.string().max(SOURCE_REPORT_LIMIT).optional()
+})
 export type SourceReport = z.infer<typeof SourceReport>
+
+// What a rule would write at one stage, asked before the task gets there: nothing is written.
+export const SourceWritePlan = z.object({
+  target: SourceUpdateTarget,
+  trigger: z.enum(['start', 'review', 'done']),
+  ownership: SourceOwnership,
+  dryRun: z.boolean(),
+  lane: z.string(),
+  status: z.string(),
+  actions: z.array(z.object({
+    kind: z.enum(['status', 'comment']),
+    // The status it would move to, or the comment's text (empty when written from the last reply).
+    detail: z.string(),
+    will: z.boolean(),
+    reason: z.string().nullable()
+  }))
+})
+export type SourceWritePlan = z.infer<typeof SourceWritePlan>
 
 export const SourceWriteback = z.object({
   target: SourceUpdateTarget,
