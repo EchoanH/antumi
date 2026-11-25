@@ -1,6 +1,7 @@
+import { rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { antigravityTranscripts } from './antigravity-transcripts'
+import { antigravitySessionsRoot, antigravityTranscripts } from './antigravity-transcripts'
 import type { ChatCatalog } from '@antumi/protocol'
 import { probeChatCatalog } from '../../chat-catalog'
 import type { AgentAdapter } from '../agent-adapter'
@@ -8,6 +9,8 @@ import { AcpDriver } from '../acp/acp-driver'
 import { antigravityDialect } from './antigravity-dialect'
 import { readAntigravityUsage } from './antigravity-usage'
 import { antigravityInstallation, antigravityServer, antigravitySignedIn, detectAntigravity, requireAntigravity } from './antigravity-runtime'
+
+const CATALOG_TIMEOUT_MS = 60_000
 
 // The registry's Linux launch: started as root without it, the server drops to nobody.
 const args = (): string[] => process.platform === 'linux' ? ['--uid='] : []
@@ -18,7 +21,15 @@ const command = () => ({ command: antigravityServer() ?? 'agy_acp_server', args:
 // open the sign-in page in the browser with nobody having asked.
 async function antigravityCatalog(cwd: string): Promise<ChatCatalog | null> {
   if (!await antigravitySignedIn()) return null
-  return probeChatCatalog(new AcpDriver(antigravityDialect, 'catalog', { cwd, extraDirs: [], resume: null }), { ...command(), command: await requireAntigravity() }, cwd)
+  const driver = new AcpDriver(antigravityDialect, 'catalog', { cwd, extraDirs: [], resume: null }, true)
+  try {
+    return await probeChatCatalog(driver, { ...command(), command: await requireAntigravity() }, cwd, CATALOG_TIMEOUT_MS)
+  } finally {
+    const sessionId = driver.providerSessionId()
+    if (sessionId && /^[\w-]+$/.test(sessionId)) {
+      await Promise.all(['.db', '.db-wal', '.db-shm', '.meta'].map((suffix) => rm(path.join(antigravitySessionsRoot(), sessionId + suffix), { force: true, maxRetries: 3, retryDelay: 100 }).catch(() => {})))
+    }
+  }
 }
 
 export const antigravity: AgentAdapter = {
@@ -37,6 +48,7 @@ export const antigravity: AgentAdapter = {
   startTimeoutMs: 360_000,
   mcpApproval: 'antumi',
   catalog: antigravityCatalog,
+  partialStageCatalog: true,
   detect: detectAntigravity,
   usage: readAntigravityUsage,
   installation: antigravityInstallation,

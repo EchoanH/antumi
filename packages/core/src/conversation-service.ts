@@ -1622,8 +1622,8 @@ export class ConversationService {
     }
     const known = this.catalogs.get(agent)
     if (known) return known
-    const found = this.freshCatalogs.has(agent) ? null : this.catalogFromStages(agent)
     const adapter = adapterOf(agent)
+    const found = this.freshCatalogs.has(agent) || adapter.partialStageCatalog ? null : this.catalogFromStages(agent)
     const catalog = found ? Promise.resolve(found) : agentCliAccess.use(agent, () => adapter.catalog ? adapter.catalog(this.sessionsRoot) : this.probeCatalog(agent)).then((result) => {
       this.catalogProblems.delete(agent)
       return result
@@ -1667,7 +1667,7 @@ export class ConversationService {
     if (this.store.activeStage(conversationId)?.route) return
     const catalog = catalogOf(items)
     const agent = this.store.get(conversationId)?.agent
-    if (catalog && agent) this.catalogs.set(agent, Promise.resolve(catalog))
+    if (catalog && agent && !adapterOf(agent).partialStageCatalog) this.catalogs.set(agent, Promise.resolve(catalog))
   }
 
   // Lists read a small saved summary instead of replaying every conversation's chat log.

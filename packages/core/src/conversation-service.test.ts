@@ -8,6 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ConversationService, type ConversationEvent } from './conversation-service'
 import { ConversationStore } from './conversation-store'
 import { dsh } from './agents/dsh/dsh-adapter'
+import { antigravity } from './agents/antigravity/antigravity-adapter'
+import { ChatLog } from './chat-log'
 import { Rejection } from './rejection'
 import { AttachmentStore } from './attachment-store'
 import { fakeChatDaemon } from './fake-chat-agent'
@@ -1198,6 +1200,60 @@ describe('ConversationService', () => {
     expect(daemon.spawns.at(-1)?.args).toEqual(expect.arrayContaining(['--effort', 'high']))
     await expect(service.create('claude', [], false, { model: 'opus' })).rejects.toMatchObject({ reason: 'chat-option-invalid' })
     await expect(service.create('claude', [], false, { model: 'haiku', effort: 'low' })).rejects.toMatchObject({ reason: 'chat-option-invalid' })
+  })
+
+  it('uses a complete Antigravity catalog across restarts and live updates, and starts with its saved model and effort', async () => {
+    const catalog = { models: [
+      { id: 'flash', label: 'Flash', description: null, efforts: ['low', 'medium', 'high'], isDefault: true },
+      { id: 'neon', label: 'Neon', description: null, efforts: ['low', 'medium', 'high', 'xhigh'], isDefault: false }
+    ] }
+    const config = (model: string) => ({ configOptions: [
+      { id: 'mode', name: 'Session Mode', category: 'mode', currentValue: 'default', options: [{ value: 'default', name: 'Default' }] },
+      { id: 'model', name: 'Model', category: 'model', currentValue: model, options: catalog.models.map((entry) => ({ value: entry.id, name: entry.label })) },
+      { id: 'thinking_level', name: 'Thinking Level', category: 'thought_level', currentValue: 'low', options: (catalog.models.find((entry) => entry.id === model)?.efforts ?? []).map((value) => ({ value, name: value })) }
+    ] })
+    const init = { protocolVersion: 1, authMethods: [{ id: 'oauth-personal' }] }
+    const recorded = store.create('antigravity', root, [root], randomUUID(), {})
+    const stage = store.startStage(recorded.id, 'antigravity', 'recorded', 0)
+    ChatLog.of(path.join(root, 'sessions'), recorded.id, stage.id).append([
+      { dir: 'out', at: 0, frame: { id: 'antigravity-init', method: 'initialize' } },
+      { dir: 'in', at: 1, frame: { id: 'antigravity-init', result: init } },
+      { dir: 'out', at: 2, frame: { id: 'antigravity-auth', method: 'authenticate' } },
+      { dir: 'in', at: 3, frame: { id: 'antigravity-auth', result: {} } },
+      { dir: 'out', at: 4, frame: { id: 'antigravity-session', method: 'session/new' } },
+      { dir: 'in', at: 5, frame: { id: 'antigravity-session', result: { sessionId: 'recorded', ...config('flash') } } }
+    ])
+    expect(service.stageChatItems(recorded.id, stage.id).findLast((item) => item.kind === 'state')?.models[1]?.efforts).toEqual([])
+    const probe = vi.spyOn(antigravity, 'catalog').mockResolvedValue(catalog)
+    if (!antigravity.launch) throw new Error('missing Antigravity launch')
+    const prepare = vi.spyOn(antigravity.launch, 'prepare').mockResolvedValue({})
+    try {
+      expect(await service.chatCatalog('antigravity')).toEqual(catalog)
+      expect(probe).toHaveBeenCalledTimes(1)
+      service = serve()
+      expect(await service.chatCatalog('antigravity')).toEqual(catalog)
+      expect(probe).toHaveBeenCalledTimes(2)
+      await expect(service.validateStartOptions('antigravity', { model: 'neon', effort: 'xhigh' })).resolves.toBeUndefined()
+      const sessionId = `pipe-${daemon.spawns.length + 1}`
+      const creating = service.create('antigravity', [], false, { model: 'neon', effort: 'xhigh' })
+      const answer = async (id: string, result: unknown) => {
+        await vi.waitFor(() => expect(daemon.written(sessionId)).toEqual(expect.arrayContaining([expect.objectContaining({ id })])))
+        daemon.emit(sessionId, { id, result })
+      }
+      await answer('antigravity-init', init)
+      await answer('antigravity-auth', {})
+      await answer('antigravity-session', { sessionId: 'live', ...config('flash') })
+      await answer('antigravity-initial-model', config('neon'))
+      await answer('antigravity-initial-effort', {})
+      const created = await creating
+      expect(service.configuration(created.id)).toMatchObject({ model: 'neon', effort: 'xhigh' })
+      expect(await service.chatCatalog('antigravity')).toEqual(catalog)
+      expect(probe).toHaveBeenCalledTimes(2)
+      const live = service.stageChatItems(created.id, service.stages(created.id).at(-1)!.id).findLast((item) => item.kind === 'state')
+      expect(live?.models.find((model) => model.isDefault)?.id).toBe('neon')
+      expect(service.messages(created.id)).toEqual([])
+      await service.stop(created.id)
+    } finally { probe.mockRestore(); prepare.mockRestore() }
   })
 
   it('says why an agent listed no models, until it lists some', async () => {
