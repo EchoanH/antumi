@@ -8,6 +8,6 @@ export function codeartsBridgeCommand(): AgentCommand {
   if (!import.meta.url.endsWith('.ts')) {
     return { command: process.execPath, args: [fileURLToPath(new URL('./codearts-bridge.mjs', import.meta.url))], env: { ELECTRON_RUN_AS_NODE: '1' } }
   }
-  const loader = fileURLToPath(new URL('../node_modules/tsx/dist/loader.mjs', import.meta.url))
+  const loader = new URL('../node_modules/tsx/dist/loader.mjs', import.meta.url).href
   return { command: process.execPath, args: ['--import', loader, fileURLToPath(new URL('./codearts-bridge-main.ts', import.meta.url))] }
 }

@@ -4,6 +4,7 @@ import { gitOrNull } from './git-changes'
 import { Rejection } from './rejection'
 import { execFileAsync } from './hidden-exec'
 import { worktreeOwner } from './worktree-owner'
+import { gitWorktreeFields, worktreeFieldPath } from './git-workspaces'
 
 
 const MAX_REFS = 300
@@ -16,15 +17,18 @@ async function refsUnder(dir: string, prefix: string): Promise<string[]> {
 // Branches checked out in the repo's other worktrees, by full name, to the worktree's folder; and
 // the repo's own folder, which git lists first.
 async function checkedOutElsewhere(dir: string, topLevel: string): Promise<{ elsewhere: Record<string, string>; main: string | null }> {
-  const listing = (await gitOrNull(dir, ['worktree', 'list', '--porcelain'])) ?? ''
+  const fields = await gitWorktreeFields(dir).catch(() => [])
   const elsewhere: Record<string, string> = {}
-  const entries = listing.split('\n\n')
-  for (const entry of entries) {
-    const folder = /^worktree (.+)$/m.exec(entry)?.[1]
-    const branch = /^branch (.+)$/m.exec(entry)?.[1]
-    if (folder && branch && path.resolve(folder) !== path.resolve(topLevel)) elsewhere[branch] = folder
+  const here = path.normalize(topLevel)
+  let main: string | null = null
+  let folder: string | null = null
+  for (const field of fields) {
+    if (!field) folder = null
+    const worktree = worktreeFieldPath(field)
+    if (worktree !== null) { folder = worktree; main ??= worktree }
+    if (folder && folder !== here && field.startsWith('branch ')) elsewhere[field.slice(7)] = folder
   }
-  return { elsewhere, main: /^worktree (.+)$/m.exec(entries[0] ?? '')?.[1] ?? null }
+  return { elsewhere, main }
 }
 
 // Who holds each branch checked out in another folder: the repo's own folder, a conversation

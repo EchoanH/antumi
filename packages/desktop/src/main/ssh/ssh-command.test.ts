@@ -1,5 +1,6 @@
 import { ChildProcess, execFileSync, type SpawnOptions } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import path from 'node:path'
 import { PassThrough } from 'node:stream'
 import { describe, expect, it } from 'vitest'
 import { remoteCommand, runOverSsh, shellQuote, sshArgs, sshExecutable, validSshDestination, type SshHost } from './ssh-command'
@@ -45,7 +46,16 @@ function fakeHost(controlDir: string | null, reply: (args: string[], options: Sp
 }
 
 // The shells a server's user may log in with, as found here.
-const SHELLS = ['/bin/sh', '/bin/bash', '/bin/zsh', '/opt/homebrew/bin/fish', '/usr/bin/fish', '/usr/local/bin/fish'].filter((shell) => existsSync(shell))
+const POSIX_SHELLS = ['/bin/sh', '/bin/bash', '/bin/zsh', '/opt/homebrew/bin/fish', '/usr/bin/fish', '/usr/local/bin/fish']
+
+// Git for Windows provides an actual POSIX shell to exercise the server-side command.
+function testShells(): string[] {
+  if (process.platform !== 'win32') return POSIX_SHELLS.filter((shell) => existsSync(shell))
+  const gitExecPath = execFileSync('git', ['--exec-path'], { encoding: 'utf8' }).trim()
+  return ['sh.exe', 'bash.exe'].map((shell) => path.resolve(gitExecPath, '../../../bin', shell)).filter((shell) => existsSync(shell))
+}
+
+const SHELLS = testShells()
 
 describe('remoteCommand', () => {
   const tricky = ['plain', 'two words', "it's", 'a"b', '$HOME', '`id`', '$(id)', 'back\\slash', 'line\nbreak', '!bang', '*', '~', '', '中文', '--', '-n', "'\\''"]
@@ -59,7 +69,9 @@ describe('remoteCommand', () => {
   })
 
   it('sets the environment it is given, and refuses a name that is not one', () => {
-    const out = execFileSync('/bin/sh', ['-c', remoteCommand(['/bin/sh', '-c', 'printf %s "$GREETING"'], { GREETING: "it's $HOME" })], { encoding: 'utf8' })
+    const shell = SHELLS[0]
+    if (!shell) throw new Error('no POSIX shell to test the remote command')
+    const out = execFileSync(shell, ['-c', remoteCommand(['/bin/sh', '-c', 'printf %s "$GREETING"'], { GREETING: "it's $HOME" })], { encoding: 'utf8' })
     expect(out).toBe("it's $HOME")
     expect(() => remoteCommand(['x'], { 'A B': '1' })).toThrow('ssh-bad-env-name')
     expect(() => remoteCommand([])).toThrow('ssh-empty-command')

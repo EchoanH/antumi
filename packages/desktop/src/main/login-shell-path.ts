@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { posix, win32 } from 'node:path'
 import { AGENT_KINDS, agentDescriptor } from '@antumi/protocol'
 
 const PATH_MARK = '__ANTUMI_PATH__'
@@ -24,7 +24,7 @@ export async function loginShellPath(platform: NodeJS.Platform = process.platfor
   if (platform === 'win32') {
     const parts = (env.PATH ?? '').split(';').filter(Boolean)
     const local = env.LOCALAPPDATA
-    const installed = local ? AGENT_KINDS.flatMap((kind) => agentDescriptor(kind).windowsPathDirs ?? []).map((dir) => join(local, dir)) : []
+    const installed = local ? AGENT_KINDS.flatMap((kind) => agentDescriptor(kind).windowsPathDirs ?? []).map((dir) => win32.join(local, dir)) : []
     for (const dir of installed) {
       if (!parts.some((part) => part.toLowerCase() === dir.toLowerCase())) parts.push(dir)
     }
@@ -34,7 +34,7 @@ export async function loginShellPath(platform: NodeJS.Platform = process.platfor
   const found = markedPath(await run(shell, ['-i', '-l', '-c', PRINT_PATH])) ?? markedPath(await run(shell, ['-l', '-c', PRINT_PATH]))
   const parts = (found ?? env.PATH ?? '').split(':').filter(Boolean)
   // Where CLIs land that a Finder-launched app's minimal PATH misses.
-  for (const dir of ['/opt/homebrew/bin', '/usr/local/bin', join(home, '.local/bin')]) {
+  for (const dir of ['/opt/homebrew/bin', '/usr/local/bin', posix.join(home, '.local/bin')]) {
     if (!parts.includes(dir)) parts.push(dir)
   }
   return parts.join(':')

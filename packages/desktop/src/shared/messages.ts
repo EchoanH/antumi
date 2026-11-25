@@ -2267,6 +2267,10 @@ export const MESSAGES = {
     "zh": "中断",
     "en": "Interrupt"
   },
+  "ChatComposer.cancelStartup": {
+    "zh": "取消启动",
+    "en": "Cancel startup"
+  },
   "ChatComposer.sendAfterTheTurn": {
     "zh": "回合结束后发送",
     "en": "Send after this turn"
@@ -11435,6 +11439,14 @@ export const MESSAGES = {
   "labels.agentStartupTimedOut": {
     "zh": "Agent 太久没有完成启动",
     "en": "Agent startup timed out"
+  },
+  "labels.agentStartupCancelled": {
+    "zh": "已取消智能体启动",
+    "en": "Agent startup cancelled"
+  },
+  "labels.agentStopTimedOut": {
+    "zh": "尚未确认智能体已停止，请重试",
+    "en": "The agent has not confirmed it stopped. Try again."
   },
   "labels.runningDaemonIsTooOldForChatRestart": {
     "zh": "Antumi 后台（daemon）是旧版本，重启后才能用：等正在跑的 Agent 和终端结束，退出 Antumi，结束 Antumi 的后台进程再重新打开。从源码运行时重启 pnpm dev:daemon。",

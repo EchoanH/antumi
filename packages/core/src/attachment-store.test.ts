@@ -18,14 +18,15 @@ describe('AttachmentStore', () => {
   })
 
   it('stores an image once under the hash of its bytes, owner-only', async () => {
-    const [first, second] = await Promise.all([store.put(pngBytes(4, 3)), store.put(pngBytes(4, 3))])
-    expect(first).toEqual(second)
+    const [first, ...others] = await Promise.all(Array.from({ length: 4 }, () => new AttachmentStore(dir).put(pngBytes(4, 3))))
+    expect(others).toEqual([first, first, first])
     expect(first).toMatchObject({ mime: 'image/png', width: 4, height: 3 })
     expect(first?.id).toMatch(/^[0-9a-f]{64}\.png$/)
     const file = path.join(dir, first?.id ?? '')
     if (process.platform !== 'win32') {
       expect(statSync(file).mode & 0o777).toBe(0o600)
     }
+    expect(readdirSync(dir)).toEqual([first?.id])
     expect(await new AttachmentStore(dir).info(first?.id ?? '')).toEqual(first)
     const bytes = await store.read(first?.id ?? '', 0, 8)
     expect([...bytes]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
@@ -80,11 +81,12 @@ describe('AttachmentStore', () => {
   it('keeps a long paste once per conversation, in that conversation\'s own folder', async () => {
     const conversation = '0b5c3a1e-7f2d-4c8e-9a61-2d4f8e7c1b30'
     const text = Buffer.from('第一行\nsecond line\n')
-    const [first, second] = await Promise.all([store.putText(conversation, text), store.putText(conversation, text)])
+    const [first, second] = await Promise.all([store.putText(conversation, text), new AttachmentStore(dir).putText(conversation, text)])
     expect(first).toBe(second)
     expect(path.dirname(first)).toBe(store.pastedTextDir(conversation))
     expect(path.basename(first)).toMatch(/^pasted-[0-9a-f]{64}\.txt$/)
     expect(readFileSync(first, 'utf8')).toBe('第一行\nsecond line\n')
+    expect(readdirSync(path.dirname(first))).toEqual([path.basename(first)])
     if (process.platform !== 'win32') {
       expect(statSync(first).mode & 0o777).toBe(0o600)
     }
@@ -92,12 +94,21 @@ describe('AttachmentStore', () => {
     await expect(store.putText('../antumi.db', text)).rejects.toMatchObject({ reason: 'conversation-not-found' })
   })
 
+  it('does not mistake a failed rename to a non-file for a second writer', async () => {
+    const info = await store.hold(pngBytes(4, 3))
+    mkdirSync(path.join(dir, info.id))
+    await expect(store.put(pngBytes(4, 3))).rejects.toThrow()
+    expect(readdirSync(dir)).toEqual([info.id])
+    expect(await store.pathOf(info.id)).toBeNull()
+  })
+
   it('does not follow a symlink planted under an image name', async () => {
     const outside = path.join(dir, 'outside')
     mkdirSync(outside)
     writeFileSync(path.join(outside, 'secret.txt'), 'secret')
     const id = `${'b'.repeat(64)}.png`
-    symlinkSync(path.join(outside, 'secret.txt'), path.join(dir, id))
+    if (process.platform === 'win32') symlinkSync(outside, path.join(dir, id), 'junction')
+    else symlinkSync(path.join(outside, 'secret.txt'), path.join(dir, id), 'file')
     await expect(store.read(id, 0, 6)).rejects.toMatchObject({ reason: 'attachment-not-found' })
     expect(await store.pathOf(id)).toBeNull()
   })

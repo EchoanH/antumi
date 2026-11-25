@@ -87,6 +87,8 @@ export type AgentStage = { sessionsRoot: string; conversationId: string; stageId
 // writing one and registering it (agents/index.ts).
 export interface AgentAdapter {
   readonly maintenance?: {
+    // The adapter detects its app-managed runtime and already knows its pinned version.
+    managedRuntime?: boolean
     packageName?: string
     packageArgs?: readonly string[]
     // The newest release Antumi was checked with, for a CLI whose releases have broken it before:
@@ -128,6 +130,8 @@ export interface AgentAdapter {
   readonly warmup?: { probe: QuickCommand; args(printed: string): string[] }
   // Its models without a chat to read them from; without it, a probe of its chat protocol.
   catalog?(cwd: string): Promise<ChatCatalog | null>
+  // A chat stage lists reasoning levels only for the model it currently runs, not the whole catalog.
+  readonly partialStageCatalog?: boolean
   // How the environment check finds it; without it, its kind on PATH, asked for --version.
   detect?(pathEnv: string, platform: NodeJS.Platform): Promise<AgentDetection>
   // null: it could not tell.

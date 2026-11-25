@@ -25,23 +25,25 @@ const PINS: Record<string, Pin> = {
 type Host = { platform: NodeJS.Platform; arch: string; home: string }
 const thisHost = (): Host => ({ platform: process.platform, arch: process.arch, home: antumiHome() })
 const pinOf = (host: Host): Pin | null => PINS[`${host.platform}-${host.arch}`] ?? null
+const pathFor = (host: Host) => host.platform === 'win32' ? path.win32 : path.posix
 
 // One folder per version, renamed into place once whole: a folder there is a finished install.
 export function antigravityRuntimeDir(host: Host = thisHost()): string {
-  return path.join(host.home, 'runtimes', 'antigravity-acp', ANTIGRAVITY_VERSION)
+  return pathFor(host).join(host.home, 'runtimes', 'antigravity-acp', ANTIGRAVITY_VERSION)
 }
 
 // The server this host runs, whether or not it is installed yet; null where Google builds none.
 export function antigravityServer(host: Host = thisHost()): string | null {
   const pin = pinOf(host)
-  return pin ? path.join(antigravityRuntimeDir(host), pin.server) : null
+  return pin ? pathFor(host).join(antigravityRuntimeDir(host), pin.server) : null
 }
 
 async function installed(host: Host): Promise<string | null> {
   const server = antigravityServer(host)
   if (!server) return null
   const mode = host.platform === 'win32' ? constants.F_OK : constants.X_OK
-  const whole = await Promise.all([access(server, mode), access(path.join(path.dirname(server), host.platform === 'win32' ? 'localharness_external.exe' : 'localharness_external'))]).then(() => true, () => false)
+  const harness = pathFor(host).join(antigravityRuntimeDir(host), host.platform === 'win32' ? 'localharness_external.exe' : 'localharness_external')
+  const whole = await Promise.all([access(server, mode), access(harness)]).then(() => true, () => false)
   return whole ? server : null
 }
 
@@ -95,10 +97,17 @@ export function antigravityInstallation(platform: NodeJS.Platform, host: Host = 
     agent: 'antigravity',
     shell: 'bash',
     command: [
-      `d=${quoted(dir)}; z="$(mktemp -d)/agy-acp.zip"`,
+      `(set -o pipefail; if command -v unzip >/dev/null; then extractor=unzip; elif command -v python3 >/dev/null; then extractor=python3; else printf '%s\\n' '安装 Antigravity 需要 unzip 或 Python 3，请安装其中一个后重试。' >&2; exit 1; fi`,
+      `d=${quoted(dir)}`,
+      'tmp="$(mktemp -d)"',
+      `trap 'rm -rf -- "$tmp"' EXIT`,
+      'z="$tmp/agy-acp.zip"',
       `curl -fL --progress-bar ${quoted(url)} -o "$z"`,
       `echo "${pin.sha256}  $z" | ${sum}`,
-      `rm -rf "$d.partial" && mkdir -p "$d.partial" && unzip -q "$z" -d "$d.partial" && rm -rf "$d" && mv "$d.partial" "$d" && rm -f "$z"`
+      `rm -rf "$d.partial" && mkdir -p "$d.partial"`,
+      `if [ "$extractor" = unzip ]; then unzip -q "$z" -d "$d.partial"; else python3 -I -m zipfile -e "$z" "$d.partial" && chmod u+x "$d.partial/${pin.server}" "$d.partial/localharness_external"; fi`,
+      `test -x "$d.partial/${pin.server}" && test -x "$d.partial/localharness_external"`,
+      `rm -rf "$d" && mv "$d.partial" "$d")`
     ].join(' && ')
   }
 }

@@ -28,14 +28,14 @@ describe('ProjectRegistry', () => {
   it('lists projects most recent first, a repeat moving to the front', () => {
     projects.remember(['/a', '/b'])
     projects.remember(['/a'])
-    expect(projects.recent()).toEqual(['/a', '/b'])
+    expect(projects.recent()).toEqual([path.normalize('/a'), path.normalize('/b')])
   })
 
   it('stores and forgets paths in their normal form', () => {
     projects.remember(['/code/tmp/../app'])
     projects.remember(['/code/./lib'])
-    expect(projects.recent()).toEqual(['/code/lib', '/code/app'])
+    expect(projects.recent()).toEqual(['/code/lib', '/code/app'].map((file) => path.normalize(file)))
     projects.forget('/code/lib/../app')
-    expect(projects.recent()).toEqual(['/code/lib'])
+    expect(projects.recent()).toEqual([path.normalize('/code/lib')])
   })
 })

@@ -69,7 +69,7 @@ export type ChannelGatewayLauncher = (onMessage: (message: ChannelGatewayToCore)
 export const forkChannelGateway: ChannelGatewayLauncher = (onMessage, onExit) => {
   const fromSource = import.meta.url.endsWith('.ts')
   const script = fileURLToPath(new URL(fromSource ? './channel-gateway-main.ts' : './channel-gateway.mjs', import.meta.url))
-  const execArgv = fromSource ? ['--import', fileURLToPath(new URL('../node_modules/tsx/dist/loader.mjs', import.meta.url))] : []
+  const execArgv = fromSource ? ['--import', new URL('../node_modules/tsx/dist/loader.mjs', import.meta.url).href] : []
   const child: ChildProcess = fork(script, [], {
     execArgv,
     stdio: ['ignore', 'inherit', 'inherit', 'ipc'],

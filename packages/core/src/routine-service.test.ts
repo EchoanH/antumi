@@ -1,7 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextOccurrence, type AgentKind, type AgentUsage, type Routine, type RoutineFields, type UnattendedMode } from '@antumi/protocol'
 import { UNATTENDED_NOTE } from './agent-prompt'
@@ -16,6 +15,7 @@ import { RoutineService } from './routine-service'
 import { ScheduleService } from './schedule-service'
 import { UsageLimitResumes } from './usage-limit-resume'
 import { TaskStore } from './task-store'
+import { withTestDatabase } from './test-database'
 
 const HOUR = 3_600_000
 const DAY = 24 * HOUR
@@ -120,7 +120,7 @@ describe('RoutineService', () => {
   }
 
   const runs = (id: string) => schedules.runsFor(id, null, 50)
-  const rawRuns = () => new DatabaseSync(database).prepare('SELECT id, status, due_at AS dueAt, finished_at AS finishedAt, outcome, seen_at AS seenAt, error FROM scheduled_runs ORDER BY created_at, rowid').all()
+  const rawRuns = () => withTestDatabase(database, (raw) => raw.prepare('SELECT id, status, due_at AS dueAt, finished_at AS finishedAt, outcome, seen_at AS seenAt, error FROM scheduled_runs ORDER BY created_at, rowid').all())
   const userTexts = (id: string) => conversations.chatPage(id).items.flatMap((item) => (item.kind === 'user' ? [item.text] : []))
 
   beforeEach(() => {
@@ -138,9 +138,9 @@ describe('RoutineService', () => {
     serve()
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    await schedules.stop()
     routines.stop()
-    schedules.stop()
     projects.close()
     store.close()
     tasks.close()
@@ -184,7 +184,7 @@ describe('RoutineService', () => {
     clock = dueAt
     await tick()
     // Core stopped between inserting the run and moving the routine on.
-    new DatabaseSync(database).prepare('UPDATE routines SET next_run_at = ? WHERE id = ?').run(dueAt, routine.id)
+    withTestDatabase(database, (raw) => raw.prepare('UPDATE routines SET next_run_at = ? WHERE id = ?').run(dueAt, routine.id))
     await tick()
     expect(runs(routine.id)).toHaveLength(1)
     expect(routines.get(routine.id)?.nextRunAt).toBe(dueAt + DAY)
@@ -427,10 +427,10 @@ describe('RoutineService', () => {
 
   it('reads what is to come off the schedule again when it starts, leaving what is overdue to make up for', async () => {
     const { routine, dueAt } = dailySoon()
-    new DatabaseSync(database).prepare('UPDATE routines SET next_run_at = ? WHERE id = ?').run(dueAt + 12 * HOUR, routine.id)
+    withTestDatabase(database, (raw) => raw.prepare('UPDATE routines SET next_run_at = ? WHERE id = ?').run(dueAt + 12 * HOUR, routine.id))
     routines.start()
     expect(routines.get(routine.id)?.nextRunAt).toBe(dueAt)
-    new DatabaseSync(database).prepare('UPDATE routines SET next_run_at = ? WHERE id = ?').run(dueAt - 2 * DAY, routine.id)
+    withTestDatabase(database, (raw) => raw.prepare('UPDATE routines SET next_run_at = ? WHERE id = ?').run(dueAt - 2 * DAY, routine.id))
     routines.start()
     expect(routines.get(routine.id)?.nextRunAt).toBe(dueAt - 2 * DAY)
   })

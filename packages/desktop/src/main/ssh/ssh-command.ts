@@ -87,7 +87,7 @@ export function sshArgs(host: SshHost, destination: string, command: string): st
     'RemoteCommand=none',
     'ClearAllForwardings=yes',
     'PermitLocalCommand=no',
-    ...(host.controlDir ? ['ControlMaster=auto', `ControlPath=${path.join(host.controlDir, '%C')}`, 'ControlPersist=300'] : [])
+    ...(host.controlDir ? ['ControlMaster=auto', `ControlPath=${path.posix.join(host.controlDir, '%C')}`, 'ControlPersist=300'] : [])
   ]
   return ['-T', ...options.flatMap((option) => ['-o', option]), '--', destination, command]
 }

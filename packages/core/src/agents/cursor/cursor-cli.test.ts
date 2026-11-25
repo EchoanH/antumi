@@ -1,36 +1,38 @@
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cursorCliInfo, cursorSignedIn, findCursorCli, requireCursorCli } from './cursor-cli'
+import { writeTestNodeCommand } from '../../test-node-command'
 
 let root: string
-const executable = (name: string, body: string) => {
-  const file = path.join(root, name)
-  writeFileSync(file, `#!${process.execPath}\n${body}`, { mode: 0o755 })
-  return file
-}
+const windows = process.platform === 'win32'
+const executable = (name: string, body: string) => writeTestNodeCommand(root, name, body)
 
 beforeEach(() => { root = mkdtempSync(path.join(os.tmpdir(), 'antumi-cursor-cli-')) })
 afterEach(() => { vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }) })
 
 describe('Cursor CLI identity and compatibility', () => {
   it('accepts cursor-agent and its agent alias but rejects an unrelated agent executable', async () => {
-    executable('agent', "console.log('Other Agent')")
+    const unrelated = executable('agent', "console.log('Other Agent')")
     expect(await findCursorCli(root)).toBeNull()
     const cursor = executable('cursor-agent', "console.log('Cursor Agent')")
     expect(await findCursorCli(root)).toBe(cursor)
-    rmSync(path.join(root, 'agent'))
-    symlinkSync(cursor, path.join(root, 'agent'))
-    expect(await findCursorCli(root)).toBe(cursor)
+    rmSync(unrelated)
+    if (!windows) {
+      symlinkSync(cursor, unrelated)
+      expect(await findCursorCli(root)).toBe(cursor)
+      rmSync(unrelated)
+    }
     rmSync(cursor)
-    rmSync(path.join(root, 'agent'))
-    const target = executable('cursor-agent-real', 'process.exit(1)')
-    symlinkSync(target, path.join(root, 'agent'))
-    expect(await findCursorCli(root)).toBe(path.join(root, 'agent'))
-    rmSync(path.join(root, 'agent'))
-    executable('agent', "console.log('Cursor Agent')")
-    expect(await findCursorCli(root)).toBe(path.join(root, 'agent'))
+    if (!windows) {
+      const target = executable('cursor-agent-real', 'process.exit(1)')
+      symlinkSync(target, unrelated)
+      expect(await findCursorCli(root)).toBe(unrelated)
+      rmSync(unrelated)
+    }
+    const alias = executable('agent', "console.log('Cursor Agent')")
+    expect(await findCursorCli(root)).toBe(alias)
   })
 
   it('never passes an unknown acp subcommand to an older CLI that could treat it as a prompt', async () => {

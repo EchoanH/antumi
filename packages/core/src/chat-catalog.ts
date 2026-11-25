@@ -29,7 +29,7 @@ export function catalogOf(items: readonly ChatItem[]): ChatCatalog | null {
 // Runs the agent's chat protocol only as far as it lists its models, then lets it go. A probe,
 // not a session: nothing is sent to the model and nothing needs to outlive core, so it runs here
 // rather than in the daemon, as `claude --version` does.
-export function probeChatCatalog(driver: ChatDriver, command: AgentCommand, cwd: string): Promise<ChatCatalog | null> {
+export function probeChatCatalog(driver: ChatDriver, command: AgentCommand, cwd: string, timeoutMs = PROBE_TIMEOUT_MS): Promise<ChatCatalog | null> {
   return new Promise((resolve) => {
     let launch
     try {
@@ -46,11 +46,18 @@ export function probeChatCatalog(driver: ChatDriver, command: AgentCommand, cwd:
       settled = true
       clearTimeout(timer)
       if (closed || child.pid === undefined) { resolve(catalog); return }
-      const force = setTimeout(() => child.kill('SIGKILL'), 2000)
+      const kill = (hard: boolean) => {
+        if (process.platform === 'win32') {
+          spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }).on('error', () => child.kill())
+        } else child.kill(hard ? 'SIGKILL' : 'SIGTERM')
+      }
+      const force = setTimeout(() => { kill(true); resolve(catalog) }, 2000)
+      force.unref()
       child.once('close', () => { clearTimeout(force); resolve(catalog) })
-      child.kill()
+      child.stdin.end()
+      kill(false)
     }
-    const timer = setTimeout(() => finish(null), PROBE_TIMEOUT_MS)
+    const timer = setTimeout(() => finish(null), timeoutMs)
     const write = () => {
       for (const frame of driver.due()) {
         const method = z.looseObject({ method: z.string() }).safeParse(frame)
@@ -65,6 +72,7 @@ export function probeChatCatalog(driver: ChatDriver, command: AgentCommand, cwd:
     child.on('close', () => { closed = true; finish(null) })
     child.stdin.on('error', () => finish(null))
     child.stdout.on('data', createLineDecoder((line) => {
+      if (settled) return
       let frame: unknown
       try {
         frame = JSON.parse(line)

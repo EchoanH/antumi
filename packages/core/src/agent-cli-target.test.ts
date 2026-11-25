@@ -11,6 +11,15 @@ function host(overrides: Partial<CliTargetHost> = {}): CliTargetHost {
 }
 
 describe('CLI install identity and release versions', () => {
+  it('uses the detected Antigravity runtime version without launching it to check for updates', async () => {
+    const runtime = '/home/.antumi/runtimes/antigravity-acp/1.4.1/agy_acp_server.par'
+    const installed: Environment = { ...environment, checks: [{ tool: 'antigravity', status: 'ok', path: runtime, version: '1.4.1', signedIn: false }] }
+    let launched = false
+    const info = await resolveCliTarget('antigravity', installed, host({ platform: 'linux', run: async () => { launched = true; throw new Error('must not launch') } }))
+    expect(info).toMatchObject({ version: '1.4.1', path: runtime, channel: 'desktop', command: null, latestUrl: null })
+    expect(launched).toBe(false)
+  })
+
   it('closes stdin on CLI probes that wait for the end of redirected input', async () => {
     await expect(cliTargetHost.run({ command: process.execPath, args: ['-e', 'process.stdin.on(\'end\', () => console.log(\'done\')); process.stdin.resume()'] }))
       .resolves.toBe('done')

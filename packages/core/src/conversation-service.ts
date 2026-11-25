@@ -97,6 +97,8 @@ type StageLaunch = { ref?: string; fresh?: boolean; moved?: boolean; planOnly?: 
 // latest: the point is the last the agent's session holds, so the session forked whole is the same.
 // routeKey: the route that session was opened on (ProviderRoute.key), null on the agent's own account.
 type ForkPoint = { providerSessionId: string | null; at: string | null; latest: boolean; routeKey: string | null }
+type OpeningChat = { sessionId: string; stop: Promise<void> | null }
+type PendingLaunch = { agent: AgentKind; opening: OpeningChat | null; finished: Promise<void> }
 
 // A chat page stops adding older stages once it holds this many items.
 const CHAT_PAGE_ITEMS = 1000
@@ -156,7 +158,8 @@ export class ConversationService {
   private userTodos = true
   private knowledgeBase: KnowledgeBase | null = null
   private readonly retiring = new Set<string>()
-  private readonly launching = new Map<string, AgentKind>()
+  private readonly launchReleases = new Map<string, Promise<void>>()
+  private readonly launching = new Map<string, PendingLaunch>()
   // Issue conversations whose issue is being fetched, or failed to be (see openInvestigation).
   private readonly fetchingIssues = new Map<string, NonNullable<Conversation['preparing']>>()
   // Conversations whose last start took its opening into the handoff it began from.
@@ -401,7 +404,7 @@ export class ConversationService {
       .map((conversation) => [conversation.id, conversation.agent]))
     // A handoff may replace this conversation's old process before starting the new agent.
     if (existing?.sessionId && conversationId) active.delete(conversationId)
-    for (const [id, kind] of this.launching) if (!active.has(id)) active.set(id, kind)
+    for (const [id, launch] of this.launching) if (!active.has(id)) active.set(id, launch.agent)
     return active.size < this.maxConcurrentAgents &&
       [...active.values()].filter((kind) => kind === agent).length < (this.agentConcurrency[agent] ?? DEFAULT_AGENT_CONCURRENCY)
   }
@@ -1202,7 +1205,9 @@ export class ConversationService {
     // Its agent waits for the issue, which only beginInvestigation hands over.
     if (!launch.brief && this.preparingOf(this.store.get(id)!)) throw new Rejection('conversation-preparing', 'the issue is still being fetched')
     if (!this.capacityAvailable(agent)) throw new Rejection('agent-capacity', 'Agent 运行数量已达到上限，请等待其他会话结束，或预约稍后执行')
-    this.launching.set(id, agent)
+    let finish = () => {}
+    const finished = new Promise<void>((resolve) => { finish = resolve })
+    this.launching.set(id, { agent, opening: null, finished })
     try {
       const current = this.get(id)
       await this.gitGuard?.(current.projectPaths)
@@ -1220,6 +1225,7 @@ export class ConversationService {
       }
     } finally {
       this.launching.delete(id)
+      finish()
       const current = this.store.get(id)
       if (current) this.changed(current)
       this.capacityReleased?.()
@@ -1404,7 +1410,19 @@ export class ConversationService {
         }])
       }
       const opened = this.chatStage(current, stage, forkAt, knowledgeBase, userMcp)
-      await this.chats.open(opened, sessionId, 0, true)
+      const pending = this.launching.get(id)
+      const opening: OpeningChat = { sessionId, stop: null }
+      if (pending) pending.opening = opening
+      try {
+        await this.chats.open(opened, sessionId, 0, true)
+      } finally {
+        // Authentication can finish just as stop arrives. Honour a confirmed stop before any
+        // handoff or first message, and keep the launch reserved until its cleanup is done.
+        if (opening.stop && await opening.stop.then(() => true, () => false)) {
+          throw new Rejection('chat-start-cancelled', '智能体启动已取消')
+        }
+        if (pending) pending.opening = null
+      }
       const retired = this.rememberedOnProvider(this.store.chatOptions(id)[agent], opened.options.providerModels)
       if (retired.dropped) this.chats.updateNotice(opened, { dir: 'note', at: Date.now(), level: 'info', id: `provider-model:${stage.id}`, text: `服务商不再提供上次用的模型 ${retired.dropped}，这次改用它的默认模型 ${retired.instead ?? ''}`.trim() })
       await launch?.ready(agentStage)
@@ -1416,7 +1434,9 @@ export class ConversationService {
       if (current.autoInvestigationId && handoff?.ref && this.sourceDeliveryReceipt(id, handoff.ref, 'uncertain')) throw error
       // A stage that never started leaves nothing to resume, so it goes, log and all.
       this.chats.forget(sessionId, stage.id)
-      await this.daemon.request('kill', { sessionId, force: true }).catch(() => {})
+      if (!(error instanceof Rejection && error.reason === 'chat-start-cancelled')) {
+        await this.daemon.request('kill', { sessionId, force: true }).catch(() => {})
+      }
       this.store.deleteStage(stage.id)
       await rm(ChatLog.of(this.sessionsRoot, id, stage.id).file, { force: true })
       this.changed(this.store.update(id, { sessionId: null }))
@@ -1623,8 +1643,8 @@ export class ConversationService {
     if (refresh) this.invalidateCli(agent)
     const known = this.catalogs.get(agent)
     if (known) return known
-    const found = this.freshCatalogs.has(agent) ? null : this.catalogFromStages(agent)
     const adapter = adapterOf(agent)
+    const found = this.freshCatalogs.has(agent) || adapter.partialStageCatalog ? null : this.catalogFromStages(agent)
     const catalog = found ? Promise.resolve(found) : agentCliAccess.use(agent, () => adapter.catalog ? adapter.catalog(this.sessionsRoot) : this.probeCatalog(agent)).then((result) => {
       if (this.catalogs.get(agent) === catalog) this.catalogProblems.delete(agent)
       return result
@@ -1671,7 +1691,7 @@ export class ConversationService {
     if (this.store.activeStage(conversationId)?.route) return
     const catalog = catalogOf(items)
     const agent = this.store.get(conversationId)?.agent
-    if (catalog && agent) this.catalogs.set(agent, Promise.resolve(catalog))
+    if (catalog && agent && !adapterOf(agent).partialStageCatalog) this.catalogs.set(agent, Promise.resolve(catalog))
   }
 
   // Lists read a small saved summary instead of replaying every conversation's chat log.
@@ -2044,6 +2064,10 @@ export class ConversationService {
   }
 
   async interrupt(id: string): Promise<void> {
+    if (this.launching.get(id)?.opening) {
+      await this.stop(id)
+      return
+    }
     const current = this.get(id)
     this.chats.cancelAsks(id)
     const grace = adapterOf(current.agent).turns?.stopAfterCancel
@@ -2127,7 +2151,18 @@ export class ConversationService {
   }
 
   async stop(id: string): Promise<Conversation> {
-    if (this.launching.has(id)) throw new Rejection('conversation-running')
+    const pending = this.launching.get(id)
+    if (pending) {
+      const { opening } = pending
+      if (!opening) throw new Rejection('conversation-running')
+      opening.stop ??= this.stopAgent(opening.sessionId, true).catch((error: unknown) => {
+        opening.stop = null
+        throw error
+      })
+      await opening.stop
+      await pending.finished
+      return this.get(id)
+    }
     const current = this.get(id)
     if (!current.sessionId) return current
     await this.stopAgent(current.sessionId)
@@ -2142,18 +2177,22 @@ export class ConversationService {
 
   // An agent is gone only once the daemon says so: clearing the session any earlier would let a
   // continue start a second writer on the same Claude session or Codex thread.
-  private async stopAgent(sessionId: string): Promise<void> {
+  private async stopAgent(sessionId: string, requireExit = false): Promise<void> {
     const cancelStop = this.cancelStops.get(sessionId)
     if (cancelStop) return cancelStop
     const exited = new Promise<void>((resolve) => this.exitWaiters.set(sessionId, resolve))
     this.stopping.add(sessionId)
-    await this.daemon.request('kill', { sessionId })
-    if (!(await settles(exited, STOP_GRACE_MS))) {
+    try {
+      await this.daemon.request('kill', { sessionId })
+      if (await settles(exited, STOP_GRACE_MS)) return
       await this.daemon.request('kill', { sessionId, force: true }).catch(() => {})
-      await settles(exited, KILL_GRACE_MS)
+      if (!(await settles(exited, KILL_GRACE_MS)) && requireExit) {
+        throw new Rejection('chat-stop-timeout', '尚未确认智能体已停止，请重试')
+      }
+    } finally {
+      this.exitWaiters.delete(sessionId)
+      this.stopping.delete(sessionId)
     }
-    this.exitWaiters.delete(sessionId)
-    this.stopping.delete(sessionId)
   }
 
   // The cancel has already been written. Give the agent its grace to obey it, then terminate the
@@ -2226,6 +2265,9 @@ export class ConversationService {
       await rm(path.join(directory, 'handoffs'), { recursive: true, force: true })
       await rm(path.join(directory, 'stages'), { recursive: true, force: true })
       await rm(WireLog.directory(this.sessionsRoot, id), { recursive: true, force: true })
+      // A confirmed exit may already be removing its launch files. Wait before trying to remove
+      // their parent; a Windows sweep cannot tell that this known process has finished.
+      await this.launchReleases.get(id)
       // Only folders no process is shown to use; the others stay until one is.
       await this.settleLaunches().catch((error: unknown) => console.error('[antumi-core] settling launch files failed', error))
       await rmdir(launchRoot(this.sessionsRoot, id)).catch(() => {})
@@ -2361,7 +2403,11 @@ export class ConversationService {
     const launched = this.launches.get(sessionId)
     if (!launched) return
     this.launches.delete(sessionId)
-    void removeLaunch(launched).catch((error: unknown) => this.launchStuck(launched, error))
+    const id = launched.conversationId
+    const removing = removeLaunch(launched).catch((error: unknown) => this.launchStuck(launched, error))
+    const releases = Promise.all([this.launchReleases.get(id), removing]).then(() => {})
+    this.launchReleases.set(id, releases)
+    void releases.then(() => { if (this.launchReleases.get(id) === releases) this.launchReleases.delete(id) })
   }
 
   // One that would not go (a file Windows holds) is tried again with the rest.

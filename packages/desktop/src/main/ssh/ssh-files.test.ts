@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { describe, expect, it } from 'vitest'
-import { shellQuote, type SshHost } from './ssh-command'
+import { nodeSshHost, shellQuote, type SshHost } from './ssh-command'
 import { putOnServer, readServerFile, remoteEditorUrl, serverIsDirectory } from './ssh-files'
 
 class FakeChild extends ChildProcess {
@@ -25,10 +25,8 @@ type Call = { script: string; argv: string[]; input: Buffer }
 function server(answer: (call: Call) => { code: number; stdout?: Buffer | string; stderr?: string }) {
   const calls: Call[] = []
   const host: SshHost = {
-    platform: 'darwin',
-    env: {},
-    isFile: (file) => file === '/usr/bin/ssh',
-    controlDir: null,
+    ...nodeSshHost(null),
+    isFile: () => true,
     spawn(_file, args) {
       const encoded = /echo ([A-Za-z0-9+/=]+) \|/.exec(args.at(-1) ?? '')?.[1] ?? ''
       const script = Buffer.from(encoded, 'base64').toString('utf8')

@@ -13,6 +13,7 @@ import { ConversationService } from './conversation-service'
 import { ProjectRegistry } from './project-registry'
 import { AttachmentStore } from './attachment-store'
 import { fakeChatDaemon } from './fake-chat-agent'
+import { antigravity } from './agents/antigravity/antigravity-adapter'
 
 describe('reusable agent roles and delegated work', () => {
   let root: string
@@ -82,6 +83,22 @@ describe('reusable agent roles and delegated work', () => {
     expect(profiles.save({ name: 'Codex helper', agent: 'codex', audience: 'channels' })).toMatchObject({ agent: 'codex', capability: 'readOnly', audience: 'channels' })
     expect(profiles.save({ name: 'Pi helper', agent: 'pi', audience: 'channels' })).toMatchObject({ agent: 'pi', capability: 'readOnly', audience: 'channels' })
     expect(() => profiles.save({ name: 'Cursor helper', agent: 'cursor', audience: 'channels' })).toThrow(expect.objectContaining({ reason: 'agent-no-lockdown' }))
+  })
+
+  it('saves and dispatches an Antigravity developer with a non-default model and its effort', async () => {
+    const probe = vi.spyOn(antigravity, 'catalog').mockResolvedValue({ models: [
+      { id: 'flash', label: 'Flash', description: null, efforts: ['low', 'medium', 'high'], isDefault: true },
+      { id: 'neon', label: 'Neon', description: null, efforts: ['low', 'medium', 'high', 'xhigh'], isDefault: false }
+    ] })
+    try {
+      await chats.send(parentId, 'Wait for delegated work')
+      const developer = profiles.save({ name: 'Antigravity developer', agent: 'antigravity', capability: 'develop', delegationMode: 'acceptEdits', model: 'neon', effort: 'xhigh' })
+      expect(profiles.get(developer.id)).toMatchObject({ model: 'neon', effort: 'xhigh' })
+      const call = await profiles.dispatch(parentId, developer.id, 'Implement the change')
+      expect(call).toMatchObject({ state: 'queued', permissionMode: 'acceptEdits', readOnly: false, profile: { capability: 'develop', model: 'neon', effort: 'xhigh' } })
+      expect(probe).toHaveBeenCalledTimes(1)
+      await profiles.cancelForParent(parentId)
+    } finally { probe.mockRestore() }
   })
 
   it('uses one configured role locally and on channels without discarding local capabilities', async () => {
