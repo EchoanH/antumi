@@ -12,6 +12,8 @@
 
 ### 修复
 
+- 聊天渠道的项目列表、搜索和读取不再误拦以两个点开头的文件名。
+
 - Antigravity 在 WSL 中可通过 Windows 默认浏览器授权，安装后不再误报「未找到 CLI」。
 - Antigravity 等待浏览器授权时可停止会话，取消后可重试首条消息。
 - Linux 或 macOS 缺少 `unzip` 时可通过 Python 3 安装 Antigravity；两者都没有时会在下载前提示。

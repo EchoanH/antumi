@@ -67,7 +67,7 @@ async function isRepo(root: string): Promise<boolean> {
 
 function projectRelative(root: string, file: string): string | null {
   const relative = path.relative(root, file)
-  return relative.startsWith('..') || path.isAbsolute(relative) ? null : relative.split(path.sep).join('/')
+  return relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative) ? null : relative.split(path.sep).join('/')
 }
 
 // Git's index and filesystem traversal are not an authorization check. Verify any path Git

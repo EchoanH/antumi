@@ -56,6 +56,18 @@ describe('project tools', () => {
     expect((await call('project_list', { path: 'app/src' })).text).toBe('deep/\nauth.ts')
   })
 
+  it('allows names beginning with two dots inside the project', async () => {
+    const file = path.join(base, 'app', '..notes.txt')
+    writeFileSync(file, 'two-dot NEEDLE\n')
+    try {
+      expect((await call('project_list', { path: 'app' })).text.split('\n')).toContain('..notes.txt')
+      expect((await call('project_search', { query: 'two-dot' })).text).toBe('app/..notes.txt:1:two-dot NEEDLE')
+      expect(await call('project_read', { path: 'app/..notes.txt' })).toMatchObject({ isError: false, text: '1\ttwo-dot NEEDLE' })
+    } finally {
+      rmSync(file)
+    }
+  })
+
   it('reads a file with line numbers, and a range of it', async () => {
     const whole = await call('project_read', { path: 'app/src/auth.ts' })
     expect(whole).toMatchObject({ isError: false, target: 'app/src/auth.ts:1-3' })
