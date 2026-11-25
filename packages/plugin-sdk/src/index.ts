@@ -11,5 +11,5 @@ export type { SettingField, LoginPrompt, LoginNotice, SourceFailure, SourceProbl
 
 export * from '../../protocol/src/source-comments.js'
 export { MAX_WRITEBACK_COMMENT, SourceTransitionOption } from '../../protocol/src/source-writeback.js'
-export type { SourceTransitions, SourceStatusResult, SourceCommentResult } from '../../protocol/src/source-writeback.js'
+export type { SourceTransitions, SourceStatusResult, SourceCommentResult, SourceUser } from '../../protocol/src/source-writeback.js'
 export { commentState, commentPage } from './comment-pagination.js'

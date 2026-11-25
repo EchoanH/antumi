@@ -22,6 +22,8 @@ export type SourcePlugin = {
   // to now, a move to one of them by the id transitions gave, and a comment in Markdown. writeId is
   // unique per write; pass it on where the tracker can dedupe by it. A tracker that takes no comments
   // through its API declares writebackComment: false and leaves comment out.
+  // From SDK 0.7.0 the answer may also say who the issue is with and what it is (viewer, assignees,
+  // reporter, type, scope, statusId): Antumi writes back by rule only to an issue that is the user's.
   transitions?(settings: SourceSettings, credential: SourceCredential, key: string, signal: AbortSignal): Promise<SourceTransitions>
   transition?(settings: SourceSettings, credential: SourceCredential, key: string, id: string, signal: AbortSignal): Promise<SourceStatusResult>
   comment?(settings: SourceSettings, credential: SourceCredential, key: string, comment: { markdown: string; writeId: string }, signal: AbortSignal): Promise<SourceCommentResult>

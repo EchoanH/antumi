@@ -87,6 +87,21 @@ describe('source SDK protocol runtime', () => {
     expect(other.messages[1]).toMatchObject({ type: 'result', result: { status: 'Open', options: [{ id: '21', category: 'doing' }] } })
   })
 
+  it('passes on who an issue is with and what it is, and still takes an answer without them', async () => {
+    const credential = { kind: 'token', payload: {} }
+    const facts = { statusId: 's1', viewer: { id: 'u1', name: 'Ann' }, assignees: [{ id: 'u1', name: 'Ann' }], reporter: null, type: { id: 'bug', name: 'Bug' }, scope: { id: 'APP', name: 'App' } }
+    const h = harness({ transitions: async () => ({ status: 'Open', statusCategory: 'todo', options: [{ id: '21', name: 'Resolved', category: 'done', toStatusId: 's5' }], ...facts }) })
+    await h.hello()
+    h.call('transitions', { source: 'demo', settings: {}, credential, key: 'DEMO-1' })
+    await h.tick()
+    expect(h.messages[1]).toMatchObject({ type: 'result', result: { ...facts, options: [{ toStatusId: 's5' }] } })
+    const bad = harness({ transitions: async () => ({ status: 'Open', statusCategory: 'todo', options: [], viewer: { id: '', name: 'Ann' } }) })
+    await bad.hello()
+    bad.call('transitions', { source: 'demo', settings: {}, credential, key: 'DEMO-1' })
+    await bad.tick()
+    expect(bad.messages[1]).toMatchObject({ type: 'error', error: { code: 'request-failed' } })
+  })
+
   it('requires every writeback operation once a source advertises it', () => {
     const writeback = { ...manifest, contributes: { sources: [{ ...manifest.contributes.sources[0], writeback: 1 }] } }
     expect(() => runSourcePlugin({ manifest: writeback, sources: [{ ...source, comment: async () => ({ id: '1', url: null }) }] })).toThrow('Writeback capability')

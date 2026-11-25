@@ -373,4 +373,4 @@ SDK 0.1.3 支持来源声明 `commentSync: 1`，通过 `fetch.commentState` 建�
 
 ### 回写
 
-SDK 0.5.0 支持来源声明 `writeback: 1`，实现 `transitions`、`transition`、`comment`，把状态和评论写回事项；平台不能发评论时再声明 `writebackComment: false`。SDK 0.6.0 起可再声明 `writebackRules`，让设置页按平台给出每个阶段可选的状态。旧宿主忽略这些字段。详见 SDK README 和 [来源回写](SOURCE-WRITEBACK.md)。
+SDK 0.5.0 支持来源声明 `writeback: 1`，实现 `transitions`、`transition`、`comment`，把状态和评论写回事项；平台不能发评论时再声明 `writebackComment: false`。SDK 0.6.0 起可再声明 `writebackRules`，让设置页按平台给出每个阶段可选的状态。SDK 0.7.0 起 `transitions` 的返回值可带归属事实（当前账号、处理人、类型、所在项目），来源可声明 `writebackTypes`，Antumi 据此只回写归用户的事项、按事项类型套用规则（[来源事项自动化闭环](SOURCE-AUTOMATION.md)）。旧宿主忽略这些字段。详见 SDK README 和 [来源回写](SOURCE-WRITEBACK.md)。
