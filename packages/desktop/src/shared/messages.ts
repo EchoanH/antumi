@@ -1,5 +1,9 @@
 // Application-owned text. Values and external content are passed separately.
 export const MESSAGES = {
+  "ProjectChoices.worktree": {"zh": "工作区副本", "en": "Worktree copies"},
+  "ProjectChoices.copy": {"zh": "副本", "en": "Copy"},
+  "ProjectChoices.detached": {"zh": "未关联分支", "en": "Detached HEAD"},
+  "ProjectChoices.source": {"zh": "源项目：{path}", "en": "Source project: {path}"},
   "ContactAuthor.createIssue": {"zh": "创建 GitHub Issue（预填问题信息）", "en": "Create a GitHub issue with problem details"},
   "ContactAuthor.title": {"zh": "找作者", "en": "Contact the author"},
   "ContactAuthor.description": {"zh": "遇到问题了？扫码联系作者，我来帮你看看。", "en": "Having trouble? Scan the WeChat QR code and I’ll help you out."},

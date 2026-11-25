@@ -4,6 +4,7 @@ import { homedir } from 'node:os'
 import type { AgentProfileService } from './agent-profile-service'
 import type { AgentCliMaintenance } from './agent-cli-maintenance'
 import { suggestForProject } from './project-config-suggest'
+import { describeProjects } from './project-choices'
 import { EMPTY_BASELINE, type SmallModelStore } from './small-model-store'
 import { GitService } from './git-service'
 import type { GitFavoriteStore } from './git-favorite-store'
@@ -818,6 +819,7 @@ export function createRpcHandlers(
       return OK
     },
     'projects.recent': () => projects.recent(),
+    'projects.describe': ({ paths }) => describeProjects(paths),
     'worktrees.list': () => worktrees.list(),
     'worktrees.clean': ({ paths }) => worktrees.clean(paths),
     'projects.findFile': ({ roots, path }) => findFiles(roots, path),
