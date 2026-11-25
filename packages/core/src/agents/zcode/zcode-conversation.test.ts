@@ -13,6 +13,7 @@ import { fakeChatDaemon } from '../../fake-chat-agent'
 import { ModelProviderStore } from '../../model-providers'
 import { ProjectRegistry } from '../../project-registry'
 import { Rejection } from '../../rejection'
+import * as stageLaunch from '../../stage-launch'
 import { TaskStore } from '../../task-store'
 
 const KEY = 'sk-zcode-provider-secret-42'
@@ -388,8 +389,25 @@ describe('ZCode on a model provider', () => {
   it('takes the launch folder with the conversation', async () => {
     const { id: providerId } = await providers.save(glm())
     const created = await service.create('zcode', [root], undefined, { modelProvider: providerId })
-    await service.delete(created.id)
-    await settle()
+    // Windows cannot inspect another process's environment, so the sweep does not retry a fresh
+    // leftover at once. Deletion should wait for removal already started by the known exit.
+    service.inspectLaunches = async () => null
+    let release = () => {}
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    const removeLaunch = stageLaunch.removeLaunch
+    const removing = vi.spyOn(stageLaunch, 'removeLaunch').mockImplementation(async (stage) => {
+      await gate
+      await removeLaunch(stage)
+    })
+    const deletion = service.delete(created.id)
+    try {
+      await vi.waitFor(() => expect(removing).toHaveBeenCalledWith(expect.objectContaining({ conversationId: created.id })))
+      const deleted = await Promise.race([deletion.then(() => true), new Promise<false>((resolve) => setTimeout(() => resolve(false), 100))])
+      expect(deleted).toBe(false)
+    } finally {
+      release()
+      try { await deletion } finally { removing.mockRestore() }
+    }
     expect(existsSync(path.join(sessions, created.id))).toBe(false)
   })
 })

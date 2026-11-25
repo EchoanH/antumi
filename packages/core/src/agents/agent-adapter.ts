@@ -87,6 +87,8 @@ export type AgentStage = { sessionsRoot: string; conversationId: string; stageId
 // writing one and registering it (agents/index.ts).
 export interface AgentAdapter {
   readonly maintenance?: {
+    // The adapter detects its app-managed runtime and already knows its pinned version.
+    managedRuntime?: boolean
     packageName?: string
     packageArgs?: readonly string[]
     // The newest release Antumi was checked with, for a CLI whose releases have broken it before:

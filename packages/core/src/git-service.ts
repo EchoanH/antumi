@@ -12,7 +12,7 @@ import { checkoutKey, checkoutKeys, commitRef, committedDiff, conflictFiles, fil
 import { abortOperation, clearDirectRebase, continueOperation, parseTrack, pickCommit, rebaseBranch, rebasing, updateBranch } from './git-update'
 import { outgoingCommits, pushBranch, trackBranch } from './git-push'
 import type { GitFavoriteStore } from './git-favorite-store'
-import { gitWorkspaces, gitWorktreeFields } from './git-workspaces'
+import { gitWorkspaces, gitWorktreeFields, worktreeFieldPath } from './git-workspaces'
 
 // A remote the repository has, never one that reads as an option.
 const remoteIn = (status: GitStatus) => (remote: string) => {
@@ -186,7 +186,8 @@ export class GitService {
     const holders = new Map<string, string>()
     let folder = ''
     for (const field of worktrees) {
-      if (field.startsWith('worktree ')) folder = field.slice(9)
+      const worktree = worktreeFieldPath(field)
+      if (worktree !== null) folder = worktree
       if (field.startsWith('branch ')) holders.set(field.slice(7), folder)
     }
     const directory = await checkoutKey(dir) ?? dir

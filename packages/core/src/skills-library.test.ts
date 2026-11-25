@@ -57,7 +57,7 @@ describe('SkillsLibrary', () => {
     expect(git(path.join(root, 'home', 'skills', 'repos', 'root-upstream'), 'rev-parse', 'HEAD')).toBe(first)
     expect(git(path.join(root, 'home', 'skills', 'repos', 'root-upstream'), 'branch', '--show-current')).toBe('')
     expect(changes).toEqual([[repo]])
-    expect(await library.readme('root-upstream')).toBe('# Skills\n')
+    expect((await library.readme('root-upstream'))?.replace(/\r\n/g, '\n')).toBe('# Skills\n')
     const reopened = new SkillsLibrary(path.join(root, 'home', 'skills'), () => {})
     await reopened.load()
     expect(reopened.list()).toEqual([repo])

@@ -1,3 +1,4 @@
+import { relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { Task } from '@antumi/protocol'
 import { agentPrompt, chatPlanPrompt, chatStartPrompt, knowledgeBaseNote, startNote } from './agent-prompt'
@@ -129,7 +130,7 @@ describe('agentPrompt', () => {
     for (const prompt of [agentPrompt(task, multi, [])]) {
       expect(prompt).toContain('当前工作目录：/wt/app')
       expect(prompt).toContain('主项目：.（/wt/app） ← /code/app')
-      expect(prompt).toContain('附加项目：../web（/wt/web） ← /code/web（分支 antumi/web）')
+      expect(prompt).toContain(`附加项目：${relative('/wt/app', '/wt/web')}（/wt/web） ← /code/web（分支 antumi/web）`)
       expect(prompt).toContain('AGENTS.md、CLAUDE.md')
       expect(prompt).toContain('对应项目目录内执行')
       expect(prompt).not.toContain('当前目录下每个子目录')

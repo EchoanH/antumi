@@ -83,7 +83,7 @@ export async function coreRuns(coreFile: string, proc = '/proc'): Promise<boolea
     if (!/^\d+$/.test(pid)) continue
     const args = (await readFile(path.join(proc, pid, 'cmdline'), 'utf8').catch(() => '')).split('\0')
     for (const arg of args) {
-      if (arg.endsWith('/core.mjs') && (await realpath(arg).catch(() => null)) === core) return true
+      if (path.isAbsolute(arg) && path.basename(arg) === 'core.mjs' && (await realpath(arg).catch(() => null)) === core) return true
     }
   }
   return false

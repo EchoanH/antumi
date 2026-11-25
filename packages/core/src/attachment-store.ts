@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { chmodSync, existsSync, lstatSync, readFileSync, renameSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { chmodSync, lstatSync, readFileSync, renameSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { chmod, lstat, mkdir, open, readFile, rename, rm, utimes, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { ATTACHMENT_ID_PATTERN, MAX_ATTACHMENT_BYTES, type AttachmentInfo } from '@antumi/protocol'
@@ -10,6 +10,8 @@ import { Rejection } from './rejection'
 const HELD_BYTES = 64 * 1024 * 1024
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const renameConflict = (error: unknown): boolean =>
+  error instanceof Error && 'code' in error && (error.code === 'EPERM' || error.code === 'EEXIST')
 
 // A stored image as an agent takes it: by path, or by its bytes read when asked for.
 export type AttachmentFile = { id: string; mime: AttachmentInfo['mime']; path: string; read(): Uint8Array }
@@ -30,15 +32,16 @@ export class AttachmentStore {
   putSync(input: Uint8Array): AttachmentInfo {
     const { facts, info } = this.prepare(input)
     const file = this.file(info.id)
-    if (!existsSync(file)) {
+    if (!lstatSync(file, { throwIfNoEntry: false })?.isFile()) {
       const tmp = `${file}.${randomBytes(4).toString('hex')}.tmp`
       try {
         writeFileSync(tmp, facts.bytes, { mode: 0o600 })
         chmodSync(tmp, 0o600)
-        renameSync(tmp, file)
-      } catch (error) {
+        try { renameSync(tmp, file) } catch (error) {
+          if (!renameConflict(error) || !lstatSync(file, { throwIfNoEntry: false })?.isFile()) throw error
+        }
+      } finally {
         rmSync(tmp, { force: true })
-        throw error
       }
     } else {
       // Stored again: fresh, so a sweep leaves it alone a while (attachment-sweep.ts).
@@ -70,16 +73,7 @@ export class AttachmentStore {
     const { id } = info
     const file = this.file(id)
     if (!(await this.isFile(file))) {
-      const tmp = `${file}.${randomBytes(4).toString('hex')}.tmp`
-      try {
-        await writeFile(tmp, facts.bytes, { mode: 0o600 })
-        await chmod(tmp, 0o600)
-        // Two writers of the same bytes race harmlessly: both renames leave identical content.
-        await rename(tmp, file)
-      } catch (error) {
-        await rm(tmp, { force: true })
-        throw error
-      }
+      await this.writeOnce(file, facts.bytes)
     } else {
       // Stored again: fresh, so a sweep leaves it alone a while (attachment-sweep.ts).
       await utimes(file, new Date(), new Date()).catch(() => {})
@@ -125,18 +119,23 @@ export class AttachmentStore {
     const dir = this.pastedTextDir(conversationId)
     await mkdir(dir, { recursive: true, mode: 0o700 })
     const file = path.join(dir, `pasted-${createHash('sha256').update(input).digest('hex')}.txt`)
-    if (!(await this.isFile(file))) {
-      const tmp = `${file}.${randomBytes(4).toString('hex')}.tmp`
-      try {
-        await writeFile(tmp, input, { mode: 0o600 })
-        await chmod(tmp, 0o600)
-        await rename(tmp, file)
-      } catch (error) {
-        await rm(tmp, { force: true })
-        throw error
-      }
-    }
+    if (!(await this.isFile(file))) await this.writeOnce(file, input)
     return file
+  }
+
+  private async writeOnce(file: string, bytes: Uint8Array): Promise<void> {
+    const tmp = `${file}.${randomBytes(4).toString('hex')}.tmp`
+    try {
+      await writeFile(tmp, bytes, { mode: 0o600 })
+      await chmod(tmp, 0o600)
+      // On Windows the losing rename can fail. The destination is named by the same bytes, but
+      // a directory, link or still-missing file is not a successful write.
+      try { await rename(tmp, file) } catch (error) {
+        if (!renameConflict(error) || !(await this.isFile(file))) throw error
+      }
+    } finally {
+      await rm(tmp, { force: true })
+    }
   }
 
   pastedTextDir(conversationId: string): string {

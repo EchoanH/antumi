@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { stat } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { dirname, posix } from 'node:path'
 import { promisify } from 'node:util'
 
 const run = promisify(execFile)
@@ -30,7 +30,7 @@ export const OPEN_WITH_APPS: readonly KnownApp[] = [
 // Where macOS keeps applications: the system's and its utilities, the user's, and JetBrains
 // Toolbox's own folder for the IDEs it installs.
 export function applicationFolders(home: string): string[] {
-  return ['/Applications', '/Applications/Utilities', '/System/Applications/Utilities', join(home, 'Applications'), join(home, 'Applications', 'JetBrains Toolbox')]
+  return ['/Applications', '/Applications/Utilities', '/System/Applications/Utilities', posix.join(home, 'Applications'), posix.join(home, 'Applications', 'JetBrains Toolbox')]
 }
 
 // The known apps installed here, each at the first place one of its bundles is found. macOS only so
@@ -39,7 +39,7 @@ export async function installedApps(platform: NodeJS.Platform, home: string, exi
   if (platform !== 'darwin') return []
   const found: InstalledApp[] = []
   for (const app of OPEN_WITH_APPS) {
-    const places = app.bundles.flatMap((bundle) => applicationFolders(home).map((folder) => join(folder, bundle)))
+    const places = app.bundles.flatMap((bundle) => applicationFolders(home).map((folder) => posix.join(folder, bundle)))
     for (const path of places) {
       if (await exists(path)) {
         found.push({ id: app.id, name: app.name, kind: app.kind, path })

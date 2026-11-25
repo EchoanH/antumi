@@ -5,6 +5,7 @@ import { isFinished, shortTaskId, type RepoStartOptions, type Task, type TaskRep
 import { Rejection } from './rejection'
 import { repoStartOptions, resolveStart } from './task-start'
 import { execFileAsync } from './hidden-exec'
+import { removeGitWorktree } from './git-workspaces'
 
 
 export type WorkspaceEntry = {
@@ -512,7 +513,7 @@ export async function removePlanningCheckouts(taskId: string, worktreesRoot: str
     const checkout = path.join(root, name)
     const kept = await execFileAsync('git', ['-C', checkout, 'for-each-ref', '--contains', 'HEAD', '--count=1', '--format=%(refname)'])
       .then(({ stdout }) => stdout.trim() !== '', () => false)
-    if (kept) await execFileAsync('git', ['-C', checkout, 'worktree', 'remove', checkout]).catch(() => {})
+    if (kept) await removeGitWorktree(checkout).catch(() => {})
   }
   // Only empty folders go: a task directory keeps any worktree in it.
   for (const dir of [root, path.dirname(root)]) await rmdir(dir).catch(() => {})

@@ -22,7 +22,7 @@ describe('AppImage swap', () => {
     writeFileSync(downloaded, 'new', { mode: 0o644 })
     await replaceAppImage(appImage, downloaded)
     expect(readFileSync(appImage, 'utf8')).toBe('new')
-    expect(statSync(appImage).mode & 0o777).toBe(0o755)
+    if (process.platform !== 'win32') expect(statSync(appImage).mode & 0o777).toBe(0o755)
     expect(readdirSync(dir)).toEqual(['Antumi-1.0.0-x86_64.AppImage'])
   })
 
@@ -40,8 +40,11 @@ describe('AppImage swap', () => {
     const dir = folder()
     writeFileSync(join(dir, 'Antumi.AppImage'), 'old')
     expect(await appImageBlocked(join(dir, 'Antumi.AppImage'))).toBeNull()
-    const locked = join(dir, 'locked')
-    mkdirSync(locked, { mode: 0o555 })
-    expect(await appImageBlocked(join(locked, 'Antumi.AppImage'))).toBe('not-writable')
+    expect(await appImageBlocked(join(dir, 'missing', 'Antumi.AppImage'))).toBe('not-writable')
+    if (process.platform !== 'win32' && process.getuid?.() !== 0) {
+      const locked = join(dir, 'locked')
+      mkdirSync(locked, { mode: 0o555 })
+      expect(await appImageBlocked(join(locked, 'Antumi.AppImage'))).toBe('not-writable')
+    }
   })
 })

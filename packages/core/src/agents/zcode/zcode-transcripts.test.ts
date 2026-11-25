@@ -92,6 +92,6 @@ describe('ZCode sessions', () => {
   it('finds nothing where ZCode keeps no database', async () => {
     expect(await zcodeTranscripts(() => path.join(dir, 'missing.sqlite')).scan()).toEqual([])
     expect(zcodeSessionDb({ ZCODE_SESSION_DB_PATH: '/x/db.sqlite' }, '/home/user')).toBe('/x/db.sqlite')
-    expect(zcodeSessionDb({}, '/home/user')).toBe('/home/user/.zcode/cli/db/db.sqlite')
+    expect(zcodeSessionDb({}, dir)).toBe(path.join(dir, '.zcode', 'cli', 'db', 'db.sqlite'))
   })
 })

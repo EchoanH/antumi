@@ -9,6 +9,7 @@ import { ConversationService, type ConversationEvent } from './conversation-serv
 import { ConversationStore } from './conversation-store'
 import { dsh } from './agents/dsh/dsh-adapter'
 import { antigravity } from './agents/antigravity/antigravity-adapter'
+import { claudeEditDenials, claudeReadRules } from './agents/claude/claude-command'
 import { ChatLog } from './chat-log'
 import { Rejection } from './rejection'
 import { AttachmentStore } from './attachment-store'
@@ -580,12 +581,12 @@ describe('ConversationService', () => {
     await service.startForTask({ id: 'task-1', title: 'Plan', agent: 'claude' }, { cwd: root, extraDirs: [], planOnly: true, session: 'new' })
     const planning = daemon.spawns.at(-1)!.args
     expect(planning).not.toContain('--add-dir')
-    expect(planning[planning.indexOf('--allowedTools') + 1]).toContain(`Read(/${vault}/**)`)
+    expect(planning[planning.indexOf('--allowedTools') + 1]).toContain(claudeReadRules([`${vault}/**`])[0])
     expect(planning).toContainEqual(expect.stringContaining(format))
     await service.startForTask({ id: 'task-read-only', title: 'Read', agent: 'claude' }, { cwd: root, extraDirs: [], planOnly: false, workspaceReadOnly: true, session: 'new' })
     const reading = daemon.spawns.at(-1)!.args
     expect(reading).not.toContain('--add-dir')
-    expect(reading[reading.indexOf('--allowedTools') + 1]).toContain(`Read(/${vault}/**)`)
+    expect(reading[reading.indexOf('--allowedTools') + 1]).toContain(claudeReadRules([`${vault}/**`])[0])
     expect(reading).toContainEqual(expect.stringContaining(format))
     service.setKnowledgeBase({ path: vault, write: false, kind })
     await service.create('claude', [root])
@@ -1256,6 +1257,66 @@ describe('ConversationService', () => {
     } finally { probe.mockRestore(); prepare.mockRestore() }
   })
 
+  it.each([
+    ['stop', false],
+    ['interrupt', false],
+    ['stop', true]
+  ] as const)('can %s Antigravity while it waits for OAuth (authorization races: %s)', async (action, racing) => {
+    const other = await service.create('claude', [])
+    const created = await service.create('antigravity', [], false, { deferStart: true })
+    const sessionId = `pipe-${daemon.spawns.length + 1}`
+    const next = `pipe-${daemon.spawns.length + 2}`
+    if (!antigravity.launch) throw new Error('missing Antigravity launch')
+    const prepare = vi.spyOn(antigravity.launch, 'prepare').mockResolvedValue({})
+    const starting = service.continue(created.id).catch((error: unknown) => error)
+    const waitFor = (method: string, pipe = sessionId) =>
+      vi.waitFor(() => expect(daemon.written(pipe)).toContainEqual(expect.objectContaining({ method })))
+    const session = (id: string) => ({ sessionId: id, configOptions: [
+      { id: 'mode', name: 'Session Mode', category: 'mode', currentValue: 'default', options: [{ value: 'default', name: 'Default' }] }
+    ] })
+    try {
+      await waitFor('initialize')
+      const init = { protocolVersion: 1, authMethods: [{ id: 'oauth-personal' }] }
+      daemon.emit(sessionId, { id: 'antigravity-init', result: init })
+      await waitFor('authenticate')
+      expect(service.get(created.id)).toMatchObject({ starting: true, sessionId })
+      daemon.exitOnKill = !racing
+      const stopping = Promise.allSettled([service[action](created.id), service.stop(created.id)])
+      if (racing) {
+        await vi.waitFor(() => expect(daemon.killed).toHaveLength(1))
+        daemon.emit(sessionId, { id: 'antigravity-auth', result: {} })
+        await waitFor('session/new')
+        daemon.emit(sessionId, { id: 'antigravity-session', result: session('racing') })
+        await settle()
+        expect(service.get(created.id)).toMatchObject({ starting: true, sessionId })
+        daemon.exit(sessionId, 143)
+      }
+      const results = await stopping
+      expect(results.map((result) => result.status)).toEqual(['fulfilled', 'fulfilled'])
+      expect(await starting).toMatchObject({ reason: 'chat-start-cancelled' })
+      expect(daemon.killed).toEqual([{ sessionId, force: false }])
+      if (!racing) expect(daemon.written(sessionId)).not.toContainEqual(expect.objectContaining({ method: 'session/new' }))
+      expect(daemon.written(sessionId)).not.toContainEqual(expect.objectContaining({ method: 'session/prompt' }))
+      expect(service.get(created.id)).toMatchObject({ starting: false, sessionId: null })
+      expect(service.stages(created.id)).toEqual([])
+      expect(service.get(other.id).sessionId).toBe(other.sessionId)
+
+      const retrying = service.continue(created.id).catch((error: unknown) => error)
+      await waitFor('initialize', next)
+      daemon.emit(next, { id: 'antigravity-init', result: init })
+      await waitFor('authenticate', next)
+      daemon.emit(next, { id: 'antigravity-auth', result: {} })
+      await waitFor('session/new', next)
+      daemon.emit(next, { id: 'antigravity-session', result: session('after-retry') })
+      expect(await retrying).toMatchObject({ starting: false, sessionId: next })
+    } finally {
+      daemon.exit(sessionId, 143)
+      daemon.exit(next, 143)
+      await starting
+      prepare.mockRestore()
+    }
+  })
+
   it('says why an agent listed no models, until it lists some', async () => {
     const catalog = vi.spyOn(dsh, 'catalog')
     try {
@@ -1464,7 +1525,7 @@ describe('ConversationService', () => {
     const web = mkdtempSync(path.join(root, 'web-'))
     const planning = await service.startForTask(task, { cwd: root, extraDirs: [web], planOnly: true, session: 'new', allowBypass: true })
     const args = daemon.spawns.at(-1)!.args
-    expect(args).toEqual(expect.arrayContaining(['--permission-mode', 'plan', '--disallowedTools', `Edit(/${realpathSync(root)}/**),Edit(/${realpathSync(web)}/**)`]))
+    expect(args).toEqual(expect.arrayContaining(['--permission-mode', 'plan', '--disallowedTools', claudeEditDenials([realpathSync(root), realpathSync(web)]).join(',')]))
     expect(args).not.toContain('--allow-dangerously-skip-permissions')
     const [stage] = service.stages(planning.id)
     expect(stage?.planOnly).toBe(true)

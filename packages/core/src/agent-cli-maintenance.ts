@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
 import { z } from 'zod'
-import { AGENT_KINDS, AgentCliStatus, initialAgentCliStatus, type AgentKind, type AgentCliUpgrade, Environment } from '@antumi/protocol'
+import { AGENT_KINDS, AgentCliStatus, initialAgentCliStatus, isAgentKind, type AgentKind, type AgentCliUpgrade, Environment } from '@antumi/protocol'
 import type { SessionInfo } from '@antumi/protocol/node'
 import { agentCliAccess } from './agent-cli-access'
 import { cliCommandText, compareCliVersions, latestCliVersion, resolveCliTarget, type CliTarget } from './agent-cli-target'
@@ -90,7 +90,15 @@ export class AgentCliMaintenance {
     return kinds.map((kind) => this.status(kind))
   }
 
-  private check(agent: AgentKind, refresh: boolean): Promise<AgentCliStatus> {
+  async refreshInstalled(environment: Environment): Promise<void> {
+    await Promise.all(environment.checks.map(async ({ tool, status, path }) => {
+      if (status !== 'ok' || !path || !isAgentKind(tool)) return
+      await this.checks.get(tool)
+      if (this.status(tool).availability === 'missing') await this.check(tool, true, environment)
+    }))
+  }
+
+  private check(agent: AgentKind, refresh: boolean, detected?: Environment): Promise<AgentCliStatus> {
     if (this.operations.has(agent) || this.pendingAgent === agent) return Promise.resolve(this.status(agent))
     const pending = this.checks.get(agent)
     if (pending) return pending
@@ -100,7 +108,7 @@ export class AgentCliMaintenance {
     const promise = (async () => {
       this.update(agent, { phase: 'checking', error: null, blockers: [] })
       try {
-        const environment = await this.deps.environment.check(refresh)
+        const environment = detected ?? await this.deps.environment.check(refresh)
         const target = await agentCliAccess.use(agent, () => (this.deps.resolve ?? resolveCliTarget)(agent, environment))
         if (!target) return this.update(agent, { ...initialAgentCliStatus(agent), availability: 'missing', checkedAt: this.now() })
         this.targets.set(agent, target)

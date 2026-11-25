@@ -22,12 +22,17 @@ beforeEach(() => {
 afterEach(() => { rmSync(root, { recursive: true, force: true }) })
 
 const stage = () => ({ sessionsRoot: path.join(root, 'sessions'), conversationId: 'conversation', stageId: 'stage' })
-const launch = { extraProjects: ['/work/other'], references: ['/work/reference'], readable: ['/antumi/attachments/image.png', '/antumi/pasted/**'], knowledgeBase: { path: '/vault', write: false } }
+const at = (...parts: string[]) => path.join(root, ...parts)
+const launch = () => ({
+  extraProjects: [at('work', 'other')], references: [at('work', 'reference')],
+  readable: [at('attachments', 'image.png'), at('pasted') + '/**'],
+  knowledgeBase: { path: at('vault'), write: false }
+})
 
 // The plugin as CodeArts loads it: its module imported, its export called with the instance's
 // folders, and its hooks driven as a session would.
 async function loaded() {
-  const file = await writeCodeartsPlugin(stage(), launch)
+  const file = await writeCodeartsPlugin(stage(), launch())
   const module = Plugin.parse(await import(`${pathToFileURL(file).href}?${Date.now()}`))
   const hooks = Hooks.parse(await module.AntumiPermissions({ directory: project, worktree: project }))
   const prompt = (sessionID: string, agent: string) => hooks['chat.message']({ sessionID, agent }, { status: 'ask' })
@@ -51,8 +56,8 @@ describe('CodeArts permission plugin', () => {
     await prompt('s', 'build')
     expect(await ask({ sessionID: 's', permission: 'bash', patterns: ['rm -rf build'] })).toBe('ask')
     expect(await ask({ sessionID: 's', permission: 'edit', patterns: ['src/a.ts'], metadata: { filepath: path.join(project, 'src', 'a.ts') } })).toBe('ask')
-    expect(await ask({ sessionID: 's', permission: 'edit', patterns: [], metadata: { filepath: '/work/reference/a.ts' } })).toBe('deny')
-    expect(await ask({ sessionID: 's', permission: 'external_directory_write', patterns: ['/vault/*'] })).toBe('deny')
+    expect(await ask({ sessionID: 's', permission: 'edit', patterns: [], metadata: { filepath: at('work', 'reference', 'a.ts') } })).toBe('deny')
+    expect(await ask({ sessionID: 's', permission: 'external_directory_write', patterns: [at('vault', '*')] })).toBe('deny')
   })
 
   it('lets the automatic agent work in its projects and refuses the rest rather than asking', async () => {
@@ -60,16 +65,16 @@ describe('CodeArts permission plugin', () => {
     await prompt('s', CODEARTS_AGENTS.auto)
     expect(await ask({ sessionID: 's', permission: 'bash', patterns: ['npm test'] })).toBe('allow')
     expect(await ask({ sessionID: 's', permission: 'edit', patterns: ['src/a.ts'] })).toBe('allow')
-    expect(await ask({ sessionID: 's', permission: 'external_directory', patterns: ['/work/other/*'] })).toBe('allow')
-    expect(await ask({ sessionID: 's', permission: 'external_directory_write', patterns: ['/work/other/src/*'] })).toBe('allow')
+    expect(await ask({ sessionID: 's', permission: 'external_directory', patterns: [at('work', 'other', '*')] })).toBe('allow')
+    expect(await ask({ sessionID: 's', permission: 'external_directory_write', patterns: [at('work', 'other', 'src', '*')] })).toBe('allow')
     // A reference project, an attachment and a pasted file are read, never written.
-    expect(await ask({ sessionID: 's', permission: 'external_directory_read', patterns: ['/work/reference/*'] })).toBe('allow')
-    expect(await ask({ sessionID: 's', permission: 'external_directory', patterns: ['/antumi/attachments/image.png'] })).toBe('allow')
-    expect(await ask({ sessionID: 's', permission: 'external_directory_read', patterns: ['/antumi/pasted/a.txt'] })).toBe('allow')
-    expect(await ask({ sessionID: 's', permission: 'external_directory_write', patterns: ['/work/reference/*'] })).toBe('deny')
-    expect(await ask({ sessionID: 's', permission: 'external_directory', patterns: ['/etc/*'] })).toBe('deny')
+    expect(await ask({ sessionID: 's', permission: 'external_directory_read', patterns: [at('work', 'reference', '*')] })).toBe('allow')
+    expect(await ask({ sessionID: 's', permission: 'external_directory', patterns: [at('attachments', 'image.png')] })).toBe('allow')
+    expect(await ask({ sessionID: 's', permission: 'external_directory_read', patterns: [at('pasted', 'a.txt')] })).toBe('allow')
+    expect(await ask({ sessionID: 's', permission: 'external_directory_write', patterns: [at('work', 'reference', '*')] })).toBe('deny')
+    expect(await ask({ sessionID: 's', permission: 'external_directory', patterns: [at('outside', '*')] })).toBe('deny')
     // Its own project, named through a link to it, is its own.
-    symlinkSync(project, path.join(root, 'linked'))
+    symlinkSync(project, path.join(root, 'linked'), process.platform === 'win32' ? 'junction' : 'dir')
     expect(await ask({ sessionID: 's', permission: 'external_directory_write', patterns: [path.join(root, 'linked', 'new', 'e2e.txt')] })).toBe('allow')
     expect(await ask({ sessionID: 's', permission: 'read', patterns: ['.env'] })).toBe('deny')
     expect(await ask({ sessionID: 's', permission: 'read', patterns: ['config/.env.local'] })).toBe('deny')
@@ -90,7 +95,7 @@ describe('CodeArts permission plugin', () => {
     await prompt('s', CODEARTS_AGENTS.bypass)
     expect(await ask({ sessionID: 's', permission: 'bash', patterns: ['rm -rf /tmp/x'] })).toBe('allow')
     expect(await ask({ sessionID: 's', permission: 'blacklisted_bash', patterns: ['rmdir /tmp/x'] })).toBe('allow')
-    expect(await ask({ sessionID: 's', permission: 'edit', patterns: [], metadata: { filepath: '/work/reference/a.ts' } })).toBe('deny')
+    expect(await ask({ sessionID: 's', permission: 'edit', patterns: [], metadata: { filepath: at('work', 'reference', 'a.ts') } })).toBe('deny')
   })
 
   it('holds a subagent’s session to the mode of the agent that started it', async () => {
@@ -102,13 +107,13 @@ describe('CodeArts permission plugin', () => {
   })
 
   it('fences reference projects and a vault the stage may not write, and lets it read pasted files', () => {
-    expect(codeartsRules(stage(), launch)).toEqual({
+    expect(codeartsRules(stage(), launch())).toEqual({
       ready: codeartsPluginReadyFile(stage()),
-      writable: ['/work/other'],
-      readable: ['/work/reference', '/vault', '/antumi/attachments/image.png', '/antumi/pasted'],
-      fenced: ['/work/reference', '/vault']
+      writable: [at('work', 'other')],
+      readable: [at('work', 'reference'), at('vault'), at('attachments', 'image.png'), at('pasted')],
+      fenced: [at('work', 'reference'), at('vault')]
     })
-    expect(codeartsRules(stage(), { ...launch, knowledgeBase: { path: '/vault', write: true } })).toMatchObject({ writable: ['/work/other', '/vault'], fenced: ['/work/reference'] })
+    expect(codeartsRules(stage(), { ...launch(), knowledgeBase: { path: at('vault'), write: true } })).toMatchObject({ writable: [at('work', 'other'), at('vault')], fenced: [at('work', 'reference')] })
   })
 })
 

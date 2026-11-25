@@ -92,7 +92,7 @@ describe('plugin installation and activation', () => {
     for (let i = 0; i < 255; i++) await writeFile(path.join(folder, `${i}.js`), '')
     await expect(plugins.pageFiles(info.id, 'demo')).rejects.toThrow('256')
     for (let i = 0; i < 255; i++) await rm(path.join(folder, `${i}.js`))
-    await symlink(path.join(root, 'page-input'), path.join(folder, 'escape'))
+    await symlink(path.join(root, 'page-input'), path.join(folder, 'escape'), process.platform === 'win32' ? 'junction' : 'dir')
     await expect(plugins.pageFiles(info.id, 'demo')).rejects.toThrow()
   })
 

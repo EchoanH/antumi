@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import type { Task, Terminal } from '@antumi/protocol'
 import { AgentRunStore } from './agent-run-store'
+import { claudeEditDenials, claudeReadRules } from './agents/claude/claude-command'
 import { AttachmentStore } from './attachment-store'
 import { ConversationService } from './conversation-service'
 import { ConversationStore } from './conversation-store'
@@ -525,7 +526,8 @@ describe('TaskService', () => {
     const chat = conversations.get(running.conversationId!)
     expect(chat.projectPaths).toEqual([realpathSync(running.repos[0]!.worktreePath!)])
     expect(chat.referencePaths).toEqual([realpathSync(other)])
-    expect(daemon.spawns.at(-1)?.args.join(' ')).toContain(`Edit(/${realpathSync(other)}/**)`)
+    const args = daemon.spawns.at(-1)?.args ?? []
+    expect(args[args.indexOf('--disallowedTools') + 1]?.split(',')).toEqual(claudeEditDenials([realpathSync(other)]))
     expect((await service.branches(task.id)).map((head) => head.path)).toEqual([repo])
     await handIn(task.id)
 
@@ -623,13 +625,14 @@ describe('TaskService', () => {
     await service.start(task.id)
     const prompt = told(task.id)
     expect(prompt).toContain(`任务附了 1 张图片，开始前先用读取文件的工具查看（如果它们已经附在这条消息里，直接看即可）：\n- 图 1 登录页：${path.join(dir, mine.id)}`)
-    expect(prompt).toMatch(new RegExp(`<untrusted-source[^>]*>[\\s\\S]*- shot.gif：${path.join(dir, theirs.id).replace(/[.]/g, '\\.')}[\\s\\S]*</untrusted-source>`))
+    const fencedIssue = /<untrusted-source[^>]*>([\s\S]*?)<\/untrusted-source>/.exec(prompt)?.[1]
+    expect(fencedIssue).toContain(`- shot.gif：${path.join(dir, theirs.id)}`)
     // The user's image goes along with the message too; the issue's only by path.
     const [first] = daemon.written(sessionOf(task.id)).filter((frame) => userText(frame).length > 0)
     expect(JSON.stringify(first).match(/"type":"image"/g)).toHaveLength(1)
     const args = daemon.spawns.at(-1)?.args ?? []
     const [mineRule, theirsRule, pastedRule] = args[args.indexOf('--allowedTools') + 1]?.split(',') ?? []
-    expect([mineRule, theirsRule]).toEqual([`Read(/${path.join(dir, mine.id)})`, `Read(/${path.join(dir, theirs.id)})`])
+    expect([mineRule, theirsRule]).toEqual(claudeReadRules([path.join(dir, mine.id), path.join(dir, theirs.id)]))
     // And what the user pastes into the conversation as files, in its own folder.
     expect(pastedRule).toMatch(/\/pasted\/[0-9a-f-]{36}\/\*\*\)$/)
   })

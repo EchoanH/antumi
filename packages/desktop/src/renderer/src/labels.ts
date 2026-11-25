@@ -225,6 +225,8 @@ const REASON_TEXT: Record<string, string> = localized(() => ({
   'chat-not-running': t('labels.thisConversationSAgentIsNotRunningIn'),
   'chat-session': t('labels.thisIsNotATerminalPanelShellAnd'),
   'chat-start-timeout': t('labels.agentStartupTimedOut'),
+  'chat-start-cancelled': t('labels.agentStartupCancelled'),
+  'chat-stop-timeout': t('labels.agentStopTimedOut'),
   'daemon-outdated': t('labels.runningDaemonIsTooOldForChatRestart'),
   'stage-not-found': t('labels.earlierChatHistoryNotFound'),
   'chat-option-invalid': t('labels.thisOptionIsUnavailableHere'),

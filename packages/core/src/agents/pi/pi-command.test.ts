@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { AgentLaunch } from '../agent-adapter'
 import type { ProviderLaunch } from '../../provider-launch'
@@ -48,7 +49,7 @@ describe('Pi command', () => {
   it('gives it the skills bundle and tells it of the other projects and the read-only folders', () => {
     expect(config({ ...LAUNCH, extraProjects: ['/work/other'], knowledgeBase: { path: '/vault', write: true } }).workDirs).toEqual(['/work/other', '/vault'])
     const args = piCommand({ ...LAUNCH, extraProjects: ['/work/other'], readOnly: { dirs: ['/work/repo'] }, skills: { dir: '/antumi/skills/b' } }).args
-    expect(args).toContain('/antumi/skills/b/.agents/skills')
+    expect(args).toContain(join('/antumi/skills/b', '.agents', 'skills'))
     const note = args[args.indexOf('--append-system-prompt') + 1]
     expect(note).toContain('- /work/other')
     expect(note).toMatch(/只读[\s\S]*- \/work\/repo/)

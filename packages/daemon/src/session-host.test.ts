@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { DaemonEvent } from '@antumi/protocol/node'
 
@@ -45,13 +48,13 @@ describe('PTY output offsets', () => {
   })
 })
 
-function pipeHost() {
+function pipeHost(lifecycle?: { version: string; leave(): void }) {
   const events: DaemonEvent[] = []
   const waiters: Array<() => void> = []
   const host = createSessionHost((event) => {
     events.push(event)
     waiters.splice(0).forEach((wake) => wake())
-  })
+  }, undefined, lifecycle)
   const until = async (done: () => boolean, timeoutMs = 5000) => {
     const deadline = Date.now() + timeoutMs
     while (!done()) {
@@ -143,6 +146,23 @@ describe('pipe sessions', () => {
     })
   })
 
+  it.runIf(process.platform === 'win32')('stops the main process when the Windows tree killer is unavailable', async () => {
+    const { host, until, spawn, stdout, exited } = pipeHost()
+    const root = mkdtempSync(path.join(tmpdir(), 'antumi-no-taskkill-'))
+    const sessionId = spawn("process.stdout.write('ready'); setTimeout(() => {}, 10_000)")
+    try {
+      await until(() => stdout(sessionId).length > 0)
+      vi.stubEnv('SystemRoot', root)
+      host.handlers.kill({ sessionId })
+      vi.unstubAllEnvs()
+      await until(() => exited(sessionId), 2000)
+    } finally {
+      vi.unstubAllEnvs()
+      if (!exited(sessionId)) host.handlers.kill({ sessionId })
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('refuses a command it cannot find', () => {
     const host = createSessionHost(() => {})
     expect(() => host.handlers.spawnPipe({ command: 'codex-not-installed', args: [], cwd: '/tmp', env: { PATH: '/nowhere' } }))
@@ -152,29 +172,29 @@ describe('pipe sessions', () => {
 
 describe('retiring for an update', () => {
   it('says what it is, refuses while anything runs, and leaves once nothing does', async () => {
-    const events: DaemonEvent[] = []
     const leave = vi.fn()
-    const host = createSessionHost((event) => events.push(event), undefined, { version: '9.9.9', leave })
+    const { host, until, stdout, exited } = pipeHost({ version: '9.9.9', leave })
     expect(host.handlers.info({})).toEqual({ version: '9.9.9', pid: process.pid, features: ['agent-cli-maintenance', 'clean-pipe'] })
-    const keep = `setTimeout(() => {}, 10_000)`
+    const keep = `process.stdout.write('ready'); setTimeout(() => {}, 20_000)`
     const owner = 'conversation:11111111-1111-4111-8111-111111111111'
     const agent = host.handlers.spawnPipe({ command: process.execPath, args: ['-e', keep], cwd: process.cwd(), env: { ANTUMI_OWNER: owner } }).sessionId
-    // Whose it is, for a core that lost track of it.
-    expect(host.handlers.list({}).sessions.find((session) => session.sessionId === agent)?.owner).toBe(owner)
-    expect(host.handlers.retire({})).toEqual({ retired: false, live: 1, blockers: [{ sessionId: agent }] })
-    host.handlers.kill({ sessionId: agent })
-    const deadline = Date.now() + 5000
-    while (!events.some((event) => event.event === 'exit' && event.sessionId === agent)) {
-      if (Date.now() > deadline) throw new Error('timed out waiting for the agent to exit')
-      await new Promise((resolve) => setTimeout(resolve, 20))
+    try {
+      await until(() => stdout(agent).length > 0)
+      // Whose it is, for a core that lost track of it.
+      expect(host.handlers.list({}).sessions.find((session) => session.sessionId === agent)?.owner).toBe(owner)
+      expect(host.handlers.retire({})).toEqual({ retired: false, live: 1, blockers: [{ sessionId: agent }] })
+      host.handlers.kill({ sessionId: agent })
+      await until(() => exited(agent), 8000)
+      expect(host.handlers.retire({})).toEqual({ retired: true, live: 0, blockers: [] })
+      expect(() => host.handlers.spawnPipe({ command: process.execPath, args: ['-e', keep], cwd: process.cwd(), env: {} })).toThrow('daemon-retiring')
+      expect(() => host.handlers.spawn({ command: process.execPath, args: [], cwd: process.cwd(), env: {}, cols: 80, rows: 24 })).toThrow('daemon-retiring')
+      expect(host.handlers.retire({})).toEqual({ retired: true, live: 0, blockers: [] })
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      expect(leave).toHaveBeenCalledOnce()
+    } finally {
+      if (!exited(agent)) host.handlers.kill({ sessionId: agent })
     }
-    expect(host.handlers.retire({})).toEqual({ retired: true, live: 0, blockers: [] })
-    expect(() => host.handlers.spawnPipe({ command: process.execPath, args: ['-e', keep], cwd: process.cwd(), env: {} })).toThrow('daemon-retiring')
-    expect(() => host.handlers.spawn({ command: process.execPath, args: [], cwd: process.cwd(), env: {}, cols: 80, rows: 24 })).toThrow('daemon-retiring')
-    expect(host.handlers.retire({})).toEqual({ retired: true, live: 0, blockers: [] })
-    await new Promise((resolve) => setTimeout(resolve, 100))
-    expect(leave).toHaveBeenCalledOnce()
-  })
+  }, 15_000)
 })
 
 describe('CLI upgrade admission', () => {
