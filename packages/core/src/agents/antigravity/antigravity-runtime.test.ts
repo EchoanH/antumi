@@ -15,10 +15,10 @@ async function home() {
 
 describe('Antigravity runtime', () => {
   it('uses the Windows browser only for WSL without an explicit browser', () => {
-    const windows = '/mnt/c/Windows/explorer.exe'
+    const windows = '/mnt/c/Windows/System32/rundll32.exe'
     const executable = (file: string) => file === windows
     const wsl = { WSL_INTEROP: '/run/WSL/socket' }
-    expect(antigravityBrowserEnv('linux', wsl, executable)).toEqual({ BROWSER: `${windows} %s &` })
+    expect(antigravityBrowserEnv('linux', wsl, executable)).toEqual({ BROWSER: `${windows} url.dll,FileProtocolHandler %s &` })
     expect(antigravityBrowserEnv('linux', { ...wsl, BROWSER: 'custom-browser' }, executable)).toEqual({})
     expect(antigravityBrowserEnv('linux', {}, executable)).toEqual({})
     expect(antigravityBrowserEnv('linux', wsl, () => false)).toEqual({})
