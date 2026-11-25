@@ -9,6 +9,7 @@ import { AcpDriver } from '../acp/acp-driver'
 import { antigravityDialect } from './antigravity-dialect'
 import { readAntigravityUsage } from './antigravity-usage'
 import { antigravityInstallation, antigravityServer, antigravitySignedIn, detectAntigravity, requireAntigravity } from './antigravity-runtime'
+import { antigravityBrowserEnv } from './antigravity-browser'
 
 const CATALOG_TIMEOUT_MS = 60_000
 
@@ -52,10 +53,12 @@ export const antigravity: AgentAdapter = {
   detect: detectAntigravity,
   usage: readAntigravityUsage,
   installation: antigravityInstallation,
+  maintenance: { managedRuntime: true },
   installWithoutApplication: true,
   launch: {
     mcp: (server) => server,
-    prepare: async () => ({ command: await requireAntigravity() }),
+    // Catalog probes are passive and must not opt in to the Windows browser.
+    prepare: async () => ({ command: await requireAntigravity(), env: antigravityBrowserEnv() }),
     ready: async () => {}
   },
   turns: { serialized: true, stopAfterCancel: { cancelGraceMs: 3000, termGraceMs: 2000 }, retryByRestart: true, denialAsMessage: true },

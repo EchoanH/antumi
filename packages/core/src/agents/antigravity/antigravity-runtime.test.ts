@@ -3,6 +3,7 @@ import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { ANTIGRAVITY_VERSION, antigravityInstallation, antigravityRuntimeDir, antigravitySignedIn, antigravityTokenFile, detectAntigravity, requireAntigravity } from './antigravity-runtime'
+import { antigravityBrowserEnv } from './antigravity-browser'
 
 const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))) })
@@ -13,6 +14,17 @@ async function home() {
 }
 
 describe('Antigravity runtime', () => {
+  it('uses the Windows browser only for WSL without an explicit browser', () => {
+    const windows = '/mnt/c/Windows/explorer.exe'
+    const executable = (file: string) => file === windows
+    const wsl = { WSL_INTEROP: '/run/WSL/socket' }
+    expect(antigravityBrowserEnv('linux', wsl, executable)).toEqual({ BROWSER: `${windows} %s &` })
+    expect(antigravityBrowserEnv('linux', { ...wsl, BROWSER: 'custom-browser' }, executable)).toEqual({})
+    expect(antigravityBrowserEnv('linux', {}, executable)).toEqual({})
+    expect(antigravityBrowserEnv('linux', wsl, () => false)).toEqual({})
+    expect(antigravityBrowserEnv('win32', wsl, executable)).toEqual({})
+  })
+
   it('downloads the pinned archive, checks its hash and renames it into place', () => {
     const host = { platform: 'darwin' as const, arch: 'arm64', home: "/Users/o'neil/.antumi" }
     const install = antigravityInstallation('darwin', host)
