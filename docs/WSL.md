@@ -32,8 +32,10 @@ Windows                                   WSL 发行版
 发版时多一个任务（`release.yml` 的 `linux-backend`）：在 Linux 上按 Linux 打出 `out/backend`（`bundle-backend.mjs --platform linux --linux-backend`，多出转发程序和 `backend-control` 两个入口，别的安装包里都没有），再由 `pack-linux-backend.mjs` 打成 `backend-linux-x64.tar.gz`，旁边一个写着 sha256 和版本的 json。各平台的打包任务都取来放进安装包的 `resources/linux-backend/`（远程服务器也用它，另有 arm64 的一份，见 [REMOTE.md](REMOTE.md)）。本机 `pnpm dist:win` 打的包里没有它，「后端位置」就不给选发行版。
 
 - 里面是全部 `.mjs`、`plugins` 和 Linux 上编译的 node-pty，解开就是发行版里的一份后端。
-- 在 `ubuntu-22.04` 上编：node-pty 按新 glibc 编出来的，旧 glibc 的发行版加载不了。再旧的发行版在预检时报出来。
-- 一定要在这台 runner 上真编一次：pnpm 默认把编好的 node-pty 存进 store，store 又随 CI 缓存在各任务间共用，`verify`（`ubuntu-latest`）编的那份曾被原样打进 0.21.8，要 glibc 2.42，Ubuntu 24.04 都加载不了。所以 `pnpm-workspace.yaml` 关了 `sideEffectsCache`，Linux 的任务装完再 `pnpm rebuild node-pty`，`bundle-backend.mjs` 打 Linux 包时还要查绑定要的 glibc 不超过 2.35、在本机加载得了，不然直接失败。Linux 桌面包（`ubuntu-24.04`）也受这条检查。
+- WSL 和 SSH 用的后端在 `ubuntu:20.04` 容器里编，x64 和 arm64 都用这套环境；gcc/g++ 10 来自发行版的软件源，支持 Node 24 的原生模块构建；Python 装 3.9，node-gyp 带的 gyp 要 3.9 以上，镜像默认的是 3.8。node-pty 按新系统库编出来的，旧发行版加载不了，所以后端包的兼容基线是 Ubuntu 20.04。
+- 容器以 root 跑，检出的目录属于 runner 的用户，git 会拒绝它（dubious ownership），`actions/checkout` 只为自己那一步放行：之后要 `git config --global --add safe.directory`，不然 `bundle-backend.mjs` 取提交号时失败。
+- 一定要在容器里真编一次：pnpm 默认把编好的 node-pty 存进 store，store 又随 CI 缓存在各任务间共用，`verify`（`ubuntu-latest`）编的那份曾被原样打进 0.21.8，要 glibc 2.42，Ubuntu 24.04 都加载不了。所以 `pnpm-workspace.yaml` 关了 `sideEffectsCache`，Linux 的任务装完再 `pnpm rebuild node-pty`。`bundle-backend.mjs` 对远程后端检查 GLIBC 不超过 2.31、GLIBCXX 不超过 3.4.28、CXXABI 不超过 1.3.12，并实际加载绑定；Linux 桌面包保留 glibc 2.35 的检查。
+- 打包后运行 `smoke-linux-backend.mjs <backend-linux-arch.tar.gz>`：校验归档的 sha256，解压到临时主目录下的 `.antumi/backend/<版本>-<哈希>/`（和真实安装同一个位置），用 Node 24 检查 PTY 读写和窗口大小，再启动 daemon/core、调用 `system.hello`。任务和会话用临时的 `ANTUMI_HOME`，结束后清理。两种架构在 Ubuntu 20.04 上各验证一次，Linux 桌面构建还用同一份 x64 归档在 Ubuntu 24.04 上验证。
 - 只有 x64。ARM 的 Windows 上发行版是 arm64，预检时报不支持。
 - 不带 Node。后端是按 Electron 自带的 Node 24 写和测的，22 上 core 一启动就缺 `node:zlib` 的 zstd，Ubuntu 24.04 用 apt 装到的是 18，不够：发行版里有 24 以上的就用它，没有就装一份固定版本的官方 Node（`linux-backend/managed-node.ts`，见 REMOTE.md）。
 
@@ -45,7 +47,7 @@ Windows                                   WSL 发行版
 2. **安装**：`~/.antumi/backend/<版本>-<包的哈希前 12 位>/` 里没有就绪标记时，把后端包经标准输入送进发行版，校验 sha256，解开，最后才改成这个名字。同一版本重新打的包哈希不同，所以也会装。
 3. **检查 node-pty**：让装好的 `backend-control.mjs check` 试着加载它。node-pty 自己的报错只留最后试的那个位置（Linux 上永远是不存在的 `prebuilds/linux-x64`），所以加载不了时再单独加载 `build/Release/pty.node` 拿真正的原因。原因是 `GLIBC_…`/`GLIBCXX_…` not found 才说发行版的系统库太旧；别的都当安装包的问题，附上报错。
 4. **替换**：`backend-control.mjs prepare <版本>` 在发行版里跑和本机同一套规矩（`protocol/src/node/backend-lifecycle.ts`）：别的版本的 core 请它退出，daemon 只在不跑东西时才换，答回要启动哪几个。
-5. **启动**：每个由一个分离的 `wsl.exe -d <发行版> --exec env PATH=… /bin/sh -c … node <入口>` 带起来，和本机 `launch()` 一样不随应用退出。Linux 进程留在 `wsl.exe` 的前台，不在发行版里再做一次后台化：有 `wsl.exe` 连着，发行版才不会被回收。分离的 `wsl.exe` 不给程序标准输出，所以输出由那段 `sh` 接到发行版自己的 `~/.antumi/logs/` 里。
+5. **启动**：每个由一个无窗口的 `wsl.exe -d <发行版> --exec env PATH=… /bin/sh -c … node <入口>` 带起来，和本机 `launch()` 一样不随应用退出。桌面端先隐藏启动系统自带的 Windows PowerShell；它用 `ProcessStartInfo` 的 `CreateNoWindow=true`、`UseShellExecute=false` 启动 `wsl.exe`，成功后立即退出，桌面端等到这个结果才继续。Linux 进程留在 `wsl.exe` 的前台，不在发行版里再做一次后台化：有 `wsl.exe` 连着，发行版才不会被回收。输出由那段 `sh` 接到发行版自己的 `~/.antumi/logs/` 里。
 6. **等 core 应答**：`backend-control.mjs endpoint` 答回 core 的端口和令牌。core 要把账号、插件、技能等都加载完才监听、写 `core.json`，冷启动的发行版第一次曾超过 30 秒，所以还没答回时 `endpoint` 顺带说这个目录的 `core.mjs` 还在不在跑（查 `/proc/*/cmdline`）：在就最多等三分钟，这次拉起的 core 不在了（拉起后 5 秒宽限）就马上报错，不白等。core.log 里 `listening` 那行带着启动用了几秒。
 
 应用开着的时候，core 没了（比如 `wsl --shutdown` 之后）会在界面再来问它在哪时重新走一遍，最多二十秒一次；旧 daemon 的替换沿用本机那个定时检查，改问 `backend-control.mjs replace-daemon`。
@@ -99,6 +101,7 @@ core 只认 Linux 路径，界面按路径本身的样子处理，不看自己�
 - `--exec` 拿不到登录 shell 的 PATH，要先取一次再显式带上；取的时候用标记把输出夹起来，Ubuntu 的登录 shell 会往标准输出打提示。
 - 令牌走标准输入，不进命令行参数。
 - 后台检查不要把已经停掉的发行版唤醒：先看 `wsl.exe --list --running`。
+- 后端启动不直接给 `wsl.exe` 设置 `detached`：libuv 会同时设置 `DETACHED_PROCESS`，Windows 因而忽略 `CREATE_NO_WINDOW`，默认终端为 Windows Terminal 时仍会打开常驻窗口。隐藏启动器的子进程不继承 libuv 的结束随父进程退出的 job，所以无需这个标志仍能独立运行。启动器只执行固定脚本，文件、参数数组和工作目录经 UTF-8 JSON 标准输入传入，参数按 `CreateProcess` 规则引用，不拼进 PowerShell 脚本，也不经 `cmd.exe`。
 - `wsl.exe --list` 的输出是 UTF-16LE 带 BOM；`docker-desktop` 这类发行版要滤掉。
 - 「没问到」不等于「没有」：探测失败时保留上一次的结果，过一会儿再问。
 

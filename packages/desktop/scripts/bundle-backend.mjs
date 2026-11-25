@@ -7,6 +7,7 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
+import { assertLinuxBindingCompatible } from './linux-binding-compatibility.mjs'
 
 const desktop = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '..')
 const repo = path.resolve(desktop, '../..')
@@ -92,18 +93,10 @@ for (const piece of prebuilds) {
   if (existsSync(helper)) chmodSync(helper, 0o755)
 }
 
-// The Linux binding needs the glibc it was compiled against, which is not always this runner's: a
-// build cached on a newer Linux once shipped needing 2.42. Every Linux package promises Ubuntu
-// 22.04 (docs/WSL.md), so the binding is held to its glibc, and must load here as well.
-const GLIBC_FLOOR = [2, 35]
+// A cached binding may have been compiled on a newer Linux than this package supports.
 if (platform === 'linux') {
   const binding = path.join(ptyOut, 'build/Release/pty.node')
-  const newest = [...readFileSync(binding, 'latin1').matchAll(/GLIBC_(\d+)\.(\d+)/g)]
-    .map(([, major, minor]) => [Number(major), Number(minor)])
-    .reduce((a, b) => (b[0] - a[0] || b[1] - a[1]) > 0 ? b : a, [0, 0])
-  if ((newest[0] - GLIBC_FLOOR[0] || newest[1] - GLIBC_FLOOR[1]) > 0) {
-    throw new Error(`[bundle-backend] node-pty's binding needs glibc ${newest.join('.')}, newer than Ubuntu 22.04's ${GLIBC_FLOOR.join('.')}: build it on Ubuntu 22.04 (pnpm rebuild node-pty)`)
-  }
+  assertLinuxBindingCompatible(readFileSync(binding), forLinuxBackend.length > 0)
   createRequire(import.meta.url)(binding)
 }
 
