@@ -1,6 +1,6 @@
 import { SupportActions } from './ContactAuthor'
 import { AutoInvestigationSettings } from './AutoInvestigationSettings'
-import { SourceWritebackSettings } from './SourceWritebackSettings'
+import { SourceWritebackSettings, type LaneType } from './SourceWritebackSettings'
 import { getLocale, t, tr } from '../i18n'
 import { useEffect, useId, useState, type FormEvent } from 'react'
 import { DEFAULT_INSTANCE, translatedText, type SettingField, type SourceDescriptor } from '@antumi/protocol'
@@ -174,7 +174,18 @@ export function SourceSettingsSection({ source }: { source: SourceDescriptor }) 
         </button>
       </div>
       <AutoInvestigationSettings provider={source.provider} instance={DEFAULT_INSTANCE} info={instance.autoInvestigation} connected={instance.enabled && credential.configured} />
-      {source.writeback && <SourceWritebackSettings provider={source.provider} instance={DEFAULT_INSTANCE} config={instance.writeback} hints={source.writebackRules} comments={source.writebackComments} />}
+      {source.writeback && <SourceWritebackSettings provider={source.provider} instance={DEFAULT_INSTANCE} config={instance.writeback} hints={source.writebackRules} comments={source.writebackComments}
+        lanes={instance.writebackLanes} options={instance.writebackOptions} types={laneTypes(source, inbox?.items ?? [])} />}
     </form>
   )
+}
+
+// The issue types a lane can be made for: the ones the plugin says its tracker has, then any the
+// inbox holds that it did not list (a Jira site's own types).
+function laneTypes(source: SourceDescriptor, issues: readonly { typeId?: string | undefined; type: string }[]): LaneType[] {
+  const types: LaneType[] = [...(source.writebackTypes ?? [])]
+  for (const issue of issues) {
+    if (issue.typeId && !types.some((type) => type.id === issue.typeId)) types.push({ id: issue.typeId, label: issue.type || issue.typeId })
+  }
+  return types
 }
