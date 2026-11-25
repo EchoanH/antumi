@@ -57,7 +57,7 @@ function setup() {
     const restarted = new AgentCliMaintenance(file, deps)
     cleanups.push(() => restarted.close())
     return restarted
-  }, version: (version: string | null) => { target = { ...target, version } }, identity: () => { target = { ...target, identity: 'replacement' } }, time: (time: number) => { now = time }, oldDaemon: () => { supported = false } }
+  }, version: (version: string | null) => { target = { ...target, version } }, checked: (checkedVersion: string, rollback?: CliTarget['rollback']) => { target = { ...target, checkedVersion, rollback } }, identity: () => { target = { ...target, identity: 'replacement' } }, time: (time: number) => { now = time }, oldDaemon: () => { supported = false } }
 }
 
 describe('CLI maintenance lifecycle', () => {
@@ -70,6 +70,39 @@ describe('CLI maintenance lifecycle', () => {
     await service.list('codex')
     await service.list('codex', true)
     expect(deps.latest).toHaveBeenCalledTimes(3)
+  })
+
+  it('says when the latest or the installed release is newer than the one Antumi was checked with, still offering it', async () => {
+    const { service, version, checked } = setup()
+    expect((await service.list('codex'))[0]?.compatibility).toBeNull()
+    checked('1.5.0', { command: 'npm', args: ['install', '-g', '@openai/codex@1.5.0'] })
+    expect((await service.list('codex', true))[0]).toMatchObject({
+      availability: 'available', canUpgrade: true,
+      compatibility: { checkedVersion: '1.5.0', newer: 'latest', rollbackCommand: 'npm install -g @openai/codex@1.5.0' }
+    })
+    version('2.0.0')
+    expect((await service.list('codex', true))[0]).toMatchObject({ availability: 'current', compatibility: { checkedVersion: '1.5.0', newer: 'current' } })
+    checked('2.0.0')
+    expect((await service.list('codex', true))[0]?.compatibility).toBeNull()
+    checked('3.0.0-nightly')
+    expect((await service.list('codex', true))[0]?.compatibility).toBeNull()
+    // No package manager proved the installation: the release is named, with no command.
+    checked('1.0.0')
+    expect((await service.list('codex', true))[0]?.compatibility).toEqual({ checkedVersion: '1.0.0', newer: 'current', rollbackCommand: null })
+  })
+
+  it('keeps the way back once an upgrade has installed the unchecked release', async () => {
+    const { service, sessions, version, checked } = setup()
+    checked('1.5.0', { command: 'npm', args: ['install', '-g', '@openai/codex@1.5.0'] })
+    expect((await service.upgrade('codex')).terminal).not.toBeNull()
+    const session = sessions[0]!
+    session.exited = true; session.exitCode = 0
+    version('2.0.0')
+    await service.reconcile()
+    expect((await service.list('codex'))[0]).toMatchObject({
+      phase: 'succeeded', currentVersion: '2.0.0',
+      compatibility: { checkedVersion: '1.5.0', newer: 'current', rollbackCommand: 'npm install -g @openai/codex@1.5.0' }
+    })
   })
 
   it('never reports an unavailable release feed as current', async () => {

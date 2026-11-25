@@ -89,6 +89,9 @@ export interface AgentAdapter {
   readonly maintenance?: {
     packageName?: string
     packageArgs?: readonly string[]
+    // The newest release Antumi was checked with, for a CLI whose releases have broken it before:
+    // a newer one is still offered, with a way back.
+    checkedVersion?: string
     brew?: { name: string; cask: boolean }
     native?: { roots: Partial<Record<NodeJS.Platform, readonly string[]>>; args: readonly string[]; latestUrl?: string; tagPrefix?: string }
   }

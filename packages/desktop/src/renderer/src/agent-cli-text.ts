@@ -20,6 +20,12 @@ export function cliStatusText(status: AgentCliStatus): string {
   }
 }
 
+// What to say of a release Antumi was not checked with, before the way back.
+export function cliCompatibilityText(compatibility: NonNullable<AgentCliStatus['compatibility']>, latest: string | null): string {
+  const checked = compatibility.checkedVersion
+  return compatibility.newer === 'latest' && latest ? t('agentCli.uncheckedLatest', { checked, latest }) : t('agentCli.uncheckedCurrent', { checked })
+}
+
 export function cliChannelText(channel?: AgentCliStatus['channel']): string | null {
   switch (channel) {
     case 'native': return t('agentCli.channelNative')

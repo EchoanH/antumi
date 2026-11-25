@@ -20,7 +20,12 @@ export const dsh: AgentAdapter = {
   catalog: dshCatalog,
   detect: detectDsh,
   installation: dshInstallation,
-  launch: { mcp: (server, stage) => ({ ...server, args: [...server.args, ...(stage.planOnly ? ['--plan-only'] : [])] }), prepare: prepareDsh, ready: async () => {} },
+  maintenance: { packageName: '@deepseek-ai/dsh', checkedVersion: '0.2.2-rc.5' },
+  launch: {
+    mcp: (server, stage) => ({ ...server, args: [...server.args, ...(stage.planOnly ? ['--plan-only'] : [])] }),
+    prepare: (stage, _mcp, launch) => prepareDsh(stage, launch.provider !== undefined),
+    ready: async () => {}
+  },
   turns: { serialized: true, stopAfterCancel: { cancelGraceMs: 3000, termGraceMs: 2000 }, retryByRestart: true, denialAsMessage: true },
   optionsFromState: true,
   discovery: { commands: ['dsh'], applications: { darwin: ['DeepSeek Harness.app', 'DSH Desktop.app'] } }

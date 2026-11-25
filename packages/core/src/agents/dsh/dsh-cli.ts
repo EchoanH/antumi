@@ -126,8 +126,11 @@ export async function prepareDshProfile(command: string, bundle = bundledDsh(), 
     const marker = path.join(profile, '.antumi-runtime')
     const installed = path.join(profile, 'node_modules', '@antumi', 'dsh-runtime', 'package.json')
     if ((await readFile(marker, 'utf8').catch(() => '')) === hash && existsSync(installed)) return
+    const run = (...args: string[]) => launchOutput(launchFile(command, ['plugin', '--profile', 'antumi', ...args], { ...process.env, DSH_HOME: home }), 180_000)
+    // Some pnpm releases keep the tarball they already resolved at this path, so drop the old plugin first.
+    if (existsSync(installed)) await run('remove', '@antumi/dsh-runtime').catch(() => {})
     try {
-      await launchOutput(launchFile(command, ['plugin', '--profile', 'antumi', 'add', bundle], { ...process.env, DSH_HOME: home }), 180_000)
+      await run('add', bundle)
     } catch {
       throw new Rejection('dsh-runtime-install-failed', 'DeepSeek Harness 运行时准备失败，请检查网络和 pnpm 后重试；已有配置已保留')
     }
@@ -139,21 +142,27 @@ export async function prepareDshProfile(command: string, bundle = bundledDsh(), 
   try { await preparation } finally { prepares.delete(key) }
 }
 
-export const DSH_OVERLAY = `- id: skill-filesystem
+const DSH_SKILLS_OVERLAY = `- id: skill-filesystem
   config:
     customSkillDirs: !!js JSON.parse(process.env.${DSH_CONFIG_ENV} || '{}').skills || []
-- id: llm-pi-ai
+`
+const DSH_PROVIDER_OVERLAY = `- id: llm-pi-ai
   config:
     providers: !!js "(() => { const providers = JSON.parse(process.env.${DSH_PROVIDER_ENV} || '{}'); for (const provider of Object.values(providers)) { if (provider.headers?.authorization) provider.headers.authorization = 'Bearer ' + (process.env.ANTUMI_MODEL_PROVIDER_KEY || ''); } return providers; })()"
 `
 
-export async function prepareDsh(stage: AgentStage): Promise<{ command: string; args: string[] }> {
+export function dshOverlay(useAntumiProvider: boolean): string {
+  // A DSH patch replaces the whole config, so native sessions must not patch llm-pi-ai.
+  return useAntumiProvider ? DSH_SKILLS_OVERLAY + DSH_PROVIDER_OVERLAY : DSH_SKILLS_OVERLAY
+}
+
+export async function prepareDsh(stage: AgentStage, useAntumiProvider: boolean): Promise<{ command: string; args: string[] }> {
   const command = await requireDsh()
   await prepareDshProfile(command)
   const directory = path.join(stage.sessionsRoot, stage.conversationId, 'dsh')
   await mkdir(directory, { recursive: true, mode: 0o700 })
   const overlay = path.join(directory, `overlay-${stage.stageId}.yml`)
-  await writeFile(overlay, DSH_OVERLAY, { mode: 0o600 })
+  await writeFile(overlay, dshOverlay(useAntumiProvider), { mode: 0o600 })
   return { command, args: ['--patch', overlay] }
 }
 

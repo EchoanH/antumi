@@ -19,6 +19,9 @@ export type CliTarget = {
   command: CliCommand | null
   latestUrl: string | null
   tagPrefix?: string
+  // The adapter's checked release, and the install of it by the package manager proven to own this CLI.
+  checkedVersion?: string
+  rollback?: CliCommand
 }
 export type CliTargetHost = {
   platform: NodeJS.Platform
@@ -34,7 +37,10 @@ export const cliTargetHost: CliTargetHost = {
   read: (file) => readFile(file, 'utf8'),
   async run(command) {
     const launch = planLaunch(command.command, command.args, os.homedir(), { ...process.env, OPENCODE_DISABLE_AUTOUPDATE: '1', PI_OFFLINE: '1' })
-    const result = await execute(launch.file, launch.args, { env: launch.env, timeout: 5000, maxBuffer: 256 * 1024, windowsHide: true })
+    const pending = execute(launch.file, launch.args, { env: launch.env, timeout: 5000, maxBuffer: 256 * 1024, windowsHide: true })
+    // Read-only probes have no input. Some Windows launchers wait for EOF before exiting.
+    pending.child.stdin?.end()
+    const result = await pending
     return stripAnsi(`${result.stdout}\n${result.stderr}`).trim()
   }
 }
@@ -71,15 +77,16 @@ export function desktopCli(file: string, platform: NodeJS.Platform): boolean {
 }
 
 export async function resolveCliTarget(agent: AgentKind, environment: Environment, host: CliTargetHost = cliTargetHost): Promise<CliTarget | null> {
-  const selected = environment.checks.find((check) => check.tool === agent)?.path
+  const check = environment.checks.find((entry) => entry.tool === agent)
+  const selected = check?.path
   if (!selected) return null
   const paths = host.platform === 'win32' ? path.win32 : path.posix
   const canonical = await host.canonical(selected).catch(() => selected)
   const version = cliVersion(await host.run({ command: selected, args: ['--version'] }).catch(() => ''))
-  const base = { path: selected, version }
-  const target = (channel: CliTarget['channel'], command: CliCommand | null, latestUrl: string | null, tagPrefix?: string): CliTarget => ({ ...base, channel, command, latestUrl, tagPrefix, identity: JSON.stringify({ selected, canonical, channel, command }) })
-  if (desktopCli(selected, host.platform) || desktopCli(canonical, host.platform)) return target('desktop', null, null)
   const maintenance = adapterOf(agent).maintenance
+  const base = { path: selected, version, ...(maintenance?.checkedVersion ? { checkedVersion: maintenance.checkedVersion } : {}) }
+  const target = (channel: CliTarget['channel'], command: CliCommand | null, latestUrl: string | null, tagPrefix?: string): CliTarget => ({ ...base, channel, command, latestUrl, tagPrefix, identity: JSON.stringify({ selected, canonical, channel, command }) })
+  if (check.requiresStandaloneCli || desktopCli(selected, host.platform) || desktopCli(canonical, host.platform)) return target('desktop', null, null)
   const packageName = maintenance?.packageName
   if (packageName) {
     const proofs: CliTarget[] = []
@@ -106,7 +113,8 @@ export async function resolveCliTarget(agent: AgentKind, environment: Environmen
         if (!owned) continue
         const args = manager === 'pnpm' ? ['add', '-g'] : ['install', '-g']
         if (manager === 'bun') args.splice(0, args.length, 'add', '-g')
-        proofs.push(target(manager, { command: manager, args: [...args, `${packageName}@latest`, ...(maintenance?.packageArgs ?? [])] }, `https://registry.npmjs.org/${packageName}/latest`))
+        const install = (release: string): CliCommand => ({ command: manager, args: [...args, `${packageName}@${release}`, ...(maintenance?.packageArgs ?? [])] })
+        proofs.push({ ...target(manager, install('latest'), `https://registry.npmjs.org/${packageName}/latest`), ...(maintenance?.checkedVersion ? { rollback: install(maintenance.checkedVersion) } : {}) })
       } catch { /* Another manager may own this executable. */ }
     }
     if (proofs.length === 1) return proofs[0] ?? null

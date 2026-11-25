@@ -3,7 +3,7 @@ import { mkdtemp, writeFile, mkdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { Launch, LaunchHost } from '@antumi/protocol/node'
-import { detectDsh, prepareDshProfile } from './dsh-cli'
+import { detectDsh, dshOverlay, prepareDshProfile } from './dsh-cli'
 
 const desktopBin = 'D:\\DeepSeek Harness\\resources\\runtime\\cli\\bin'
 const npmBin = 'C:\\Users\\user\\AppData\\Roaming\\npm'
@@ -93,40 +93,66 @@ describe('Windows DSH detection', () => {
 const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))) })
 
-async function fixture(failOnce = false) {
+async function fixture(failOnce = false, failRemove = false) {
   const root = await mkdtemp(path.join(tmpdir(), 'antumi-dsh-install-'))
   roots.push(root)
   const command = path.join(root, 'dsh')
   const home = path.join(root, 'home')
   const bundle = path.join(root, 'runtime.tgz')
   await writeFile(bundle, 'test-bundle')
+  // Models pnpm 12.3 to 12.6: an add over an existing install keeps the old plugin and still exits 0.
   await writeFile(command, `#!/usr/bin/env node
 const fs = require('node:fs')
 const path = require('node:path')
 const profile = path.join(process.env.DSH_HOME, 'profiles', 'antumi')
 fs.mkdirSync(profile, {recursive:true})
-const calls = path.join(profile, 'calls')
-const count = Number(fs.existsSync(calls) ? fs.readFileSync(calls, 'utf8') : 0) + 1
-fs.writeFileSync(calls, String(count))
-if (process.argv.slice(2).join('|') !== ['plugin', '--profile', 'antumi', 'add', ${JSON.stringify(bundle)}].join('|')) process.exit(2)
-if (${failOnce} && count === 1) process.exit(1)
+const argv = process.argv.slice(2)
+const verb = argv[3]
+fs.appendFileSync(path.join(profile, 'calls'), verb + '\\n')
 const install = path.join(profile, 'node_modules', '@antumi', 'dsh-runtime')
+const head = argv.slice(0, 3).join('|')
+if (head !== 'plugin|--profile|antumi') process.exit(2)
+if (verb === 'remove' && argv.slice(4).join('|') === '@antumi/dsh-runtime') {
+  if (${failRemove}) process.exit(1)
+  fs.rmSync(install, {recursive:true, force:true})
+  process.exit(0)
+}
+if (verb !== 'add' || argv.slice(4).join('|') !== ${JSON.stringify(bundle)}) process.exit(2)
+const adds = fs.readFileSync(path.join(profile, 'calls'), 'utf8').split('\\n').filter((line) => line === 'add').length
+if (${failOnce} && adds === 1) process.exit(1)
+if (fs.existsSync(install)) process.exit(0)
 fs.mkdirSync(install, {recursive:true})
 fs.writeFileSync(path.join(install, 'package.json'), JSON.stringify({name:'@antumi/dsh-runtime'}))
+fs.writeFileSync(path.join(install, 'bundle'), fs.readFileSync(${JSON.stringify(bundle)}))
 `, { mode: 0o700 })
   return { root, home, command, bundle, profile: path.join(home, 'profiles', 'antumi') }
 }
+
+const callsTo = async (profile: string, verb: string) =>
+  (await readFile(path.join(profile, 'calls'), 'utf8')).split('\n').filter((line) => line === verb).length
+const installedBundle = (profile: string) => readFile(path.join(profile, 'node_modules', '@antumi', 'dsh-runtime', 'bundle'), 'utf8')
 
 describe.skipIf(process.platform === 'win32')('DSH managed profile', () => {
   it('coalesces concurrent preparation, skips the installed digest, and reinstalls a changed bundle', async () => {
     const f = await fixture()
     await Promise.all([prepareDshProfile(f.command, f.bundle, f.home), prepareDshProfile(f.command, f.bundle, f.home)])
-    expect(await readFile(path.join(f.profile, 'calls'), 'utf8')).toBe('1')
+    expect(await callsTo(f.profile, 'add')).toBe(1)
+    expect(await callsTo(f.profile, 'remove')).toBe(0)
     await prepareDshProfile(f.command, f.bundle, f.home)
-    expect(await readFile(path.join(f.profile, 'calls'), 'utf8')).toBe('1')
+    expect(await callsTo(f.profile, 'add')).toBe(1)
     await writeFile(f.bundle, 'updated-bundle')
     await prepareDshProfile(f.command, f.bundle, f.home)
-    expect(await readFile(path.join(f.profile, 'calls'), 'utf8')).toBe('2')
+    expect(await callsTo(f.profile, 'add')).toBe(2)
+    expect(await installedBundle(f.profile)).toBe('updated-bundle')
+  })
+
+  it('still installs the changed bundle when removing the old plugin fails', async () => {
+    const f = await fixture(false, true)
+    await prepareDshProfile(f.command, f.bundle, f.home)
+    await writeFile(f.bundle, 'updated-bundle')
+    await prepareDshProfile(f.command, f.bundle, f.home)
+    expect(await callsTo(f.profile, 'remove')).toBe(1)
+    expect(await callsTo(f.profile, 'add')).toBe(2)
   })
 
   it('can retry an installation failure and preserves files already in the profile', async () => {
@@ -137,5 +163,14 @@ describe.skipIf(process.platform === 'win32')('DSH managed profile', () => {
     await expect(prepareDshProfile(f.command, f.bundle, f.home)).rejects.toMatchObject({ reason: 'dsh-runtime-install-failed' })
     await prepareDshProfile(f.command, f.bundle, f.home)
     expect(await readFile(existing, 'utf8')).toBe('user-config')
+  })
+})
+
+describe('DSH stage overlay', () => {
+  it('patches the provider plugin only for a session on an Antumi provider', () => {
+    expect(dshOverlay(false)).toContain('- id: skill-filesystem')
+    expect(dshOverlay(false)).not.toContain('llm-pi-ai')
+    expect(dshOverlay(true)).toContain('- id: skill-filesystem')
+    expect(dshOverlay(true)).toContain('- id: llm-pi-ai')
   })
 })
