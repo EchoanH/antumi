@@ -7,6 +7,7 @@
 ### 修复
 
 - DeepSeek Harness 装了新版 CLI 后不再读不到模型，会话中也不再丢失 DSH 自己配置的服务商模型。
+- 更新 Antumi 后，DeepSeek Harness 不再因沿用旧的运行时插件而无法启动。
 
 ## 0.22.0 — 2026-11-25
 

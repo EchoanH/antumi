@@ -126,8 +126,11 @@ export async function prepareDshProfile(command: string, bundle = bundledDsh(), 
     const marker = path.join(profile, '.antumi-runtime')
     const installed = path.join(profile, 'node_modules', '@antumi', 'dsh-runtime', 'package.json')
     if ((await readFile(marker, 'utf8').catch(() => '')) === hash && existsSync(installed)) return
+    const run = (...args: string[]) => launchOutput(launchFile(command, ['plugin', '--profile', 'antumi', ...args], { ...process.env, DSH_HOME: home }), 180_000)
+    // Some pnpm releases keep the tarball they already resolved at this path, so drop the old plugin first.
+    if (existsSync(installed)) await run('remove', '@antumi/dsh-runtime').catch(() => {})
     try {
-      await launchOutput(launchFile(command, ['plugin', '--profile', 'antumi', 'add', bundle], { ...process.env, DSH_HOME: home }), 180_000)
+      await run('add', bundle)
     } catch {
       throw new Rejection('dsh-runtime-install-failed', 'DeepSeek Harness 运行时准备失败，请检查网络和 pnpm 后重试；已有配置已保留')
     }
