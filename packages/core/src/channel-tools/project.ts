@@ -10,6 +10,7 @@ import { ChannelToolError, channelTool, type ChannelToolResult, type ChannelTool
 
 const MAX_ENTRIES = 500
 const MAX_MATCHES = 100
+const MAX_GIT_PATH_CHECKS = 4096
 const MAX_MATCH_CHARS = 300
 const MAX_READ_LINES = 400
 const MAX_READ_BYTES = 64 * 1024
@@ -64,6 +65,22 @@ async function isRepo(root: string): Promise<boolean> {
   return (await git(root, ['rev-parse', '--is-inside-work-tree']).catch(() => ({ code: 1, stdout: '' }))).stdout.trim() === 'true'
 }
 
+function projectRelative(root: string, file: string): string | null {
+  const relative = path.relative(root, file)
+  return relative.startsWith('..') || path.isAbsolute(relative) ? null : relative.split(path.sep).join('/')
+}
+
+// Git's index and filesystem traversal are not an authorization check. Verify any path Git
+// returns before exposing it (including when the host implements links as reparse points).
+async function visibleGitPath(root: string, relative: string): Promise<boolean> {
+  if (holdsSecret(relative)) return false
+  const candidate = path.resolve(root, relative)
+  if (projectRelative(root, candidate) === null) return false
+  // Omit aliases from bulk results. Git's ignore check is on the name it traversed, not on the
+  // alias target, which may be ignored or outside the project.
+  return await realpath(candidate).catch(() => null) === candidate
+}
+
 // Where `project/relative` is, checked: the project is one of the scope's, the path stays inside it
 // once links are followed, and names nothing withheld. relative is '' for the project itself.
 async function locate(scope: ChannelToolScope, given: string): Promise<{ project: Project; relative: string; file: string }> {
@@ -78,10 +95,10 @@ async function locate(scope: ChannelToolScope, given: string): Promise<{ project
   const root = await realpath(project.root)
   const file = await realpath(path.join(root, ...rest)).catch(() => null)
   if (!file) throw new ChannelToolError(`没有这个路径：${clean}`)
-  const inside = path.relative(root, file)
-  if (inside.startsWith('..') || path.isAbsolute(inside)) throw new ChannelToolError('这个路径不提供')
+  const inside = projectRelative(root, file)
+  if (inside === null) throw new ChannelToolError('这个路径不提供')
   // Followed through a link it may have a name that is withheld, or sit in git's own folder.
-  if (holdsSecret(inside.split(path.sep).join('/'))) throw new ChannelToolError('这个路径不提供')
+  if (holdsSecret(inside)) throw new ChannelToolError('这个路径不提供')
   if (relative && (await git(root, ['check-ignore', '-q', '--', inside])).code === 0) throw new ChannelToolError('这个路径被 .gitignore 忽略了，不提供')
   return { project, relative, file }
 }
@@ -102,17 +119,22 @@ export const projectList = channelTool({
     const prefix = path.relative(root, file).split(path.sep).join('/')
     const listed = await git(root, ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', prefix ? `${prefix}/` : '.'])
     const entries = new Set<string>()
+    let checks = 0
+    let truncated = false
     for (const each of listed.stdout.split('\0')) {
       // A folder shows only for a file in it that would be given.
       if (!each || holdsSecret(each)) continue
       const below = prefix ? each.slice(prefix.length + 1) : each
       const [first, ...deeper] = below.split('/')
       if (!first) continue
-      entries.add(deeper.length ? `${first}/` : first)
+      const entry = deeper.length ? `${first}/` : first
+      if (entries.has(entry)) continue
+      if (checks++ >= MAX_GIT_PATH_CHECKS) { truncated = true; break }
+      if (await visibleGitPath(root, each)) entries.add(entry)
     }
     const sorted = [...entries].sort((a, b) => Number(b.endsWith('/')) - Number(a.endsWith('/')) || a.localeCompare(b))
     const shown = sorted.slice(0, MAX_ENTRIES)
-    const more = sorted.length > shown.length ? `\n（还有 ${sorted.length - shown.length} 项没有列出）` : ''
+    const more = truncated ? '\n（目录较大，结果已截断）' : sorted.length > shown.length ? `\n（还有 ${sorted.length - shown.length} 项没有列出）` : ''
     return done((shown.join('\n') || '（空目录）') + more, `${project.name}/${relative}`.replace(/\/$/, ''))
   }
 })
@@ -123,6 +145,24 @@ const SearchArgs = z.object({
   path: z.string().max(2000).optional(),
   glob: z.string().max(200).optional()
 })
+
+// With -z Git delimits path and line number with NUL, so spaces, colons and even newlines in a
+// filename cannot be mistaken for the boundary between the path and its result text.
+function* grepMatches(output: string): Generator<{ file: string; line: string }> {
+  for (let offset = 0; offset < output.length;) {
+    const pathEnd = output.indexOf('\0', offset)
+    if (pathEnd < 0) return
+    const numberEnd = output.indexOf('\0', pathEnd + 1)
+    if (numberEnd < 0) return
+    const next = output.indexOf('\n', numberEnd + 1)
+    const end = next < 0 ? output.length : next
+    const file = output.slice(offset, pathEnd)
+    const number = output.slice(pathEnd + 1, numberEnd)
+    const text = output.slice(numberEnd + 1, end).replace(/\r$/, '')
+    offset = end + 1
+    if (file && /^\d+$/.test(number)) yield { file, line: `${file.replace(/[\r\n]/g, ' ')}:${number}:${text}` }
+  }
+}
 export const projectSearch = channelTool({
   name: 'project_search',
   description: '在项目的文件内容里搜索，不分大小写。query 默认按原文匹配，regex 为 true 时按扩展正则。path 限定「项目名/相对路径」，glob 限定文件名（如 *.ts）。返回「项目名/路径:行号: 内容」。',
@@ -142,20 +182,28 @@ export const projectSearch = channelTool({
     const projects = within ? [within.project] : projectsOf(scope)
     const lines: string[] = []
     let total = 0
+    let checks = 0
+    let truncated = false
     for (const project of projects) {
       if (!(await isRepo(project.root))) continue
       const root = await realpath(project.root)
       const base = within ? path.relative(root, within.file).split(path.sep).join('/') : ''
       const pathspec = glob ? `:(glob)${base ? `${base}/` : ''}**/${glob}` : base || '.'
-      const found = await git(root, ['grep', '-n', '-I', '-i', '--untracked', '--no-color', regex ? '-E' : '-F', '-e', query, '--', pathspec, ...SECRET_PATHSPECS])
+      const found = await git(root, ['grep', '-z', '-n', '-H', '-I', '-i', '--untracked', '--no-color', '--no-column', regex ? '-E' : '-F', '-e', query, '--', pathspec, ...SECRET_PATHSPECS])
       if (found.code > 1) throw new ChannelToolError(regex ? '正则写得不对，或搜索失败' : '搜索失败')
-      for (const line of found.stdout.split('\n')) {
-        if (!line) continue
+      const visible = new Map<string, boolean>()
+      for (const { file, line } of grepMatches(found.stdout)) {
+        if (!visible.has(file)) {
+          if (checks++ >= MAX_GIT_PATH_CHECKS) { truncated = true; break }
+          visible.set(file, await visibleGitPath(root, file))
+        }
+        if (!visible.get(file)) continue
         total += 1
         if (lines.length < MAX_MATCHES) lines.push(`${project.name}/${line.length > MAX_MATCH_CHARS ? `${line.slice(0, MAX_MATCH_CHARS)}…` : line}`)
       }
+      if (truncated) break
     }
-    const more = total > lines.length ? `\n（共 ${total} 处，只显示前 ${lines.length} 处；加上 path 或 glob 缩小范围）` : ''
+    const more = truncated ? '\n（结果已截断；加上 path 或 glob 缩小范围）' : total > lines.length ? `\n（共 ${total} 处，只显示前 ${lines.length} 处；加上 path 或 glob 缩小范围）` : ''
     return done((lines.join('\n') || '没有找到') + more, `${within ? `${within.project.name}/${within.relative}`.replace(/\/$/, '') : '*'}: ${query}`)
   }
 })

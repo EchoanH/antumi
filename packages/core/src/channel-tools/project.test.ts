@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, rmdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -7,6 +7,7 @@ import { CHANNEL_TOOL_NAMES, runChannelTool } from './index'
 import { holdsSecret, projectsOf } from './project'
 
 describe('project tools', () => {
+  const windows = process.platform === 'win32'
   let base: string
   let scope: { roots: string[] }
   const call = (name: string, args: unknown) => runChannelTool(scope, name, args)
@@ -30,10 +31,13 @@ describe('project tools', () => {
     write('untracked.md', 'not added yet, NEEDLE\n')
     writeFileSync(path.join(app, 'image.bin'), Buffer.from([1, 2, 0, 3]))
     writeFileSync(path.join(base, 'outside.txt'), 'outside NEEDLE\n')
-    symlinkSync(path.join(base, 'outside.txt'), path.join(app, 'escape.txt'))
-    symlinkSync(base, path.join(app, 'up'))
+    if (!windows) {
+      symlinkSync(path.join(base, 'outside.txt'), path.join(app, 'escape.txt'))
+      symlinkSync(base, path.join(app, 'up'), 'dir')
+    }
     execFileSync('git', ['init', '-q'], { cwd: app })
-    execFileSync('git', ['add', 'src', 'README.md', '.gitignore', 'escape.txt', 'up', 'image.bin'], { cwd: app })
+    const links = windows ? [] : ['escape.txt', 'up']
+    execFileSync('git', ['add', 'src', 'README.md', '.gitignore', ...links, 'image.bin'], { cwd: app })
     execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'init'], { cwd: app })
     mkdirSync(path.join(base, 'plain'))
     writeFileSync(path.join(base, 'plain', 'a.txt'), 'not a repo\n')
@@ -48,7 +52,7 @@ describe('project tools', () => {
   it('lists projects, then a folder a level at a time, without what git ignores or what holds secrets', async () => {
     expect((await call('project_list', {})).text).toBe('app/\nplain/')
     const top = (await call('project_list', { path: 'app' })).text.split('\n')
-    expect(top).toEqual(['src/', '.gitignore', 'escape.txt', 'image.bin', 'README.md', 'untracked.md', 'up'])
+    expect(top).toEqual(['src/', '.gitignore', 'image.bin', 'README.md', 'untracked.md'])
     expect((await call('project_list', { path: 'app/src' })).text).toBe('deep/\nauth.ts')
   })
 
@@ -61,12 +65,25 @@ describe('project tools', () => {
   })
 
   it('reads nothing outside the project, however the path is written', async () => {
-    for (const bad of ['app/../outside.txt', '../outside.txt', '/etc/passwd', 'app//src', 'nope/x', 'app/escape.txt', 'app/up/outside.txt', `app/${path.join(base, 'outside.txt')}`]) {
-      const result = await call('project_read', { path: bad })
-      expect(result.isError, bad).toBe(true)
-      expect(result.text, bad).not.toContain('outside NEEDLE')
+    // A directory junction checks the same boundary without requiring symlink privileges.
+    const junction = path.join(base, 'app', 'up')
+    if (windows) {
+      const outside = path.join(base, 'outside-fixture')
+      mkdirSync(outside)
+      writeFileSync(path.join(outside, 'outside.txt'), 'outside NEEDLE\n')
+      symlinkSync(outside, junction, 'junction')
     }
-    expect((await call('project_list', { path: 'app/up' })).isError).toBe(true)
+    try {
+      const fileLink = windows ? [] : ['app/escape.txt']
+      for (const bad of ['app/../outside.txt', '../outside.txt', '/etc/passwd', 'app//src', 'nope/x', ...fileLink, 'app/up/outside.txt', `app/${path.join(base, 'outside.txt')}`]) {
+        const result = await call('project_read', { path: bad })
+        expect(result.isError, bad).toBe(true)
+        expect(result.text, bad).not.toContain('outside NEEDLE')
+      }
+      expect((await call('project_list', { path: 'app/up' })).isError).toBe(true)
+    } finally {
+      if (windows) rmdirSync(junction)
+    }
   })
 
   it('withholds ignored files, secrets and git\'s own folder', async () => {
@@ -84,8 +101,16 @@ describe('project tools', () => {
   })
 
   it('searches tracked and new files, never ignored ones or secrets', async () => {
-    const found = await call('project_search', { query: 'needle' })
-    expect(found.text.split('\n').sort()).toEqual(['app/src/deep/util.ts:1:export const NEEDLE = 1', 'app/untracked.md:1:not added yet, NEEDLE'])
+    const app = path.join(base, 'app')
+    const alias = path.join(app, 'same-project-alias')
+    symlinkSync(path.join(app, 'src'), alias, windows ? 'junction' : 'dir')
+    try {
+      const found = await call('project_search', { query: 'needle' })
+      expect(found.text.split('\n').sort()).toEqual(['app/src/deep/util.ts:1:export const NEEDLE = 1', 'app/untracked.md:1:not added yet, NEEDLE'])
+    } finally {
+      if (windows) rmdirSync(alias)
+      else rmSync(alias)
+    }
     expect((await call('project_search', { query: 'login', glob: '*.ts' })).text).toBe('app/src/auth.ts:1:export function login() {')
     expect((await call('project_search', { query: 'log[a-z]+\\(', regex: true, path: 'app/src' })).text).toBe('app/src/auth.ts:1:export function login() {')
     expect((await call('project_search', { query: 'nothing-like-this' })).text).toBe('没有找到')
