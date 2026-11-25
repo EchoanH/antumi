@@ -2,7 +2,7 @@ import { getLocale, t, tr } from '../i18n'
 import { useEffect, useId, useState, type ReactNode } from 'react'
 import { AGENT_KINDS, agentDescriptor, agentReadiness, type AgentCliInstallation, type AgentKind, type DetectedAgent, type EnvironmentCheck } from '@antumi/protocol'
 import { refreshAgentCli, upgradeAgentCli, cancelAgentCliUpgrade, selectConversation, installAgentCli, refreshEnvironment, showTerminal, useCore } from '../core-store'
-import { cliStatusText, cliErrorText, cliBackendOutdated, cliChannelText } from '../agent-cli-text'
+import { cliStatusText, cliErrorText, cliBackendOutdated, cliChannelText, cliCompatibilityText } from '../agent-cli-text'
 import { checkStatusText } from '../environment-text'
 import { agentLabel, reasonText } from '../labels'
 import { setPreference, usePreferences } from '../preferences'
@@ -55,6 +55,7 @@ function CliMaintenance({ kind, check }: { kind: AgentKind; check: EnvironmentCh
   const upgradeCommand = status?.upgradeCommand ?? null
   const settled = status !== undefined && status.checkedAt !== null
   const canUpgradeInApp = Boolean(status?.canUpgrade && !backendOutdated)
+  const compatibility = running ? null : status?.compatibility ?? null
 
   const upgradeButton = canUpgradeInApp && status?.availability !== 'current' && (
     <button type="button" className="button" disabled={busy} onClick={() => void upgrade()}>
@@ -76,6 +77,15 @@ function CliMaintenance({ kind, check }: { kind: AgentKind; check: EnvironmentCh
             canUpgradeInApp && updateAvailable && upgradeButton
           )}
         </div>
+      )}
+      {compatibility && (
+        <>
+          <p className="settings-row-description">
+            {cliCompatibilityText(compatibility, status?.latestVersion ?? null)}
+            {!compatibility.rollbackCommand && t('agentCli.rollbackTo', { checked: compatibility.checkedVersion })}
+          </p>
+          {compatibility.rollbackCommand && <Fix label={t('agentCli.rollback')} command={compatibility.rollbackCommand} />}
+        </>
       )}
       {operationVisible && error && <p className="settings-row-description" role="status">{error}</p>}
       {blockers.map((conversation) => (

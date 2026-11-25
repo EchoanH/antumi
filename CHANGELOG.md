@@ -8,6 +8,7 @@
 
 - 「外部智能体」可以验证 DeepSeek Harness 的本机模型，不再把未验证显示成登录提示。
 - 「外部智能体」可识别全局安装的 DeepSeek Harness 命令行并检查更新，不会升级桌面版。
+- 「外部智能体」在 DeepSeek Harness 出了 Antumi 还没验证过的新版时会写明，并给出退回的命令。
 
 ### 修复
 

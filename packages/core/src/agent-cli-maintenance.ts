@@ -114,7 +114,8 @@ export class AgentCliMaintenance {
           currentVersion: target.version, latestVersion: latest, path: target.path, channel: target.channel,
           canUpgrade: supported && target.command !== null && target.version !== null,
           availability: comparison !== null ? comparison < 0 ? 'available' : 'current' : target.channel === 'native' || target.channel === 'desktop' ? 'managed' : 'unknown',
-          phase: 'idle', error, checkedAt: this.now(), upgradeCommand: target.command && cliCommandText(target.command)
+          phase: 'idle', error, checkedAt: this.now(), upgradeCommand: target.command && cliCommandText(target.command),
+          compatibility: compatibility(target, latest)
         })
       } catch (error) {
         return this.update(agent, { phase: 'error', error: reason(error), checkedAt: this.now() })
@@ -230,7 +231,10 @@ export class AgentCliMaintenance {
         else if (comparison > 0 && (!operation.target || (reached !== null && reached >= 0))) phase = 'succeeded'
         else if (comparison === 0) { phase = 'unchanged'; error = 'agent-cli-version-unchanged' }
         else error = 'agent-cli-target-not-reached'
-        this.update(agent, { currentVersion: after?.version ?? null, phase, error, checkedAt: this.now(), availability: phase === 'succeeded' && operation.target ? 'current' : this.status(agent).availability })
+        this.update(agent, {
+          currentVersion: after?.version ?? null, phase, error, checkedAt: this.now(), availability: phase === 'succeeded' && operation.target ? 'current' : this.status(agent).availability,
+          ...(after ? { compatibility: compatibility(after, this.status(agent).latestVersion) } : {})
+        })
         this.release(agent)
         await this.deps.invalidate(agent)
         await this.deps.environment.check(true).catch(() => {})
@@ -243,6 +247,14 @@ export class AgentCliMaintenance {
     this.releases.get(agent)?.()
     this.releases.delete(agent)
   }
+}
+// A release Antumi has not been checked with is said, never refused: the user may need it.
+function compatibility(target: CliTarget, latest: string | null): AgentCliStatus['compatibility'] {
+  const checked = target.checkedVersion
+  if (!checked) return null
+  const newer = (version: string | null) => version !== null && (compareCliVersions(version, checked) ?? 0) > 0
+  const which = newer(target.version) ? 'current' : newer(latest) ? 'latest' : null
+  return which && { checkedVersion: checked, newer: which, rollbackCommand: target.rollback ? cliCommandText(target.rollback) : null }
 }
 function reason(error: unknown): string {
   return error instanceof Rejection ? error.reason : error instanceof Error && /^agent-cli-/.test(error.message) ? error.message : 'agent-cli-command-failed'

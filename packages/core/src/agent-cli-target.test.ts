@@ -87,9 +87,12 @@ describe('CLI install identity and release versions', () => {
       }
     })
     expect(await resolveCliTarget('dsh', installed, npm)).toMatchObject({ channel: 'npm', version: '0.2.2-rc.5',
-      command: { command: 'npm', args: ['install', '-g', '@deepseek-ai/dsh@latest'] }, latestUrl: 'https://registry.npmjs.org/@deepseek-ai/dsh/latest' })
-    expect(await resolveCliTarget('dsh', installed, { ...npm, canonical: async (file) => file }))
-      .toMatchObject({ channel: 'unknown', command: null, latestUrl: null })
+      command: { command: 'npm', args: ['install', '-g', '@deepseek-ai/dsh@latest'] }, latestUrl: 'https://registry.npmjs.org/@deepseek-ai/dsh/latest',
+      checkedVersion: '0.2.2-rc.5', rollback: { command: 'npm', args: ['install', '-g', '@deepseek-ai/dsh@0.2.2-rc.5'] } })
+    // The checked release still shows on an installation nobody owns, with no command to go back by.
+    const unowned = await resolveCliTarget('dsh', installed, { ...npm, canonical: async (file) => file })
+    expect(unowned).toMatchObject({ channel: 'unknown', command: null, latestUrl: null, checkedVersion: '0.2.2-rc.5' })
+    expect(unowned?.rollback).toBeUndefined()
   })
 
   it('treats the Windows DSH desktop launcher as app-managed rather than an unknown installation', async () => {

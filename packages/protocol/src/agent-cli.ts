@@ -16,12 +16,15 @@ export const AgentCliStatus = z.object({
   checkedAt: z.number().nullable(),
   terminalId: z.string().nullable(),
   blockers: z.array(z.string()),
-  upgradeCommand: z.string().nullable().optional()
+  upgradeCommand: z.string().nullable().optional(),
+  // Set while the installed release, or else the latest, is newer than the one Antumi was checked
+  // with: that release, and the command going back to it where core can prove the installation.
+  compatibility: z.object({ checkedVersion: z.string(), newer: z.enum(['current', 'latest']), rollbackCommand: z.string().nullable() }).nullable().optional()
 })
 export type AgentCliStatus = z.infer<typeof AgentCliStatus>
 export const AgentCliUpgrade = z.object({ status: AgentCliStatus, terminal: Terminal.nullable() })
 export type AgentCliUpgrade = z.infer<typeof AgentCliUpgrade>
 
 export function initialAgentCliStatus(agent: z.infer<typeof AgentKind>): AgentCliStatus {
-  return { agent, revision: 0, currentVersion: null, latestVersion: null, path: null, channel: 'unknown', availability: 'unknown', canUpgrade: false, phase: 'idle', error: null, checkedAt: null, terminalId: null, blockers: [], upgradeCommand: null }
+  return { agent, revision: 0, currentVersion: null, latestVersion: null, path: null, channel: 'unknown', availability: 'unknown', canUpgrade: false, phase: 'idle', error: null, checkedAt: null, terminalId: null, blockers: [], upgradeCommand: null, compatibility: null }
 }

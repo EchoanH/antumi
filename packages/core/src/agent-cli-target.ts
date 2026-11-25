@@ -19,6 +19,9 @@ export type CliTarget = {
   command: CliCommand | null
   latestUrl: string | null
   tagPrefix?: string
+  // The adapter's checked release, and the install of it by the package manager proven to own this CLI.
+  checkedVersion?: string
+  rollback?: CliCommand
 }
 export type CliTargetHost = {
   platform: NodeJS.Platform
@@ -80,10 +83,10 @@ export async function resolveCliTarget(agent: AgentKind, environment: Environmen
   const paths = host.platform === 'win32' ? path.win32 : path.posix
   const canonical = await host.canonical(selected).catch(() => selected)
   const version = cliVersion(await host.run({ command: selected, args: ['--version'] }).catch(() => ''))
-  const base = { path: selected, version }
+  const maintenance = adapterOf(agent).maintenance
+  const base = { path: selected, version, ...(maintenance?.checkedVersion ? { checkedVersion: maintenance.checkedVersion } : {}) }
   const target = (channel: CliTarget['channel'], command: CliCommand | null, latestUrl: string | null, tagPrefix?: string): CliTarget => ({ ...base, channel, command, latestUrl, tagPrefix, identity: JSON.stringify({ selected, canonical, channel, command }) })
   if (check.requiresStandaloneCli || desktopCli(selected, host.platform) || desktopCli(canonical, host.platform)) return target('desktop', null, null)
-  const maintenance = adapterOf(agent).maintenance
   const packageName = maintenance?.packageName
   if (packageName) {
     const proofs: CliTarget[] = []
@@ -110,7 +113,8 @@ export async function resolveCliTarget(agent: AgentKind, environment: Environmen
         if (!owned) continue
         const args = manager === 'pnpm' ? ['add', '-g'] : ['install', '-g']
         if (manager === 'bun') args.splice(0, args.length, 'add', '-g')
-        proofs.push(target(manager, { command: manager, args: [...args, `${packageName}@latest`, ...(maintenance?.packageArgs ?? [])] }, `https://registry.npmjs.org/${packageName}/latest`))
+        const install = (release: string): CliCommand => ({ command: manager, args: [...args, `${packageName}@${release}`, ...(maintenance?.packageArgs ?? [])] })
+        proofs.push({ ...target(manager, install('latest'), `https://registry.npmjs.org/${packageName}/latest`), ...(maintenance?.checkedVersion ? { rollback: install(maintenance.checkedVersion) } : {}) })
       } catch { /* Another manager may own this executable. */ }
     }
     if (proofs.length === 1) return proofs[0] ?? null

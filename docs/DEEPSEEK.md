@@ -14,7 +14,7 @@ DSH 可沿用自己的服务商配置，也能选择 Antumi 设置里的服务�
 
 新建会话时选不了模型，模型栏旁会写明原因，点「去设置」到 设置 → 外部智能体 处理：
 
-- **会话启动失败**：新版或预发布版可能改变 ACP 或插件接口。已确认 `0.2.3-alpha.2` 能完成版本检测和 ACP 初始化，但配合当前插件创建会话会失败。如果升级后无法使用，可以用 `npm install -g @deepseek-ai/dsh@<版本号>` 恢复到此前能用的版本。
+- **会话启动失败**：新版或预发布版可能改变 ACP 或插件接口。Antumi 记着自己验证到的 DSH 版本（现为 `0.2.2-rc.5`）：已装的版本或 npm 的 `latest` 比它新时，设置 → 外部智能体 会写明，升级照常可用，旁边给出退回的命令。`0.2.3-alpha.2` 目前过不了下面的运行时集成检查。升级后无法使用，可以用 `npm install -g @deepseek-ai/dsh@<版本号>` 退回此前能用的版本。
 - **Windows 只找到桌面版**：用上面的命令安装 npm 版。如果桌面版命令排在 PATH 前面，Antumi 会继续查找并使用 PATH 上能正常报告版本的 npm 版。
 - **DeepSeek Harness 首次准备失败**：首次使用要安装随 Antumi 提供的运行时插件，DSH 用 pnpm 从网络下载依赖。请先确认 `pnpm --version` 能运行（`npm install -g pnpm`），网络能访问 npm 源，然后关掉新会话页重新打开即可重试，已有配置不会被清理。
 - **尚未安装 Agent**：执行上面的安装命令后，在 设置 → 外部智能体 里重新检测。
@@ -66,6 +66,8 @@ node scripts/build-plugins.mjs
 node --import tsx scripts/smoke-dsh-catalog.mjs /absolute/path/to/@deepseek-ai/dsh/lib/bin.js
 pnpm test:dsh-runtime --dsh /absolute/path/to/@deepseek-ai/dsh/lib/bin.js
 ```
+
+新版 DSH 通过这两项检查后，把 `packages/core/src/agents/dsh/dsh-adapter.ts` 里的 `maintenance.checkedVersion` 改成它，设置里就不再把它说成未验证的版本。
 
 运行时插件用 rc.3 的依赖做开发和类型检查，安装后由实际启动的 DSH CLI 提供这些模块，避免覆盖 CLI 自带版本。模型目录检查已在 `0.2.2-rc.3`、`0.2.2-rc.4` 和 `0.2.2-rc.5` 上通过，走真实的 profile 安装流程验证原生模型与 Antumi 服务商路由，不调用模型接口。
 

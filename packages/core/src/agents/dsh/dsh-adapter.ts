@@ -20,7 +20,7 @@ export const dsh: AgentAdapter = {
   catalog: dshCatalog,
   detect: detectDsh,
   installation: dshInstallation,
-  maintenance: { packageName: '@deepseek-ai/dsh' },
+  maintenance: { packageName: '@deepseek-ai/dsh', checkedVersion: '0.2.2-rc.5' },
   launch: {
     mcp: (server, stage) => ({ ...server, args: [...server.args, ...(stage.planOnly ? ['--plan-only'] : [])] }),
     prepare: (stage, _mcp, launch) => prepareDsh(stage, launch.provider !== undefined),
