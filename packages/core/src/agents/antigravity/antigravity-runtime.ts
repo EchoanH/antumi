@@ -25,23 +25,25 @@ const PINS: Record<string, Pin> = {
 type Host = { platform: NodeJS.Platform; arch: string; home: string }
 const thisHost = (): Host => ({ platform: process.platform, arch: process.arch, home: antumiHome() })
 const pinOf = (host: Host): Pin | null => PINS[`${host.platform}-${host.arch}`] ?? null
+const pathFor = (host: Host) => host.platform === 'win32' ? path.win32 : path.posix
 
 // One folder per version, renamed into place once whole: a folder there is a finished install.
 export function antigravityRuntimeDir(host: Host = thisHost()): string {
-  return path.join(host.home, 'runtimes', 'antigravity-acp', ANTIGRAVITY_VERSION)
+  return pathFor(host).join(host.home, 'runtimes', 'antigravity-acp', ANTIGRAVITY_VERSION)
 }
 
 // The server this host runs, whether or not it is installed yet; null where Google builds none.
 export function antigravityServer(host: Host = thisHost()): string | null {
   const pin = pinOf(host)
-  return pin ? path.join(antigravityRuntimeDir(host), pin.server) : null
+  return pin ? pathFor(host).join(antigravityRuntimeDir(host), pin.server) : null
 }
 
 async function installed(host: Host): Promise<string | null> {
   const server = antigravityServer(host)
   if (!server) return null
   const mode = host.platform === 'win32' ? constants.F_OK : constants.X_OK
-  const whole = await Promise.all([access(server, mode), access(path.join(path.dirname(server), host.platform === 'win32' ? 'localharness_external.exe' : 'localharness_external'))]).then(() => true, () => false)
+  const harness = pathFor(host).join(antigravityRuntimeDir(host), host.platform === 'win32' ? 'localharness_external.exe' : 'localharness_external')
+  const whole = await Promise.all([access(server, mode), access(harness)]).then(() => true, () => false)
   return whole ? server : null
 }
 

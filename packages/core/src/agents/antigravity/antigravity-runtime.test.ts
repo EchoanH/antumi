@@ -39,6 +39,8 @@ describe('Antigravity runtime', () => {
     expect(install?.command).toContain(`d='/Users/o'\\''neil/.antumi/runtimes/antigravity-acp/${ANTIGRAVITY_VERSION}'`)
     expect(install?.command).toContain('rm -rf "$d" && mv "$d.partial" "$d"')
     expect(antigravityInstallation('linux', { ...host, platform: 'linux', arch: 'x64' })?.command).toContain('| sha256sum -c')
+    const windows = antigravityInstallation('win32', { platform: 'win32', arch: 'x64', home: "C:\\Users\\o'neil\\.antumi" })
+    expect(windows?.command).toContain(`$d = 'C:\\Users\\o''neil\\.antumi\\runtimes\\antigravity-acp\\${ANTIGRAVITY_VERSION}'`)
     expect(antigravityInstallation('freebsd', { ...host, platform: 'freebsd' })).toBeNull()
   })
 
@@ -92,17 +94,18 @@ describe('Antigravity runtime', () => {
   })
 
   it('is found only once its server and harness are both in place', async () => {
-    const host = { platform: 'darwin' as const, arch: 'arm64', home: await home() }
-    expect(await detectAntigravity('', 'darwin', host)).toEqual({ status: 'missing', version: null, path: null, signedIn: null })
+    const platform = process.platform === 'win32' ? 'win32' : 'darwin'
+    const host = { platform, arch: 'arm64', home: await home() } as const
+    expect(await detectAntigravity('', platform, host)).toEqual({ status: 'missing', version: null, path: null, signedIn: null })
     await expect(requireAntigravity(host)).rejects.toThrow(/未安装/)
     const dir = antigravityRuntimeDir(host)
     await mkdir(dir, { recursive: true })
-    const server = path.join(dir, 'agy_acp_server.par')
+    const server = path.join(dir, platform === 'win32' ? 'agy_acp_server.exe' : 'agy_acp_server.par')
     await writeFile(server, '')
     await chmod(server, 0o755)
-    expect((await detectAntigravity('', 'darwin', host)).status).toBe('missing')
-    await writeFile(path.join(dir, 'localharness_external'), '')
-    expect(await detectAntigravity('', 'darwin', host)).toMatchObject({ status: 'ok', version: ANTIGRAVITY_VERSION, path: server })
+    expect((await detectAntigravity('', platform, host)).status).toBe('missing')
+    await writeFile(path.join(dir, platform === 'win32' ? 'localharness_external.exe' : 'localharness_external'), '')
+    expect(await detectAntigravity('', platform, host)).toMatchObject({ status: 'ok', version: ANTIGRAVITY_VERSION, path: server })
     expect(await requireAntigravity(host)).toBe(server)
     await expect(requireAntigravity({ ...host, arch: 'ia32' })).rejects.toThrow(/不支持/)
   })
