@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { AutoInvestigationSettings } from './AutoInvestigationSettings'
 import { SourceWritebackSettings } from './SourceWritebackSettings'
 import { getLocale, t, tr } from '../i18n'
@@ -148,7 +149,7 @@ export function SourceSettingsSection({ source }: { source: SourceDescriptor }) 
             {status}
           </span>
           {credential.configured && inbox?.problem && (
-            <span className="settings-status" role="status">{tr('SourceSettingsSection.syncFailed', { value1: sourceProblemText(inbox.problem) })}</span>
+            <span className="settings-status" role="status">{tr('SourceSettingsSection.syncFailed', { value1: sourceProblemText(inbox.problem) })}<SupportActions error={sourceProblemText(inbox.problem)} /></span>
           )}
         </div>
         {credential.source === 'store' && (

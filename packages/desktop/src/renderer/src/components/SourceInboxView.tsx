@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { AutoInvestigationSummary, AutoInvestigationHistory, autoInvestigationStatus, autoInvestigationReason } from './AutoInvestigationSettings'
 import { SourceCommentBadge } from './SourceUpdatesPanel'
 import { getLocale, t, tr } from '../i18n'
@@ -162,7 +163,7 @@ function InboxSection({
           <div className="inbox-section-body" role={tabs ? 'tabpanel' : undefined}>
             {inbox.autoInvestigation?.config.enabled && <div className="inbox-auto-summary"><AutoInvestigationSummary info={inbox.autoInvestigation} /><button type="button" className="link-button" onClick={() => setHistory(true)}>{t('AutoInvestigation.history')}</button></div>}
             {inbox.problem && (
-              <p className="inbox-error" role="alert">{tr('SourceInboxView.syncFailed_1794', { value1: sourceProblemText(inbox.problem), value2: <button type="button" className="link-button" onClick={openSettings}>{t('SourceInboxView.checkSettings')}</button> })}</p>
+              <p className="inbox-error" role="alert">{tr('SourceInboxView.syncFailed_1794', { value1: sourceProblemText(inbox.problem), value2: <button type="button" className="link-button" onClick={openSettings}>{t('SourceInboxView.checkSettings')}</button> })}<SupportActions error={sourceProblemText(inbox.problem)} /></p>
             )}
 
             {inbox.items.length > 0 ? (

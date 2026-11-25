@@ -1,0 +1,45 @@
+import { PROJECT_GITHUB_URL } from '@antumi/protocol'
+
+const HIDDEN = '[redacted]'
+
+// Reports contain the selected error only, never settings, conversation history or logs.
+export function supportError(text: string): string {
+  return text.slice(0, 64_000)
+    .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g, HIDDEN)
+    .replace(/\b(?:Bearer|Basic)\s+[A-Za-z0-9+/_.=~-]+/gi, HIDDEN)
+    .replace(/((?:authorization|(?:set-)?cookie)\s*["']?\s*[:=]\s*)[^\r\n]+/gi, `$1${HIDDEN}`)
+    .replace(/(\b(?:[\w-]*(?:token|password|passwd|secret|api[-_]?key|credential)[\w-]*)["']?\s*[:=]\s*)("[^"\r\n]*"|'[^'\r\n]*'|[^\s&,;}]+)/gi, `$1${HIDDEN}`)
+    .replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/gi, `$1${HIDDEN}@`)
+    .replace(/\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[abeoprs]-[A-Za-z0-9-]{10,}|(?:AKIA|ASIA)[A-Z0-9]{16}|AIza[A-Za-z0-9_-]{30,}|eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})\b/g, HIDDEN)
+    .slice(0, 8_000)
+}
+
+export function supportReport(error: string, version: string | null, platform: string, locale: string): string {
+  return [`Antumi: ${version ?? 'unknown'}`, `OS: ${platform}`, `Language: ${locale}`, ...(error ? ['', supportError(error)] : [])].join('\n')
+}
+
+// Keep the encoded URL short enough for browsers and GitHub, including non-ASCII errors.
+export function githubIssueUrl(report: string, error: string, locale: string): string {
+  const zh = locale === 'zh-CN'
+  const summary = Array.from(supportError(error).split('\n')[0]?.trim() ?? '').slice(0, 100).join('')
+  const title = summary || (zh ? '问题反馈' : 'Bug report')
+  const intro = zh
+    ? '## 问题描述\n<!-- 请描述你遇到的问题。 -->\n\n## 复现步骤\n1. \n\n## 预期行为\n\n## 环境与错误\n\n'
+    : '## What happened\n<!-- Describe the problem you encountered. -->\n\n## Steps to reproduce\n1. \n\n## Expected behavior\n\n## Environment and error\n\n'
+  const chars = Array.from(supportError(report))
+  const urlFor = (length: number) => {
+    const truncated = length < chars.length ? (zh ? '\n\n（错误信息已截短，可从 Antumi 复制完整问题信息后补充。）' : '\n\n(Error shortened. Copy the full problem details from Antumi to add them here.)') : ''
+    const body = intro + chars.slice(0, length).join('').split('\n').map((line) => `    ${line}`).join('\n') + truncated
+    return `${PROJECT_GITHUB_URL}/issues/new?${new URLSearchParams({ title, body })}`
+  }
+  const full = urlFor(chars.length)
+  if (full.length <= 7_500) return full
+  let low = 0
+  let high = chars.length
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2)
+    if (urlFor(mid).length <= 7_500) low = mid
+    else high = mid - 1
+  }
+  return urlFor(low)
+}

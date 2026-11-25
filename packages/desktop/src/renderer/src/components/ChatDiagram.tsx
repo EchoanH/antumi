@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { t, tr } from '../i18n'
 import { useEffect, useState, type ReactNode } from 'react'
 import { isDarkTheme, onThemeChange } from '../appearance'
@@ -89,7 +90,7 @@ export function ChatDiagram({ source, code }: { source: string; code: ReactNode 
         // Mermaid's own sanitizer (securityLevel strict) has cleaned it.
         ? <div className="chat-diagram-figure" role="img" aria-label={t('ChatDiagram.mermaidDiagram')} dangerouslySetInnerHTML={{ __html: result.svg }} />
         : <>
-            {failed && <p className="chat-diagram-error">{tr('ChatDiagram.couldNotRenderDiagramSource', { value1: result.error.split('\n')[0] })}</p>}
+            {failed && <p className="chat-diagram-error">{tr('ChatDiagram.couldNotRenderDiagramSource', { value1: result.error.split('\n')[0] })}<SupportActions error={result.error} /></p>}
             {code}
           </>}
     </div>

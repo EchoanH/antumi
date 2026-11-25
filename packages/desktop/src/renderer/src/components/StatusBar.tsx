@@ -18,6 +18,7 @@ import { openSetup } from '../setup-controller'
 import { ContextMenu, MenuItem, type MenuPoint } from './ContextMenu'
 import { useOccludesBrowser } from '../browser-occlusion'
 import wechatGroup from '../assets/wechat-group.png'
+import { contactAuthor } from '../contact-author'
 
 type ConnectionIssue = Exclude<ConnectionState, 'connected'>
 
@@ -96,6 +97,7 @@ function HelpButton() {
         <div className="menu-separator" role="separator" />
         {/* The icon its Settings section shows. */}
         <MenuItem icon={<ChatIcon />} label={t('SupportSettings.title')} onSelect={() => select(() => setSettingsOpen(true, 'support'))} />
+        <MenuItem icon={<ChatIcon />} label={t('ContactAuthor.title')} onSelect={() => select(() => contactAuthor())} />
       </ContextMenu>}
     </>
   )

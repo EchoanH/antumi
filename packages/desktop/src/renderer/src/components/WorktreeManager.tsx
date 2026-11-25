@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { getLocale, localized, t, tr } from '../i18n'
 import { useEffect, useMemo, useState } from 'react'
 import { openTerminal, selectConversation, selectTask, setWorktreesOpen, showError, useCore } from '../core-store'
@@ -50,7 +51,7 @@ function RowState({ row, cleaning, failure }: { row: WorktreeRow; cleaning: RowC
   if (cleaning === 'removed') return <span className="worktree-state" data-cleaning><CheckIcon />{t('WorktreeManager.cleanedRow')}</span>
   if (failure) {
     const text = t('WorktreeManager.notCleaned', { reason: reasonText(failure, failure) })
-    return <span className="worktree-state" data-failed title={text}>{text}</span>
+    return <span className="worktree-state" data-failed title={text}>{text}<SupportActions error={text} /></span>
   }
   const state = worktreeState(row)
   return <span className="worktree-state" data-warn={state.warn || undefined}>{state.text}</span>

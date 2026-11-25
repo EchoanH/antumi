@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { getLocale, t, tr } from '../i18n'
 import { useEffect, useId, useState, type ReactNode } from 'react'
 import { AGENT_KINDS, agentDescriptor, agentReadiness, type AgentCliInstallation, type AgentKind, type DetectedAgent, type EnvironmentCheck } from '@antumi/protocol'
@@ -77,7 +78,7 @@ function CliMaintenance({ kind, check }: { kind: AgentKind; check: EnvironmentCh
           )}
         </div>
       )}
-      {operationVisible && error && <p className="settings-row-description" role="status">{error}</p>}
+      {operationVisible && error && <p className="settings-row-description" role="status">{error}<SupportActions error={error} /></p>}
       {blockers.map((conversation) => (
         <button key={conversation.id} type="button" className="button ghost" onClick={() => selectConversation(conversation.id)}>
           {t('agentCli.openConversation', { title: conversation.title })}
@@ -97,7 +98,7 @@ function CliMaintenance({ kind, check }: { kind: AgentKind; check: EnvironmentCh
           </p>
         )}
         {supported && <p className="settings-row-description">{status ? cliStatusText(status) : t('agentCli.checking')}</p>}
-        {!operationVisible && error && <p className="settings-row-description">{error}</p>}
+        {!operationVisible && error && <p className="settings-row-description">{error}<SupportActions error={error} /></p>}
         {settled && (canUpgradeInApp ? (
           <>
             <div className="agent-install-actions">

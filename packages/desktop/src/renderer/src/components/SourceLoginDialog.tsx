@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { getLocale, t, tr } from '../i18n'
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { translatedText, type LoginPrompt } from '@antumi/protocol'
@@ -24,7 +25,7 @@ function PromptForm({ prompt }: { prompt: LoginPrompt }) {
     <form className="login-form" onSubmit={submit}>
       {prompt.error && (
         <p className="modal-error" role="alert">
-          {prompt.error}
+          {prompt.error}<SupportActions error={prompt.error} />
         </p>
       )}
       <label className="modal-field" htmlFor={`${ids}-answer`}>
@@ -129,7 +130,7 @@ export function SourceLoginDialog() {
         {result ? (
           <>
             <p className={result.problem ? 'modal-error' : 'login-success'} role="status">
-              {result.problem ? t('SourceLoginDialog.signInFailed', { value1: sourceProblemText(result.problem) }) : t('SourceLoginDialog.signedIn', { value1: result.account ?? '' })}
+              {result.problem ? t('SourceLoginDialog.signInFailed', { value1: sourceProblemText(result.problem) }) : t('SourceLoginDialog.signedIn', { value1: result.account ?? '' })}{result.problem && <SupportActions error={sourceProblemText(result.problem)} />}
             </p>
             <footer className="modal-footer">
               <button type="button" className="button primary" onClick={closeLogin}>{t('ChatSubagents.done')}</button>

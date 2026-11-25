@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { useEffect, useId, useRef, useState } from 'react'
 import {
   CHANNEL_DEFAULTS, CHANNEL_PLATFORMS, ChannelInput, agentDescriptor, channelPlatform,
@@ -233,7 +234,7 @@ function ChannelDialog({ profileId, platform, channel, agent, hasProvider, onClo
       <li>{t('AgentChannels.offlineHint')}</li>
     </ul>
     </div>
-    {error && <p className="modal-error" role="alert">{error}</p>}
+    {error && <p className="modal-error" role="alert">{error}<SupportActions error={error} /></p>}
     <footer className="modal-footer agent-channel-footer">
       <button type="button" className="button ghost" disabled={busy} onClick={onClose}>{t('AgentChannels.cancel')}</button>
       <button type="button" className="button primary" disabled={busy} onClick={() => void save()}>{t('AgentChannels.save')}</button>

@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { CcSwitchImportSettings } from './CcSwitchImportSettings'
 import { keepProbe, probeProvider, useProviderProbes } from '../provider-probes'
 import { getLocale, t } from '../i18n'
@@ -497,7 +498,7 @@ function ProbeResult({ probe }: { probe: ModelProviderProbe | 'running' }) {
           </span>
         </li>
       ))}
-      {!probe.ok && <li className="settings-note">{t('ModelProviderSettings.probeFailedHint')}</li>}
+      {!probe.ok && <li className="settings-note">{t('ModelProviderSettings.probeFailedHint')}<SupportActions error={probe.checks.filter((check) => !check.ok).map((check) => `${check.wire} · ${check.model}: ${check.status ?? ''} ${check.message ?? ''}`).join('\n')} /></li>}
     </ul>
   )
 }

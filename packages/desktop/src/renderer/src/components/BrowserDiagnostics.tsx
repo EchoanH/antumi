@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { BrowserConsole, BrowserNetworkDetail, BrowserTab } from '@antumi/protocol'
 import { useOccludesBrowser } from '../browser-occlusion'
@@ -70,7 +71,7 @@ export function BrowserDiagnostics({ tab, onClose }: { tab: BrowserTab; onClose(
         <div className="browser-diagnostics-tabs" role="group" aria-label={t('BrowserActions.diagnostics')}><button type="button" className="button ghost" aria-pressed={view === 'network'} onClick={() => setView('network')}>{t('BrowserActions.network')} · {data?.network?.length ?? 0}</button><button type="button" className="button ghost" aria-pressed={view === 'console'} onClick={() => setView('console')}>{t('BrowserActions.console')} · {(data?.messages.length ?? 0) + (data?.errors.length ?? 0)}</button></div>
         <button type="button" className="tool-button" aria-label={t('BrowserPanel.reload')} data-tooltip={t('BrowserPanel.reload')} onClick={() => { void refresh(); setDetailVersion((value) => value + 1) }}><RefreshIcon /></button>
       </div>
-      {error && <p className="modal-error" role="alert">{error}</p>}
+      {error && <p className="modal-error" role="alert">{error}<SupportActions error={error} /></p>}
       {view === 'network' ? <div className="browser-network-content">
         <div className="browser-network-list">
           {data?.network?.length ? <table><thead><tr><th>{t('BrowserActions.status')}</th><th>{t('BrowserActions.method')}</th><th>URL</th><th>{t('BrowserActions.duration')}</th></tr></thead><tbody>{[...data.network].reverse().map((item) => <tr key={item.id} data-selected={selected === item.id || undefined} data-failed={(item.status ?? 0) >= 400 || Boolean(item.failure) || undefined}><td>{item.status ?? (item.failure ? '×' : '…')}</td><td>{item.method}</td><td><button type="button" className="browser-network-url" title={item.url} onClick={() => setSelected(item.id)}>{item.url}</button></td><td>{item.durationMs === null ? '—' : `${item.durationMs} ms`}</td></tr>)}</tbody></table> : <p className="menu-note">{t('BrowserActions.noNetwork')}</p>}

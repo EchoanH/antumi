@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { t, tr } from '../i18n'
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { AgentKind, IMAGE_MIME_TYPES, type TaskImage } from '@antumi/protocol'
@@ -270,7 +271,7 @@ export function NewTaskDialog() {
         {/* The app's toast renders below the modal's top layer, so errors show here instead. */}
         {error && (
           <p className="modal-error" role="alert">
-            {error}
+            {error}<SupportActions error={error} />
           </p>
         )}
 

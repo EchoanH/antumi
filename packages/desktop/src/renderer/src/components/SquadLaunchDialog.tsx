@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { t, tr } from '../i18n'
 import { useEffect, useRef, useState } from 'react'
 import { ChatPermissionMode, checkSquadStart, squadModes, type Task } from '@antumi/protocol'
@@ -67,7 +68,7 @@ export function SquadLaunchDialog({ task, onSingle }: { task: Task; onSingle(): 
       {inPlace && <p className="muted">{t('SquadLaunchDialog.thisProjectIsNotAGitRepositoryChanges')}</p>}
       {!available.length && <button type="button" className="button" onClick={() => { close(); selectSquad(null, true) }}>{t('SquadLaunchDialog.createADevelopmentSquadFirst')}</button>}
       {blocker && <p className="modal-error">{reasonText(blocker, blocker)}</p>}
-      {error && <p className="modal-error" role="alert">{error}</p>}
+      {error && <p className="modal-error" role="alert">{error}<SupportActions error={error} /></p>}
       <footer className="modal-footer"><button type="button" className="button ghost" disabled={busy} onClick={close}>{t('ChatCommandSettings.cancel')}</button><button type="submit" className="button primary" disabled={busy || Boolean(blocker) || !squad || squad.archivedAt !== null || !modes.length}>{busy ? t('DiscussionDraft.starting') : planning ? t('SquadLaunchDialog.startPlanning') : t('ChatPlan.startSquadDevelopment')}</button></footer>
     </form>
   </dialog>

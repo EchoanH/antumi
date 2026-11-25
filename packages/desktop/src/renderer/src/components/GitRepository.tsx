@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { getLocale, localized, t, tr } from '../i18n'
 import { useEffect, useRef, useState, type ReactNode, type MouseEvent } from 'react'
 import type { GitAction, GitBranch, GitCommit, GitComparison, GitDetail, GitHistory, GitResult, GitStatus, GitTag, GitTarget } from '@antumi/protocol'
@@ -26,7 +27,7 @@ import { projectName } from './ProjectPicker'
 import { dockGitWithNavigation, thisPanelKind } from '../panel-window-page'
 
 function ReadState({ error, retry, children }: { error: string | null; retry: () => void; children?: ReactNode }) {
-  return error ? <p className="git-message" role="alert">{error} <button className="button" onClick={retry}>{t('ChatContextMenu.retry')}</button></p> : <>{children}</>
+  return error ? <p className="git-message" role="alert">{error}<SupportActions error={error} /> <button className="button" onClick={retry}>{t('ChatContextMenu.retry')}</button></p> : <>{children}</>
 }
 
 function useGitRead<T>(key: string, read: () => Promise<T>, keepPrevious = false) {

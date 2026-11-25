@@ -1,3 +1,4 @@
+import { SupportActions } from './ContactAuthor'
 import { useState, type ReactElement, type ReactNode } from 'react'
 import { BackendLocation, ptyNeedsNewerLibc, type BackendLocationState, type BackendProblem } from '../../../shared/backend-location'
 import { readBackendLocation, sameLocation, useBackendLocation, type RemoteLocation } from '../backend-location-state'
@@ -300,7 +301,7 @@ function BackendLocationRows({ state }: { state: BackendLocationState }) {
       {problem && (
         <div className="backend-location-block backend-location-problem" role="alert">
           <p className="backend-location-problem-title"><WarningIcon />{problem.title}</p>
-          {problem.body}
+          {problem.body}<SupportActions error={problem.title} />
           {problem.retry && (
             <div>
               <button type="button" className="button" disabled={switching} onClick={() => void apply(state.chosen)}>{t('BackendLocation.restart')}</button>
@@ -310,7 +311,7 @@ function BackendLocationRows({ state }: { state: BackendLocationState }) {
       )}
       {(switching || failed) && (
         <p className="backend-location-block" role="status" data-failed={failed || undefined}>
-          {failed ? t('BackendLocation.switchFailed') : t('BackendLocation.restarting')}
+          {failed ? t('BackendLocation.switchFailed') : t('BackendLocation.restarting')}{failed && <SupportActions error={t('BackendLocation.switchFailed')} />}
         </p>
       )}
       <p className="backend-location-block">{state.chosen.kind === 'ssh' ? t('BackendLocation.notYetSsh') : t('BackendLocation.notYet')}</p>

@@ -5,6 +5,7 @@ import { ProjectStarSettings } from './ProjectStarSettings'
 import { SettingsRow } from './SettingsControls'
 import { CheckIcon, CopyIcon } from './icons'
 import wechatContact from '../assets/wechat-contact.jpg'
+import { SupportActions } from './ContactAuthor'
 
 export function SupportSettings() {
   const [result, setResult] = useState<'idle' | 'success' | 'error'>('idle')
@@ -33,6 +34,7 @@ export function SupportSettings() {
   }
 
   return <>
+    <SettingsRow label={t('ContactAuthor.title')} description={t('ContactAuthor.description')} control={() => <SupportActions />} />
     <ProjectStarSettings />
     <SettingsRow label={t('SupportSettings.share')} description={<>
       {t('SupportSettings.shareDescription')}
