@@ -24,6 +24,9 @@ describe('pickTransition', () => {
   it('skips a status the issue is in, or one behind it, and leaves an ambiguous name alone', () => {
     expect(pickTransition(open, 'open')).toEqual({ skip: 'already' })
     expect(pickTransition({ status: 'Closed', statusCategory: 'done', options: [{ id: '1', name: 'In Progress', category: 'doing' }] }, 'In Progress')).toEqual({ skip: 'backwards' })
+    // A status of no known kind, from done, may be a reopening.
+    expect(pickTransition({ status: 'Closed', statusCategory: 'done', options: [{ id: '1', name: 'Reopened', category: 'unknown' }] }, 'Reopened')).toEqual({ skip: 'backwards' })
+    expect(pickTransition({ status: 'Open', statusCategory: 'todo', options: [{ id: '1', name: 'Triage', category: 'unknown' }] }, 'Triage')).toEqual({ option: { id: '1', name: 'Triage', category: 'unknown' } })
     expect(pickTransition({ ...open, options: [{ id: '1', name: 'Done', action: 'Resolve', category: 'done' }, { id: '2', name: 'Done', action: 'Close', category: 'done' }] }, 'Done')).toBeNull()
   })
 })
@@ -169,8 +172,34 @@ describe('source writeback', () => {
     expect(write).toMatchObject({ state: 'uncertain', reason: 'socket hang up' })
     commentFailure = null
     const again = await writeback.retry(write.id)
-    expect(again).toMatchObject({ state: 'sent', detail: 'Ready for review' })
-    expect(store.write(write.id)).toMatchObject({ state: 'skipped' })
+    // The same record and write id, so a tracker deduping by it finds a comment that did go.
+    expect(again).toMatchObject({ id: write.id, state: 'sent', detail: 'Ready for review' })
+    expect(comments.map((comment) => comment.writeId)).toEqual([write.id])
+    expect(writeback.view(target).writes).toHaveLength(1)
+  })
+
+  it('posts the summary once when the task is accepted before its review comment went out', async () => {
+    rules = { ...EMPTY_WRITEBACK, review: { status: '', comment: true }, done: { status: '', comment: true } }
+    writeback.saveReport(target, 'Fixed the redirect.')
+    writeback.taskMoved(task('running'), task('review'))
+    writeback.taskMoved(task('review'), task('done'))
+    await settled()
+    expect(comments.map((comment) => comment.markdown)).toEqual(['Fixed the redirect.'])
+  })
+
+  it('posts a summary again on a second hand-in only when it was rewritten', async () => {
+    rules = { ...EMPTY_WRITEBACK, review: { status: '', comment: true } }
+    writeback.saveReport(target, 'Fixed the redirect.')
+    writeback.taskMoved(task('running'), task('review'))
+    await settled()
+    writeback.taskMoved(task('running'), task('review'))
+    await settled()
+    expect(comments).toHaveLength(1)
+    expect(writeback.view(target).writes[0]).toMatchObject({ state: 'skipped', reason: '同样的总结已经发过' })
+    writeback.saveReport(target, 'Fixed the redirect, and kept the query string.')
+    writeback.taskMoved(task('running'), task('review'))
+    await settled()
+    expect(comments.map((comment) => comment.markdown)).toEqual(['Fixed the redirect.', 'Fixed the redirect, and kept the query string.'])
   })
 
   it('takes a refusal from the tracker as a failure, and a token without write access as such', async () => {

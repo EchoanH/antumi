@@ -95,8 +95,9 @@ export class SourceWriteback {
     if (write.state !== 'failed' && write.state !== 'uncertain') throw new Rejection('source-write-not-retryable', '只能重试失败或结果待确认的写入')
     const { owner, writer } = this.require(write.target)
     return this.queued(owner.source, async () => {
+      // The same write id again, so a tracker that dedupes by it (Linear) finds a comment that did go.
+      if (write.kind === 'comment') return this.send(writer, this.save({ ...write, state: 'pending', reason: null, updatedAt: this.now() }))
       this.save({ ...write, state: 'skipped', reason: '已重试', updatedAt: this.now() }, false)
-      if (write.kind === 'comment') return this.post(owner, writer, write.detail, write.trigger, write.origin)
       return this.moveByNames(owner, writer, write.detail, write.trigger)
     })
   }
@@ -120,24 +121,29 @@ export class SourceWriteback {
     if (trigger === 'start' && this.store.ruleWrites(target).some((write) => write.trigger === 'start' && write.state === 'sent')) return
     const rules = this.sources.writebackRules(after.source.provider, after.source.instance)
     const rule = rules[trigger]
-    const wantsComment = 'comment' in rule && rule.comment && !(trigger === 'done' && this.commented(target))
+    const wantsComment = 'comment' in rule && rule.comment
     if (!rule.status && !wantsComment) return
     const owner = this.hooks.owner(target)
     const writer = owner && this.sources.writer(owner.source)
     if (!owner || !writer) return
     void this.queued(owner.source, async () => {
       if (rule.status) await this.moveByNames(owner, writer, rule.status, trigger)
-      if (wantsComment) await this.ruleComment(owner, writer, trigger)
+      // Asked here, in the issue's queue, so a review comment still on its way counts.
+      if (wantsComment && !(trigger === 'done' && this.commented(target))) await this.ruleComment(owner, writer, trigger)
     }).catch((error: unknown) => console.error(`[antumi-core] writing back to ${itemKey(owner.source)} failed:`, error instanceof Error ? error.message : error))
   }
 
   private commented(target: SourceUpdateTarget): boolean {
-    return this.store.ruleWrites(target).some((write) => write.kind === 'comment' && write.state === 'sent')
+    return this.store.ruleWrites(target).some((write) => write.kind === 'comment' && (write.state === 'sent' || write.state === 'uncertain'))
   }
 
   private async ruleComment(owner: WritebackOwner, writer: Writer, trigger: Trigger): Promise<SourceWrite> {
     if (!writer.comments) return this.save(this.record(owner, 'comment', trigger, '', null, { state: 'skipped', reason: '这个来源不支持发评论' }))
     const report = this.store.report(owner.target)
+    // Handed in again with the same summary: once is enough. A rewritten one goes out.
+    if (report && this.store.ruleWrites(owner.target).some((write) => write.kind === 'comment' && write.detail === report.text && (write.state === 'sent' || write.state === 'uncertain'))) {
+      return this.save(this.record(owner, 'comment', trigger, report.text, 'report', { state: 'skipped', reason: '同样的总结已经发过' }))
+    }
     if (report) return this.post(owner, writer, report.text, trigger, 'report')
     // A reply is written for the user, headings, steps and questions and all: never posted as it
     // is, only as the small model rewrites it, and nothing when that fails.
@@ -182,10 +188,14 @@ export class SourceWriteback {
     }
   }
 
-  private async post(owner: WritebackOwner, writer: Writer, text: string, trigger: SourceWriteTrigger, origin: SourceWrite['origin']): Promise<SourceWrite> {
-    const write = this.save(this.record(owner, 'comment', trigger, text, origin, { state: 'pending' }))
+  private post(owner: WritebackOwner, writer: Writer, text: string, trigger: SourceWriteTrigger, origin: SourceWrite['origin']): Promise<SourceWrite> {
+    return this.send(writer, this.save(this.record(owner, 'comment', trigger, text, origin, { state: 'pending' })))
+  }
+
+  // A comment's write id is its record's id, the same on every try.
+  private async send(writer: Writer, write: SourceWrite): Promise<SourceWrite> {
     try {
-      const result = await writer.comment(text, write.id)
+      const result = await writer.comment(write.detail, write.id)
       return this.save({ ...write, state: 'sent', result: result.id, url: result.url, updatedAt: this.now() })
     } catch (error) {
       // A comment that may have gone through is not posted again unasked: a duplicate is worse.

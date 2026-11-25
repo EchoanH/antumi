@@ -93,7 +93,8 @@ export function pickTransition(transitions: SourceTransitions, names: string): {
     if (matches.length !== 1 || !option) continue
     const from = transitions.statusCategory
     const to = option.category
-    if (from !== 'unknown' && to !== 'unknown' && RANK[from] > RANK[to]) return { skip: 'backwards' }
+    // From done, a status of no known kind may well be a reopening, so it counts as going back.
+    if (from !== 'unknown' && (to === 'unknown' ? from === 'done' : RANK[from] > RANK[to])) return { skip: 'backwards' }
     return { option }
   }
   return null

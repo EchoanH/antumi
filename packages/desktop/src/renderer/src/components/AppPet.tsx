@@ -19,7 +19,8 @@ export function AppPet() {
   const squadRuns = useCore((s) => s.squadRuns)
   const locale = useLocale((s) => s.locale)
   const reduced = useReducedMotion()
-  const skin = usePetSkin(style, size, level === 'off' || settingsOpen || guiding)
+  // Settings only hides the pet; keeping its art loaded lets it come back as itself, not as clay.
+  const skin = usePetSkin(style, size, level === 'off' || guiding)
   const status = useMemo(() => petMood({ tasks, conversations, unseen, squadRuns }), [tasks, conversations, unseen, squadRuns])
   const message = useMemo(() => {
     const item = status.attention
