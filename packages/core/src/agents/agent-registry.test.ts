@@ -20,7 +20,7 @@ describe('agent registry', () => {
     // on its command line or in its environment.
     const launch = { providerSessionId: null, resume: false, handoffPath: null, extraProjects: [], skills: { dir: '/antumi/skills/bundles/abc' } }
     const command = adapter.command(launch)
-    expect([...command.args, ...Object.values(command.env ?? {})].some((value) => value.includes('/antumi/skills/bundles/abc'))).toBe(descriptor.capabilities.skills)
+    expect([...command.args, ...Object.values(command.env ?? {})].some((value) => value.replace(/\\+/g, '/').includes('/antumi/skills/bundles/abc'))).toBe(descriptor.capabilities.skills)
   })
 
   it.each(AGENT_KINDS)('gives %s a driver for every turn hook it declares', (kind) => {

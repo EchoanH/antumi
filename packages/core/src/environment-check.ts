@@ -79,7 +79,8 @@ async function discoverOtherAgents(pathEnv: string, platform: NodeJS.Platform, a
       const path = join(dir, app)
       if (platform === 'darwin') return await access(join(path, 'Contents', 'Info.plist')).then(() => path, () => null)
       const info = await stat(path).catch(() => null)
-      return info?.isFile() && (platform === 'win32' || Boolean(info.mode & 0o111)) ? path : null
+      if (!info?.isFile()) return null
+      return platform === 'win32' ? path : await access(path, constants.X_OK).then(() => path, () => null)
     })))
     const locations: DetectedAgent['locations'] = [
       ...commandPaths.filter((path): path is string => path !== null).map((path) => ({ source: 'cli' as const, path })),

@@ -31,7 +31,7 @@ export function parseTunnelHelperConfig(text: string): TunnelHelperConfig {
     const listen = raw.listen
     if (!isObject(listen)) throw new Error('listen is not an object')
     const { endpointFile, endpoint } = listen
-    if (endpointFile !== undefined && (typeof endpointFile !== 'string' || !path.posix.isAbsolute(endpointFile))) throw new Error('listen.endpointFile is not an absolute path')
+    if (endpointFile !== undefined && (typeof endpointFile !== 'string' || !path.isAbsolute(endpointFile))) throw new Error('listen.endpointFile is not an absolute path')
     if (endpoint !== undefined && !isObject(endpoint)) throw new Error('listen.endpoint is not an object')
     if ((endpointFile === undefined) !== (endpoint === undefined)) throw new Error('listen.endpointFile and listen.endpoint go together')
     config.listen = endpointFile === undefined || endpoint === undefined ? {} : { endpointFile, endpoint }

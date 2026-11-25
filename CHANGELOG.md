@@ -15,6 +15,10 @@
 - Antigravity 在 WSL 中可通过 Windows 默认浏览器授权，安装后不再误报「未找到 CLI」。
 - Antigravity 等待浏览器授权时可停止会话，取消后可重试首条消息。
 - Linux 或 macOS 缺少 `unzip` 时可通过 Python 3 安装 Antigravity；两者都没有时会在下载前提示。
+- Windows 无法结束整个智能体进程树时，「停止」仍会尝试结束该会话的主进程。
+- Windows 上无法直接验证 Gemini CLI 启动脚本时，外部智能体列表仍能正常加载。
+- Windows 上可正确识别工作树所在的分支，并清理经 Git 确认可安全移除的工作树。
+- Windows 上同一张图片同时上传时，不再因为文件写入冲突而报错。
 - 配置智能体、新建会话等处选择 Antigravity 的其他模型时，不再无法选择推理强度。
 
 - 终端选中文字后可用 Ctrl+C 或 Ctrl+Shift+C 复制，不再误中断命令。

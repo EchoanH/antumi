@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -202,7 +202,7 @@ describe('WorktreeService', () => {
     git(app, 'commit', '-q', '-m', 'ignore')
     for (const each of [old, orphan, kept]) git(each, 'merge', '-q', '--ff-only', 'main')
     // Installed packages come back with setup; a note the user left does not.
-    execFileSync('mkdir', ['-p', path.join(orphan, 'node_modules', 'x')])
+    mkdirSync(path.join(orphan, 'node_modules', 'x'), { recursive: true })
     writeFileSync(path.join(kept, 'notes.md'), 'mine')
     const conversations = [
       { id: id('o'), projectPaths: [realpathSync(old)], archivedAt: 100, updatedAt: 100 },

@@ -9,6 +9,7 @@ import { ConversationService, type ConversationEvent } from './conversation-serv
 import { ConversationStore } from './conversation-store'
 import { dsh } from './agents/dsh/dsh-adapter'
 import { antigravity } from './agents/antigravity/antigravity-adapter'
+import { claudeEditDenials, claudeReadRules } from './agents/claude/claude-command'
 import { ChatLog } from './chat-log'
 import { Rejection } from './rejection'
 import { AttachmentStore } from './attachment-store'
@@ -580,12 +581,12 @@ describe('ConversationService', () => {
     await service.startForTask({ id: 'task-1', title: 'Plan', agent: 'claude' }, { cwd: root, extraDirs: [], planOnly: true, session: 'new' })
     const planning = daemon.spawns.at(-1)!.args
     expect(planning).not.toContain('--add-dir')
-    expect(planning[planning.indexOf('--allowedTools') + 1]).toContain(`Read(/${vault}/**)`)
+    expect(planning[planning.indexOf('--allowedTools') + 1]).toContain(claudeReadRules([`${vault}/**`])[0])
     expect(planning).toContainEqual(expect.stringContaining(format))
     await service.startForTask({ id: 'task-read-only', title: 'Read', agent: 'claude' }, { cwd: root, extraDirs: [], planOnly: false, workspaceReadOnly: true, session: 'new' })
     const reading = daemon.spawns.at(-1)!.args
     expect(reading).not.toContain('--add-dir')
-    expect(reading[reading.indexOf('--allowedTools') + 1]).toContain(`Read(/${vault}/**)`)
+    expect(reading[reading.indexOf('--allowedTools') + 1]).toContain(claudeReadRules([`${vault}/**`])[0])
     expect(reading).toContainEqual(expect.stringContaining(format))
     service.setKnowledgeBase({ path: vault, write: false, kind })
     await service.create('claude', [root])
@@ -1524,7 +1525,7 @@ describe('ConversationService', () => {
     const web = mkdtempSync(path.join(root, 'web-'))
     const planning = await service.startForTask(task, { cwd: root, extraDirs: [web], planOnly: true, session: 'new', allowBypass: true })
     const args = daemon.spawns.at(-1)!.args
-    expect(args).toEqual(expect.arrayContaining(['--permission-mode', 'plan', '--disallowedTools', `Edit(/${realpathSync(root)}/**),Edit(/${realpathSync(web)}/**)`]))
+    expect(args).toEqual(expect.arrayContaining(['--permission-mode', 'plan', '--disallowedTools', claudeEditDenials([realpathSync(root), realpathSync(web)]).join(',')]))
     expect(args).not.toContain('--allow-dangerously-skip-permissions')
     const [stage] = service.stages(planning.id)
     expect(stage?.planOnly).toBe(true)

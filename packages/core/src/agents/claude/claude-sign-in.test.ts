@@ -2,17 +2,18 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { writeTestNodeCommand } from '../../test-node-command'
 import { claudeAuthStatus, parseClaudeAuthentication, parseClaudeAuthStatus } from './claude-sign-in'
 import { claudeAuthentication, claudeSignedIn, readClaudeUsage } from './claude-usage'
 
 let root: string
 let bin: string
 let calls: string
+let executable: string
 
 // A stand-in `claude` that logs each call's CLAUDE_CONFIG_DIR and cwd, then answers as told.
 const fakeClaude = (body: string) => {
-  const file = path.join(bin, 'claude')
-  writeFileSync(file, `#!${process.execPath}\nrequire('fs').appendFileSync(${JSON.stringify(calls)}, JSON.stringify({ dir: process.env.CLAUDE_CONFIG_DIR ?? null, cwd: process.cwd(), args: process.argv.slice(2) }) + '\\n')\n${body}`, { mode: 0o755 })
+  executable = writeTestNodeCommand(bin, 'claude', `require('fs').appendFileSync(${JSON.stringify(calls)}, JSON.stringify({ dir: process.env.CLAUDE_CONFIG_DIR ?? null, cwd: process.cwd(), args: process.argv.slice(2) }) + '\\n')\n${body}`)
 }
 const answers = (code: number, status: unknown) => fakeClaude(`process.stdout.write(${JSON.stringify(JSON.stringify(status))}); process.exit(${code})`)
 const logged = () => existsSync(calls) ? readFileSync(calls, 'utf8').trim().split('\n').map((line) => JSON.parse(line)) : []
@@ -66,7 +67,7 @@ describe('claudeAuthStatus', () => {
     expect(await claudeAuthStatus(home)).toBe(false)
     fakeClaude(`process.stderr.write('unknown command'); process.exit(1)`)
     expect(await claudeAuthStatus(home)).toBeNull()
-    rmSync(path.join(bin, 'claude'))
+    rmSync(executable)
     expect(await claudeAuthStatus(home)).toBeNull()
   })
 

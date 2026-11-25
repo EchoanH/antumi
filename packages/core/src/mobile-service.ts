@@ -46,7 +46,7 @@ export type GatewayLauncher = (onMessage: (message: GatewayToCore) => void, onEx
 export const forkGateway: GatewayLauncher = (onMessage, onExit) => {
   const fromSource = import.meta.url.endsWith('.ts')
   const script = fileURLToPath(new URL(fromSource ? './gateway-main.ts' : './gateway.mjs', import.meta.url))
-  const execArgv = fromSource ? ['--import', fileURLToPath(new URL('../node_modules/tsx/dist/loader.mjs', import.meta.url))] : []
+  const execArgv = fromSource ? ['--import', new URL('../node_modules/tsx/dist/loader.mjs', import.meta.url).href] : []
   const child: ChildProcess = fork(script, [], {
     execArgv,
     stdio: ['ignore', 'inherit', 'inherit', 'ipc'],

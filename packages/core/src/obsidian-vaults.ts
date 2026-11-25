@@ -14,9 +14,9 @@ type Where = { platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv; homedir?: st
 
 export function obsidianRegistryFile({ platform = process.platform, env = process.env, homedir = os.homedir() }: Where = {}): string | null {
   switch (platform) {
-    case 'darwin': return path.join(homedir, 'Library', 'Application Support', 'obsidian', 'obsidian.json')
-    case 'win32': return env.APPDATA ? path.join(env.APPDATA, 'obsidian', 'obsidian.json') : null
-    default: return path.join(env.XDG_CONFIG_HOME || path.join(homedir, '.config'), 'obsidian', 'obsidian.json')
+    case 'darwin': return path.posix.join(homedir, 'Library', 'Application Support', 'obsidian', 'obsidian.json')
+    case 'win32': return env.APPDATA ? path.win32.join(env.APPDATA, 'obsidian', 'obsidian.json') : null
+    default: return path.posix.join(env.XDG_CONFIG_HOME || path.posix.join(homedir, '.config'), 'obsidian', 'obsidian.json')
   }
 }
 

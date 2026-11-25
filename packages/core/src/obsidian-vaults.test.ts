@@ -9,15 +9,17 @@ describe('obsidianRegistryFile', () => {
     expect(obsidianRegistryFile({ platform: 'darwin', homedir: '/Users/me', env: {} })).toBe('/Users/me/Library/Application Support/obsidian/obsidian.json')
     expect(obsidianRegistryFile({ platform: 'linux', homedir: '/home/me', env: {} })).toBe('/home/me/.config/obsidian/obsidian.json')
     expect(obsidianRegistryFile({ platform: 'linux', homedir: '/home/me', env: { XDG_CONFIG_HOME: '/xdg' } })).toBe('/xdg/obsidian/obsidian.json')
-    expect(obsidianRegistryFile({ platform: 'win32', homedir: 'C:\\Users\\me', env: { APPDATA: 'C:\\Users\\me\\AppData\\Roaming' } })).toBe(path.join('C:\\Users\\me\\AppData\\Roaming', 'obsidian', 'obsidian.json'))
+    expect(obsidianRegistryFile({ platform: 'win32', homedir: 'C:\\Users\\me', env: { APPDATA: 'C:\\Users\\me\\AppData\\Roaming' } })).toBe('C:\\Users\\me\\AppData\\Roaming\\obsidian\\obsidian.json')
     expect(obsidianRegistryFile({ platform: 'win32', homedir: 'C:\\Users\\me', env: {} })).toBeNull()
   })
 })
 
 describe('readObsidianVaults', () => {
   let home: string
-  const registry = () => path.join(home, '.config', 'obsidian', 'obsidian.json')
-  const where = () => ({ platform: 'linux' as const, homedir: home, env: {} })
+  const registry = () => path.join(home, 'obsidian', 'obsidian.json')
+  const where = () => process.platform === 'win32'
+    ? { platform: 'win32' as const, homedir: home, env: { APPDATA: home } }
+    : { platform: 'linux' as const, homedir: home, env: { XDG_CONFIG_HOME: home } }
 
   beforeEach(() => {
     home = mkdtempSync(path.join(os.tmpdir(), 'antumi-obsidian-'))

@@ -50,8 +50,9 @@ describe('daemon method discovery', () => {
     const client = new DaemonClient(socketPath)
     close.push(async () => client.stop())
     const connected = new Promise<void>((resolve) => client.onConnect(resolve))
+    const accepted = new Promise<void>((resolve) => server.once('connection', () => resolve()))
     client.start()
-    await connected
+    await Promise.all([connected, accepted])
     return { client, startProcess, requests, sockets }
   }
 

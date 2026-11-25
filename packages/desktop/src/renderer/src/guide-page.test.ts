@@ -4,6 +4,7 @@ import { guideFor, guideImage, guidePage, guideSettingsSection } from './guide-p
 describe('guidePage', () => {
   it("takes the guide's heading for the page's title and leaves the rest as its body", () => {
     expect(guidePage('# Welcome\n\nFirst steps.\n')).toEqual({ title: 'Welcome', body: 'First steps.\n' })
+    expect(guidePage('# Welcome\r\n\r\nFirst steps.\r\n')).toEqual({ title: 'Welcome', body: 'First steps.\r\n' })
     expect(guidePage('First steps.\n')).toEqual({ title: '使用指南', body: 'First steps.\n' })
   })
 

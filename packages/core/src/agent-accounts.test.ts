@@ -7,6 +7,7 @@ import { AgentAccountStore } from './agent-accounts'
 import type { CredentialRecord } from './credential-store'
 import { UsageService } from './usage-service'
 import type { UsageReading } from './usage-source'
+import { writeTestNodeCommand } from './test-node-command'
 
 const NOW = 1_790_000_000_000
 
@@ -179,7 +180,7 @@ describe('AgentAccountStore', () => {
     rmSync(path.join(home, '.credentials.json'))
     await accounts.refreshIdentity('claude', 'work')
     expect(signedIn()).toBe(true)
-    writeFileSync(path.join(bin, 'claude'), `#!${process.execPath}\nprocess.stdout.write('{"loggedIn":false}'); process.exit(1)`, { mode: 0o755 })
+    writeTestNodeCommand(bin, 'claude', 'process.stdout.write(JSON.stringify({ loggedIn: false })); process.exit(1)')
     await accounts.refreshIdentity('claude', 'work')
     expect(signedIn()).toBe(false)
   })

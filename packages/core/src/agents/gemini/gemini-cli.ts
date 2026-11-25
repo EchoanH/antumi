@@ -40,9 +40,14 @@ export function geminiCompatible(version: string | null): boolean {
 }
 
 async function geminiVersion(command: string): Promise<string | null> {
-  const launch = launchFile(command, ['--version'], process.env)
-  const result = await execute(launch.file, launch.args, { env: launch.env, timeout: 10_000, maxBuffer: 1024 * 1024, windowsHide: true }).catch(() => null)
-  return /\b\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?/.exec(result?.stdout ?? '')?.[0] ?? null
+  try {
+    const launch = launchFile(command, ['--version'], process.env)
+    const result = await execute(launch.file, launch.args, { env: launch.env, timeout: 10_000, maxBuffer: 1024 * 1024, windowsHide: true })
+    return /\b\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?/.exec(result.stdout)?.[0] ?? null
+  } catch {
+    // An unsupported Windows shim can be shown as installed, but is never run through a shell.
+    return null
+  }
 }
 
 export async function detectGemini(pathEnv: string, platform: NodeJS.Platform): Promise<AgentDetection> {

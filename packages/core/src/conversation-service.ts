@@ -158,6 +158,7 @@ export class ConversationService {
   private userTodos = true
   private knowledgeBase: KnowledgeBase | null = null
   private readonly retiring = new Set<string>()
+  private readonly launchReleases = new Map<string, Promise<void>>()
   private readonly launching = new Map<string, PendingLaunch>()
   // Issue conversations whose issue is being fetched, or failed to be (see openInvestigation).
   private readonly fetchingIssues = new Map<string, NonNullable<Conversation['preparing']>>()
@@ -2264,6 +2265,9 @@ export class ConversationService {
       await rm(path.join(directory, 'handoffs'), { recursive: true, force: true })
       await rm(path.join(directory, 'stages'), { recursive: true, force: true })
       await rm(WireLog.directory(this.sessionsRoot, id), { recursive: true, force: true })
+      // A confirmed exit may already be removing its launch files. Wait before trying to remove
+      // their parent; a Windows sweep cannot tell that this known process has finished.
+      await this.launchReleases.get(id)
       // Only folders no process is shown to use; the others stay until one is.
       await this.settleLaunches().catch((error: unknown) => console.error('[antumi-core] settling launch files failed', error))
       await rmdir(launchRoot(this.sessionsRoot, id)).catch(() => {})
@@ -2399,7 +2403,11 @@ export class ConversationService {
     const launched = this.launches.get(sessionId)
     if (!launched) return
     this.launches.delete(sessionId)
-    void removeLaunch(launched).catch((error: unknown) => this.launchStuck(launched, error))
+    const id = launched.conversationId
+    const removing = removeLaunch(launched).catch((error: unknown) => this.launchStuck(launched, error))
+    const releases = Promise.all([this.launchReleases.get(id), removing]).then(() => {})
+    this.launchReleases.set(id, releases)
+    void releases.then(() => { if (this.launchReleases.get(id) === releases) this.launchReleases.delete(id) })
   }
 
   // One that would not go (a file Windows holds) is tried again with the rest.

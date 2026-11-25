@@ -1,9 +1,14 @@
-import { mkdir, mkdtemp, rm, symlink, truncate, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, rm, symlink, truncate, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MAX_VISUALIZATION_BYTES } from '@antumi/protocol'
 import { readCodexVisualization, type VisualizationScope } from './codex-visualizations'
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const real = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...real, lstat: vi.fn(real.lstat) }
+})
 
 describe('Codex visualization files', () => {
   let root: string
@@ -39,13 +44,38 @@ describe('Codex visualization files', () => {
     }
   })
 
-  it('refuses symlink files and directories even when the target stays in the project', async () => {
+  it('refuses a file reported as a symlink even when the target stays in the project', async () => {
+    const target = path.join(project, 'real.html')
+    const alias = path.join(project, 'alias.html')
+    await writeFile(target, 'page')
+    try {
+      await symlink(target, alias, 'file')
+    } catch (error) {
+      if (process.platform !== 'win32' || !(error instanceof Error) || !('code' in error) || error.code !== 'EPERM') throw error
+      // Standard Windows users may create junctions, but file symlinks can require a privilege.
+      // Keep exercising lstat-based rejection in that environment without changing permissions.
+      await writeFile(alias, 'page')
+      const info = await lstat(alias)
+      const symbolic = vi.spyOn(info, 'isSymbolicLink').mockReturnValue(true)
+      const metadata = vi.mocked(lstat).mockResolvedValueOnce(info)
+      try {
+        await expect(readCodexVisualization(scope, alias)).rejects.toMatchObject({ reason: 'visualization-path-invalid' })
+        expect(symbolic).toHaveBeenCalled()
+      } finally {
+        const real = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+        metadata.mockReset().mockImplementation(real.lstat)
+      }
+      return
+    }
+    await expect(readCodexVisualization(scope, alias)).rejects.toMatchObject({ reason: 'visualization-path-invalid' })
+  })
+
+  it('refuses symlink directories even when the target stays in the project', async () => {
     const directory = path.join(project, 'real')
     await mkdir(directory)
     await writeFile(path.join(directory, 'page.html'), 'page')
-    await symlink(path.join(directory, 'page.html'), path.join(project, 'alias.html'))
     await symlink(directory, path.join(project, 'alias'), process.platform === 'win32' ? 'junction' : 'dir')
-    for (const name of [path.join(project, 'alias.html'), path.join(project, 'alias/page.html')]) await expect(readCodexVisualization(scope, name)).rejects.toThrow()
+    await expect(readCodexVisualization(scope, path.join(project, 'alias', 'page.html'))).rejects.toMatchObject({ reason: 'visualization-path-invalid' })
   })
 
   it('bounds file reads and rejects binary content', async () => {

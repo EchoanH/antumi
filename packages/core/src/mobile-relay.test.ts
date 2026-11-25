@@ -45,7 +45,9 @@ describe('MobileRelay', () => {
     expect(first.address()).toBeNull()
     await first.configure('8.159.153.95', 51820)
     expect(first.status()).toMatchObject({ server: '8.159.153.95', port: 51820, address: '10.77.0.2', state: 'off' })
-    expect(statSync(path.join(dir, 'relay.json')).mode & 0o777).toBe(0o600)
+    const relayFile = statSync(path.join(dir, 'relay.json'))
+    expect(relayFile.isFile()).toBe(true)
+    if (process.platform !== 'win32') expect(relayFile.mode & 0o777).toBe(0o600)
     const before = first.setup()!
     await first.configure('relay.example.com', 41820, 3)
     expect(first.status()?.bandwidth).toBe(3)
@@ -71,7 +73,9 @@ describe('MobileRelay', () => {
     expect(tunnel.status()?.state).toBe('waiting')
     const config = readFileSync(launched[0]!.configPath, 'utf8')
     expect(config).toContain('ListenPort = 7820')
-    expect(statSync(launched[0]!.configPath).mode & 0o777).toBe(0o600)
+    const configFile = statSync(launched[0]!.configPath)
+    expect(configFile.isFile()).toBe(true)
+    if (process.platform !== 'win32') expect(configFile.mode & 0o777).toBe(0o600)
 
     handshake = now - 10_000
     await vi.advanceTimersByTimeAsync(5_000)
