@@ -128,6 +128,8 @@ export interface AgentAdapter {
   readonly warmup?: { probe: QuickCommand; args(printed: string): string[] }
   // Its models without a chat to read them from; without it, a probe of its chat protocol.
   catalog?(cwd: string): Promise<ChatCatalog | null>
+  // A chat stage lists reasoning levels only for the model it currently runs, not the whole catalog.
+  readonly partialStageCatalog?: boolean
   // How the environment check finds it; without it, its kind on PATH, asked for --version.
   detect?(pathEnv: string, platform: NodeJS.Platform): Promise<AgentDetection>
   // null: it could not tell.

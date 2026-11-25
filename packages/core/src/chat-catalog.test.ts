@@ -4,6 +4,8 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { probeChatCatalog } from './chat-catalog'
 import { createDriver } from './chat-host'
+import { AcpDriver } from './agents/acp/acp-driver'
+import { antigravityDialect } from './agents/antigravity/antigravity-dialect'
 
 // Stand-ins for the CLIs, answering on stdout the way each protocol does.
 const FAKE_CLAUDE = `
@@ -36,6 +38,23 @@ require('readline').createInterface({ input: process.stdin }).on('line', (line) 
   if (frame.method === 'config/read') reply({ config: { model: 'gpt-y', mcp_servers: { secret: { env: { TOKEN: 'x' } } } } })
 })`
 
+const FAKE_ANTIGRAVITY = `
+const log = process.argv[1]
+const levels = { flash: ['low', 'medium', 'high'], neon: ['low', 'medium', 'high', 'xhigh'], none: [] }
+require('readline').createInterface({ input: process.stdin }).on('line', (line) => {
+  const frame = JSON.parse(line)
+  require('fs').appendFileSync(log, frame.method + '\\n')
+  const reply = (result) => console.log(JSON.stringify({ id: frame.id, result }))
+  const config = (model) => ({ configOptions: [
+    { id: 'model', name: 'Model', category: 'model', currentValue: model, options: Object.keys(levels).map(value => ({ value, name: value })) },
+    ...(levels[model].length ? [{ id: 'thinking_level', name: 'Thinking Level', category: 'thought_level', currentValue: levels[model][0], options: levels[model].map(value => ({ value, name: value })) }] : [])
+  ] })
+  if (frame.method === 'initialize') reply({ protocolVersion: 1, authMethods: [{ id: 'oauth-personal' }] })
+  if (frame.method === 'authenticate') reply({})
+  if (frame.method === 'session/new') reply({ sessionId: 'probe', ...config('flash') })
+  if (frame.method === 'session/set_config_option') reply(config(frame.params.value))
+})`
+
 describe('probeChatCatalog', () => {
   let root: string
   beforeEach(() => { root = mkdtempSync(path.join(os.tmpdir(), 'antumi-catalog-')) })
@@ -54,6 +73,17 @@ describe('probeChatCatalog', () => {
     const catalog = await probeChatCatalog(driver('codex'), { command: process.execPath, args: ['-e', FAKE_CODEX, log] }, root)
     expect(catalog?.models.map((model) => [model.id, model.efforts, model.isDefault])).toEqual([['gpt-x', ['low'], false], ['gpt-y', [], true]])
     expect(readFileSync(log, 'utf8').trim().split('\n')).toEqual(['initialize', 'initialized', 'model/list', 'config/read'])
+  })
+
+  it('reads every Antigravity model’s efforts without sending a prompt or moving its default', async () => {
+    const log = path.join(root, 'methods')
+    const driver = new AcpDriver(antigravityDialect, 'catalog', { cwd: root, extraDirs: [], resume: null }, true)
+    const catalog = await probeChatCatalog(driver, { command: process.execPath, args: ['-e', FAKE_ANTIGRAVITY, log] }, root)
+    expect(catalog?.models.map((model) => [model.id, model.efforts, model.isDefault])).toEqual([
+      ['flash', ['low', 'medium', 'high'], true], ['neon', ['low', 'medium', 'high', 'xhigh'], false], ['none', [], false]
+    ])
+    expect(readFileSync(log, 'utf8').trim().split('\n')).toEqual(['initialize', 'authenticate', 'session/new', 'session/set_config_option', 'session/set_config_option'])
+    expect(driver.items.list().some((item) => item.kind === 'user')).toBe(false)
   })
 
   it('gives nothing for a CLI that is not there or quits', async () => {
