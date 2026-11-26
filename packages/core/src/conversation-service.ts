@@ -1252,13 +1252,13 @@ export class ConversationService {
     // the agent starts afresh from a handoff.
     const adapter = adapterOf(agent)
     const { session } = adapter
-    const prevBackend = previous ? (previous.backend ?? adapter.defaultBackend ?? null) : null
+    const prevBackend = previous ? (previous.backend ?? agentDescriptor(agent).legacyBackend ?? null) : null
     // Global runtime preference applies to new conversations (and fresh stages); an existing
     // conversation stays on its previous stage's backend unless an explicit override is passed.
     const backend = launch.backend !== undefined
       ? launch.backend
       : prevBackend ?? ((await adapter.resolveBackend?.()) ?? null)
-    const nextBackend = backend ?? adapter.defaultBackend ?? null
+    const nextBackend = backend ?? agentDescriptor(agent).legacyBackend ?? null
     const accountChoice = launch.account !== undefined
       ? (launch.account && this.accounts?.exists(agent, launch.account) ? launch.account : undefined)
       : this.keptAccount(current.id, agent)
@@ -1621,7 +1621,7 @@ export class ConversationService {
                 ...(state.effort ? { effort: state.effort } : {})
               }
             : previousOptions[agent]
-          const pinnedBackend = stage.backend ?? adapter.defaultBackend ?? null
+          const pinnedBackend = stage.backend ?? agentDescriptor(agent).legacyBackend ?? null
           const pinnedAccount = stage.account ?? undefined
           await this.stop(id, true)
           this.store.setChatOptions(id, {
@@ -1671,7 +1671,7 @@ export class ConversationService {
     if (latest.agent !== agent || latest.sessionId !== conversation.sessionId || this.store.stages(id).at(-1)?.id !== stage?.id) return this.setOption(id, option, value)
     const adapter = adapterOf(agent)
     const backend = stage?.agent === agent
-      ? (stage.backend ?? adapter.defaultBackend ?? null)
+      ? (stage.backend ?? agentDescriptor(agent).legacyBackend ?? null)
       : ((await adapter.resolveBackend?.()) ?? null)
     const backendModes: readonly string[] | undefined = backend ? agentDescriptor(agent).backendModes?.[backend] : undefined
     const permissionModes = !backendModes && state?.permissionModes.length

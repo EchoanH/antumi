@@ -5,13 +5,18 @@ import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { z } from 'zod'
-import type { AntigravityBackend, AntigravityRuntimeMode } from '@antumi/protocol'
 import { launchFile, nodeLaunchHost } from '@antumi/protocol/node'
 import type { AgentCommand } from '../../agent-command'
 import type { AgentDetection } from '../agent-adapter'
 import { Rejection } from '../../rejection'
 import { detectAntigravity } from './antigravity-runtime'
 import { antigravityAccountSignedIn } from './antigravity-account'
+
+// Its descriptor's backends (backendModes), and those plus auto, the choices Settings → Agents offers.
+export const AntigravityBackend = z.enum(['agy-cli', 'managed-acp'])
+export type AntigravityBackend = z.infer<typeof AntigravityBackend>
+export const AntigravityRuntimeMode = z.enum(['auto', ...AntigravityBackend.options])
+export type AntigravityRuntimeMode = z.infer<typeof AntigravityRuntimeMode>
 
 let runtimeMode: AntigravityRuntimeMode = 'managed-acp'
 export const getAntigravityRuntimeMode = (): AntigravityRuntimeMode => runtimeMode

@@ -516,6 +516,7 @@ Agent adapter 解析一次性命令的结构化输出：Claude 的 JSON、Codex 
    - 必填：driver（实现 `ChatDriver`）、启动命令（argv 数组，需要时加环境变量 `env`）、能用的权限模式、会话策略（是否预先指定会话 id、会话是否绑定目录、原生 fork 能从任意一轮、只能整个会话复制（只用于从最新一轮分叉），还是不支持）。
    - 可选：模型目录、环境检测、登录检查、用量读取、使用重置卡（`useResetCredit`，没有它就只能在 Agent 自己的应用里用）、CLI 安装命令、应用发现。
    - 可选 hooks，用于命令行之外的特殊需求：启动前后的准备（`launch`，`prepare` 可以换可执行文件，也可以追加它刚写出的文件的参数，比如 Pi 的扩展）、回合处理（`turns`：串行发送、取消后分阶段停止进程、首帧超时、换新进程重试、拒绝理由作为消息发送）。注册时 `checkAdapter()` 会检查这些 hooks 是否配套，比如声明了首帧超时，就必须同时能停进程、能重试。
+   - 可选的多个后端（如 Antigravity 的 agy 原生 ACP 和独立 ACP 服务）：descriptor 写 `backendModes`（各后端的权限模式，键即后端 id）、`backendNames`（设置里的名称）和 `legacyBackend`（有选择之前用的后端），adapter 写 `chooseBackend`（接收用户的选择或 `auto`）和 `resolveBackend`（新阶段实际用哪个）。选择存在聊天设置的 `agentBackends`，取值规则在 protocol 的 `agent-backend.ts`：新装机写 `auto`，老装机没选过时用 `legacyBackend`。设置 → 外部智能体按 descriptor 显示「运行后端」切换，core 启动时和每次改动时把选择交给 adapter；每个阶段记下自己跑在哪个后端上，已有对话不随全局选择改变。
 3. **desktop**：放一个图标资源，登记进 `components/icons.tsx` 的 `AGENT_MARKS`。
 
 说 ACP 的 Agent 不用另写 driver：`agents/acp/acp-driver.ts` 讲标准协议，Agent 自己的部分写成一份 `AcpDialect`，然后用 `new AcpDriver(dialect, …)` 创建 driver。dialect 至少要有显示名、请求 id 前缀（会写进日志，定下后不能改）和权限模式映射；扩展认证方式、模型列表、提问、计划审批、子 Agent、工具命名、写进回复的传输错误等，都按需声明。Cursor 的 dialect（`agents/cursor/cursor-dialect.ts`）扩展最多，OpenCode 的（`agents/opencode/opencode-dialect.ts`）几乎只用标准协议，都可以作参照。`agents/acp/acp-driver.test.ts` 用一个什么扩展都不带的 dialect 跑完一整个回合，新 dialect 可以从它开始。说自有协议的 Agent 要写自己的 driver，Pi 的 `agents/pi/pi-rpc.ts` 是最小的一份：一切从 `apply()` 来，流式增量不进日志，由完整消息补齐，所以从日志重放和实时得到同样的条目（`pi-rpc.test.ts` 逐份 fixture 对比两者）。
@@ -524,7 +525,7 @@ Agent adapter 解析一次性命令的结构化输出：Claude 的 JSON、Codex 
 
 DeepSeek Harness 使用同一 ACP driver；`packages/dsh-runtime` 在官方导出的 ACP `apply` 上接入消息 stream，保留官方会话、模型、MCP 和取消实现，补充权限模式、提问及计划审批。服务商和技能作为启动覆盖层，文件与命令提供者按当前模式和项目范围实施限制；恢复会话先重设权限再交给 driver。插件随构建打包成 tarball，首次使用时准备 DSH 的专用 `antumi` profile，按内容摘要更新，不修改其他 profile。安装和兼容边界见 [DeepSeek Harness](DEEPSEEK.md)。
 
-Antigravity 也只是一份 dialect（`agents/antigravity/`）：`agy` 本身不说 ACP，跑的是 Google 发到 ACP registry 的 Antigravity ACP 服务。它没有安装器，Antumi 按版本钉住各平台压缩包的 SHA-256，用 adapter 的 `installation` 下载到 `~/.antumi/runtimes/antigravity-acp/<版本>/`；`installWithoutApplication` 让这条安装命令不必先检测到 Antigravity 应用。细节见 [Antigravity](ANTIGRAVITY.md)。ACP 恢复优先使用旧 Agent 已声明的 `loadSession`，仅声明 `resume` 时使用 `session/resume`。
+Antigravity 有两份 dialect（`agents/antigravity/`），对应两个后端：`agy acp` 原生 ACP，或 Google 发到 ACP registry 的 Antigravity ACP 服务。独立服务没有安装器，Antumi 按版本钉住各平台压缩包的 SHA-256，用 adapter 的 `installation` 下载到 `~/.antumi/runtimes/antigravity-acp/<版本>/`；`installWithoutApplication` 让这条安装命令不必先检测到 Antigravity 应用。细节见 [Antigravity](ANTIGRAVITY.md)。ACP 恢复优先使用旧 Agent 已声明的 `loadSession`，仅声明 `resume` 时使用 `session/resume`。
 
 Gemini CLI 也复用通用 ACP driver（`agents/gemini/`）：文本模式通知、缺少 rawInput 的工具摘要、按文件路径审批的计划、缓存已包含在输入 token 的用量口径由 dialect 声明。计划正文从已完成工具 diff 保留的完整 newText 取，不读磁盘。adapter 的 `session.nativeResume: false` 让停止后继续和重启走历史移交，避免 CLI 的晚到历史重放混进新回合；其他 Agent 缺省沿用原生恢复。打包版 MCP 使用系统 Node，避开 Gemini 对 Electron 环境变量的过滤；每日额度按模型读取 Code Assist API，客户端声明支持 daily 后才接收。细节见 [Gemini CLI](GEMINI.md)。
 

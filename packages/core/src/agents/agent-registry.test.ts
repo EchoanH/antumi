@@ -21,6 +21,11 @@ describe('agent registry', () => {
         expect([...modes].sort()).toEqual([...(adapter.permissionModesFor?.(backend) ?? adapter.permissionModes)].sort())
       }
     }
+    // Settings → Agents offers a backend choice exactly where core can take one, with a name for each.
+    const backends = Object.keys(descriptor.backendModes ?? {})
+    expect(Boolean(adapter.chooseBackend)).toBe(backends.length > 0)
+    for (const locale of ['zh-CN', 'en'] as const) expect(Object.keys(agentDescriptor(kind, locale).backendNames ?? {}).sort()).toEqual([...backends].sort())
+    if (descriptor.legacyBackend !== undefined) expect(backends).toContain(descriptor.legacyBackend)
     // A client is told whether the agent takes a skills bundle only where its command gives one,
     // on its command line or in its environment.
     const launch = { providerSessionId: null, resume: false, handoffPath: null, extraProjects: [], skills: { dir: '/antumi/skills/bundles/abc' } }

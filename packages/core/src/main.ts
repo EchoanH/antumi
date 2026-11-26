@@ -21,11 +21,10 @@ import { randomBytes } from 'node:crypto'
 import { mkdir, realpath, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
-import { coreUrl, untrustedSource, SOURCE_REPORT_LIMIT, isStartRef, AGENT_KINDS, agentReadiness, agentDescriptor, providerEndpoint, PROTOCOL_VERSION, quotaVerdict, usageAccount, usageReadable, type AgentAuthentication, type AgentKind, type AgentUsage, type ChatItem, type Task, type SourceTaskProposal } from '@antumi/protocol'
+import { coreUrl, untrustedSource, SOURCE_REPORT_LIMIT, isStartRef, AGENT_KINDS, agentReadiness, backendChoice, agentDescriptor, providerEndpoint, PROTOCOL_VERSION, quotaVerdict, usageAccount, usageReadable, type AgentAuthentication, type AgentKind, type AgentUsage, type ChatItem, type ChatSettings, type Task, type SourceTaskProposal } from '@antumi/protocol'
 import packageJson from '../package.json' with { type: 'json' }
 import { removeCoreEndpoint, antumiPaths, writeCoreEndpoint } from '@antumi/protocol/node'
 import { adapterOf } from './agents'
-import { getAntigravityRuntimeMode, setAntigravityRuntimeMode } from './agents/antigravity/antigravity-backend'
 import { EnvironmentService } from './environment-check'
 import { AgentRunStore } from './agent-run-store'
 import { ChatTurnStore } from './chat-turn-store'
@@ -635,14 +634,29 @@ channels = new ChannelService(channelStore, {
 })
 profiles.setChannelGuard((id) => channels?.hasChannels(id) ?? false)
 conversations.setChannelTools({ mcp: (id) => antumiChannelMcpServer(paths.home, id), tools: CHANNEL_TOOL_NAMES })
-const chatSettings = new ChatSettingsStore(paths.chatSettings, (settings) => {
-  if (settings.antigravityRuntime && settings.antigravityRuntime !== getAntigravityRuntimeMode()) {
-    setAntigravityRuntimeMode(settings.antigravityRuntime)
-    conversations.invalidateCli('antigravity')
-    void accounts.refresh('antigravity').catch(() => {})
-    void environment.check(true).catch(() => {})
-    void usage.refresh()
+// The backend each agent with several runs new conversations on: told to its adapter at start and
+// on every change, which then reaches its catalog, accounts, check and usage anew.
+const backendChoices = new Map<AgentKind, string>()
+function chooseBackends(settings: ChatSettings): void {
+  let changed = false
+  for (const agent of AGENT_KINDS) {
+    const adapter = adapterOf(agent)
+    const choice = backendChoice(settings, agent)
+    if (!adapter.chooseBackend || choice === null || backendChoices.get(agent) === choice) continue
+    const starting = !backendChoices.has(agent)
+    backendChoices.set(agent, choice)
+    adapter.chooseBackend(choice)
+    if (starting) continue
+    changed = true
+    conversations.invalidateCli(agent)
+    void accounts.refresh(agent).catch(() => {})
   }
+  if (!changed) return
+  void environment.check(true).catch(() => {})
+  void usage.refresh()
+}
+const chatSettings = new ChatSettingsStore(paths.chatSettings, (settings) => {
+  chooseBackends(settings)
   conversations.setPromptSuggestions(settings.promptSuggestions)
   conversations.setTitleNaming(settings.titleNaming ?? 'off')
   conversations.setUserBrowser(settings.userBrowser ?? true)
@@ -656,7 +670,7 @@ const chatSettings = new ChatSettingsStore(paths.chatSettings, (settings) => {
   server?.broadcast('system.chatSettingsChanged', { settings })
 })
 const initialChatSettings = await chatSettings.load(freshInstall)
-setAntigravityRuntimeMode(initialChatSettings.antigravityRuntime)
+chooseBackends(initialChatSettings)
 await accounts.load()
 conversations.setAccounts(accounts)
 const projectConfigs = new ProjectConfigStore(paths.projectTrust)

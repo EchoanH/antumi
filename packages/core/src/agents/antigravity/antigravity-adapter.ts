@@ -2,7 +2,7 @@ import { rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { antigravityTranscripts } from './antigravity-transcripts'
-import type { AntigravityBackend, ChatCatalog } from '@antumi/protocol'
+import type { ChatCatalog } from '@antumi/protocol'
 import { probeChatCatalog } from '../../chat-catalog'
 import type { AgentAdapter, AgentLaunch } from '../agent-adapter'
 import { antigravityAccounts, antigravityAccountSignedIn } from './antigravity-account'
@@ -11,7 +11,7 @@ import { antigravityAgyCliDialect, antigravityDialect, dialectForBackend } from 
 import { readAntigravityUsage } from './antigravity-usage'
 import { antigravityInstallation, antigravityServer, requireAntigravity } from './antigravity-runtime'
 import { antigravityBrowserEnv } from './antigravity-browser'
-import { ANTIGRAVITY_STRIPPED_ENV, activeAntigravityBackend, agyCliCommand, agyCliEnv, backendDataDir, detectAntigravityRuntime, ensureOAuthSettings, requireAgyCli, requireAgyCliInfo } from './antigravity-backend'
+import { type AntigravityBackend, AntigravityRuntimeMode, ANTIGRAVITY_STRIPPED_ENV, activeAntigravityBackend, agyCliCommand, agyCliEnv, backendDataDir, detectAntigravityRuntime, ensureOAuthSettings, requireAgyCli, requireAgyCliInfo, setAntigravityRuntimeMode } from './antigravity-backend'
 import { syncForAntigravityBackendSwitch } from './antigravity-credentials'
 import { Rejection } from '../../rejection'
 
@@ -62,8 +62,8 @@ async function antigravityCatalog(cwd: string, account?: { id: string; home?: st
 
 export const antigravity: AgentAdapter = {
   kind: 'antigravity',
-  defaultBackend: 'managed-acp',
   resolveBackend: () => activeAntigravityBackend(),
+  chooseBackend: (choice) => setAntigravityRuntimeMode(AntigravityRuntimeMode.catch('auto').parse(choice)),
   // The folders its docs name (antigravity.google/docs/skills); a plugin's skills are not read here.
   globalSkillDirs: () => [path.join('.gemini', 'config', 'skills'), path.join('.gemini', 'antigravity-cli', 'skills'), path.join('.gemini', 'skills')].map((dir) => path.join(os.homedir(), dir)),
   transcripts: antigravityTranscripts(),

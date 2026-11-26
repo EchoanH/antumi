@@ -19,6 +19,7 @@ export const antigravity: AgentDescriptor = {
       signIn: 'Your first chat opens the Google sign-in page in the browser',
       missing: { status: 'Not downloaded', hint: "Antumi runs Antigravity through Google's Antigravity ACP server, which it downloads first (110–340 MB). Neither agy nor the Antigravity editor is needed." }
     },
+    backendNames: { 'agy-cli': 'agy native ACP', 'managed-acp': 'Standalone ACP Server' },
     usageWhere: 'Send /usage in an Antigravity chat'
   } },
   label: 'Antigravity',
@@ -36,6 +37,8 @@ export const antigravity: AgentDescriptor = {
     'agy-cli': ['ask', 'acceptEdits', 'auto', 'plan', 'bypass'],
     'managed-acp': ['ask', 'acceptEdits', 'bypass']
   },
+  backendNames: { 'agy-cli': 'agy 原生 ACP', 'managed-acp': '独立 ACP Server' },
+  legacyBackend: 'managed-acp',
   defaultStartMode: 'ask',
   discussionMode: 'ask',
   readOnlyMode: 'ask',

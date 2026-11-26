@@ -22,14 +22,6 @@ export type UnattendedMode = z.infer<typeof UnattendedMode>
 export const TitleNaming = z.enum(['off', 'first', 'latest'])
 export type TitleNaming = z.infer<typeof TitleNaming>
 
-export const ANTIGRAVITY_RUNTIMES = ['auto', 'agy-cli', 'managed-acp'] as const
-export const AntigravityRuntimeMode = z.enum(ANTIGRAVITY_RUNTIMES)
-export type AntigravityRuntimeMode = z.infer<typeof AntigravityRuntimeMode>
-
-export const ANTIGRAVITY_BACKENDS = ['agy-cli', 'managed-acp'] as const
-export const AntigravityBackend = z.enum(ANTIGRAVITY_BACKENDS)
-export type AntigravityBackend = z.infer<typeof AntigravityBackend>
-
 // How chats run on this machine, whichever window asks; core keeps them.
 // promptSuggestions: after each turn the agent predicts the user's next message (Claude Code only).
 // unattendedMode: see UnattendedMode; older cores leave it out.
@@ -40,8 +32,9 @@ export const ChatSettings = z.object({
   // Desktop's lightweight model choices, mirrored for background title requests without a window.
   titleModels: z.partialRecord(AgentKind, z.string().trim().min(1).max(200)).optional(),
   unattendedMode: UnattendedMode.optional(),
-  // Auto prefers the local agy CLI; existing installs keep managed-acp. Older cores omit it.
-  antigravityRuntime: AntigravityRuntimeMode.optional(),
+  // The backend new conversations of an agent with several run on, or auto (agent-backend.ts).
+  // Older cores omit it.
+  agentBackends: z.partialRecord(AgentKind, z.string().trim().min(1).max(40)).optional(),
   // Applies to live agent processes, including one awaiting the user's approval. Older cores
   // omit both limits; each new agent gets the default until configured.
   maxConcurrentAgents: z.number().int().min(1).max(50).optional(),

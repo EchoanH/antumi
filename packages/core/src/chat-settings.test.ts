@@ -22,23 +22,23 @@ describe('ChatSettingsStore', () => {
 
   it('suggests the next message and lets scheduled runs edit, unless the user changed that, and keeps it', async () => {
     const store = new ChatSettingsStore(file, (settings) => changes.push(settings))
-    expect(await store.load()).toEqual({ promptSuggestions: true, titleNaming: 'first', titleModels: {}, unattendedMode: 'acceptEdits', maxConcurrentAgents: 20, agentConcurrency: defaultConcurrency, wireLog: false, userBrowser: true, readHistory: true, userTodos: true, knowledgeBase: null, autoArchiveDays: null, worktreeCleanDays: 7, resetAnnouncements: true, disabledAgents: [], pullRequestAutoAccept: false, antigravityRuntime: 'managed-acp' })
+    expect(await store.load()).toEqual({ promptSuggestions: true, titleNaming: 'first', titleModels: {}, unattendedMode: 'acceptEdits', maxConcurrentAgents: 20, agentConcurrency: defaultConcurrency, wireLog: false, userBrowser: true, readHistory: true, userTodos: true, knowledgeBase: null, autoArchiveDays: null, worktreeCleanDays: 7, resetAnnouncements: true, disabledAgents: [], pullRequestAutoAccept: false, agentBackends: {} })
 
     await store.update({ promptSuggestions: false })
     await store.update({ unattendedMode: 'bypass' })
     expect(changes).toEqual([
-      { promptSuggestions: false, titleNaming: 'first', titleModels: {}, unattendedMode: 'acceptEdits', maxConcurrentAgents: 20, agentConcurrency: defaultConcurrency, wireLog: false, userBrowser: true, readHistory: true, userTodos: true, knowledgeBase: null, autoArchiveDays: null, worktreeCleanDays: 7, resetAnnouncements: true, disabledAgents: [], pullRequestAutoAccept: false, antigravityRuntime: 'managed-acp' },
-      { promptSuggestions: false, titleNaming: 'first', titleModels: {}, unattendedMode: 'bypass', maxConcurrentAgents: 20, agentConcurrency: defaultConcurrency, wireLog: false, userBrowser: true, readHistory: true, userTodos: true, knowledgeBase: null, autoArchiveDays: null, worktreeCleanDays: 7, resetAnnouncements: true, disabledAgents: [], pullRequestAutoAccept: false, antigravityRuntime: 'managed-acp' }
+      { promptSuggestions: false, titleNaming: 'first', titleModels: {}, unattendedMode: 'acceptEdits', maxConcurrentAgents: 20, agentConcurrency: defaultConcurrency, wireLog: false, userBrowser: true, readHistory: true, userTodos: true, knowledgeBase: null, autoArchiveDays: null, worktreeCleanDays: 7, resetAnnouncements: true, disabledAgents: [], pullRequestAutoAccept: false, agentBackends: {} },
+      { promptSuggestions: false, titleNaming: 'first', titleModels: {}, unattendedMode: 'bypass', maxConcurrentAgents: 20, agentConcurrency: defaultConcurrency, wireLog: false, userBrowser: true, readHistory: true, userTodos: true, knowledgeBase: null, autoArchiveDays: null, worktreeCleanDays: 7, resetAnnouncements: true, disabledAgents: [], pullRequestAutoAccept: false, agentBackends: {} }
     ])
 
     const reopened = new ChatSettingsStore(file, () => {})
-    expect(await reopened.load()).toEqual({ promptSuggestions: false, titleNaming: 'first', titleModels: {}, unattendedMode: 'bypass', maxConcurrentAgents: 20, agentConcurrency: defaultConcurrency, wireLog: false, userBrowser: true, readHistory: true, userTodos: true, knowledgeBase: null, autoArchiveDays: null, worktreeCleanDays: 7, resetAnnouncements: true, disabledAgents: [], pullRequestAutoAccept: false, antigravityRuntime: 'managed-acp' })
+    expect(await reopened.load()).toEqual({ promptSuggestions: false, titleNaming: 'first', titleModels: {}, unattendedMode: 'bypass', maxConcurrentAgents: 20, agentConcurrency: defaultConcurrency, wireLog: false, userBrowser: true, readHistory: true, userTodos: true, knowledgeBase: null, autoArchiveDays: null, worktreeCleanDays: 7, resetAnnouncements: true, disabledAgents: [], pullRequestAutoAccept: false, agentBackends: {} })
   })
 
   it('lets a new install\'s scheduled runs allow everything, and keeps what an older one had, file or not', async () => {
-    expect(await new ChatSettingsStore(file, () => {}).load(true)).toMatchObject({ unattendedMode: 'bypass', antigravityRuntime: 'auto' })
+    expect(await new ChatSettingsStore(file, () => {}).load(true)).toMatchObject({ unattendedMode: 'bypass', agentBackends: { antigravity: 'auto' } })
     // Saved at once: a later start, no longer fresh, keeps it.
-    expect(await new ChatSettingsStore(file, () => {}).load()).toMatchObject({ unattendedMode: 'bypass', antigravityRuntime: 'auto' })
+    expect(await new ChatSettingsStore(file, () => {}).load()).toMatchObject({ unattendedMode: 'bypass', agentBackends: { antigravity: 'auto' } })
     rmSync(file)
     expect((await new ChatSettingsStore(file, () => {}).load()).unattendedMode).toBe('acceptEdits')
     writeFileSync(file, JSON.stringify({ version: 1, unattendedMode: 'acceptEdits' }))
@@ -47,9 +47,9 @@ describe('ChatSettingsStore', () => {
 
   it('falls back to the default for a file it cannot read', async () => {
     writeFileSync(file, '{"promptSuggestions": "nope", "unattendedMode": "yolo"}')
-    expect(await new ChatSettingsStore(file, () => {}).load()).toEqual({ promptSuggestions: true, titleNaming: 'first', titleModels: {}, unattendedMode: 'acceptEdits', maxConcurrentAgents: 20, agentConcurrency: defaultConcurrency, wireLog: false, userBrowser: true, readHistory: true, userTodos: true, knowledgeBase: null, autoArchiveDays: null, worktreeCleanDays: 7, resetAnnouncements: true, disabledAgents: [], pullRequestAutoAccept: false, antigravityRuntime: 'managed-acp' })
+    expect(await new ChatSettingsStore(file, () => {}).load()).toEqual({ promptSuggestions: true, titleNaming: 'first', titleModels: {}, unattendedMode: 'acceptEdits', maxConcurrentAgents: 20, agentConcurrency: defaultConcurrency, wireLog: false, userBrowser: true, readHistory: true, userTodos: true, knowledgeBase: null, autoArchiveDays: null, worktreeCleanDays: 7, resetAnnouncements: true, disabledAgents: [], pullRequestAutoAccept: false, agentBackends: {} })
     writeFileSync(file, 'not json')
-    expect(await new ChatSettingsStore(file, () => {}).load()).toEqual({ promptSuggestions: true, titleNaming: 'first', titleModels: {}, unattendedMode: 'acceptEdits', maxConcurrentAgents: 20, agentConcurrency: defaultConcurrency, wireLog: false, userBrowser: true, readHistory: true, userTodos: true, knowledgeBase: null, autoArchiveDays: null, worktreeCleanDays: 7, resetAnnouncements: true, disabledAgents: [], pullRequestAutoAccept: false, antigravityRuntime: 'managed-acp' })
+    expect(await new ChatSettingsStore(file, () => {}).load()).toEqual({ promptSuggestions: true, titleNaming: 'first', titleModels: {}, unattendedMode: 'acceptEdits', maxConcurrentAgents: 20, agentConcurrency: defaultConcurrency, wireLog: false, userBrowser: true, readHistory: true, userTodos: true, knowledgeBase: null, autoArchiveDays: null, worktreeCleanDays: 7, resetAnnouncements: true, disabledAgents: [], pullRequestAutoAccept: false, agentBackends: {} })
   })
 
   it('keeps per-agent limits when another agent changes, and rejects invalid limits', async () => {

@@ -5,8 +5,7 @@ import { linkShared } from '../../agent-account-home'
 import type { AccountSupport } from '../agent-adapter'
 import { antigravityBrowserEnv } from './antigravity-browser'
 import { requireAntigravity } from './antigravity-runtime'
-import type { AntigravityBackend } from '@antumi/protocol'
-import { ANTIGRAVITY_STRIPPED_ENV, activeAntigravityBackend, defaultGeminiHome, agyCliCommand, ensureOAuthSettings, requireAgyCli } from './antigravity-backend'
+import { type AntigravityBackend, ANTIGRAVITY_STRIPPED_ENV, activeAntigravityBackend, defaultGeminiHome, agyCliCommand, ensureOAuthSettings, requireAgyCli } from './antigravity-backend'
 import { hasAnyAntigravityCredential, readAntigravityIdentity, syncAfterAntigravityLogin } from './antigravity-credentials'
 
 async function prepare(home: string): Promise<void> {

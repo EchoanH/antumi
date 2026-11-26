@@ -6,10 +6,9 @@ import os from 'node:os'
 import { launchFile, nodeLaunchHost, withoutEnv } from '@antumi/protocol/node'
 import path from 'node:path'
 import { z } from 'zod'
-import { AntigravityBackend } from '@antumi/protocol'
 import { Rejection } from '../../rejection'
 import { UsageFetchError } from '../../usage-source'
-import { activeAntigravityBackend, agyCliTokenFile, antigravityMetaFile, backendDataDir, ensureOAuthSettingsUnlocked, withAntigravityAccountLock, writePrivateJsonAtomic, agyCliCommand, requireAgyCli } from './antigravity-backend'
+import { AntigravityBackend, activeAntigravityBackend, agyCliTokenFile, antigravityMetaFile, backendDataDir, ensureOAuthSettingsUnlocked, withAntigravityAccountLock, writePrivateJsonAtomic, agyCliCommand, requireAgyCli } from './antigravity-backend'
 
 export const ManagedCredential = z.object({ client_id: z.string().min(1), client_secret: z.string().min(1), refresh_token: z.string().min(1), token_uri: z.string().default('https://oauth2.googleapis.com/token'), scopes: z.array(z.string()).optional(), project_id: z.string().default('') })
 export type ManagedCredential = z.infer<typeof ManagedCredential>

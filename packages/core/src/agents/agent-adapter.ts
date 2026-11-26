@@ -106,10 +106,11 @@ export interface AgentAdapter {
     native?: { roots: Partial<Record<NodeJS.Platform, readonly string[]>>; args: readonly string[]; latestUrl?: string; tagPrefix?: string }
   }
   readonly kind: AgentKind
-  // The historical backend assumed for stages with no backend recorded.
-  readonly defaultBackend?: string
   // Resolves the active backend for a new stage.
   resolveBackend?(): Promise<string | null>
+  // The user's choice among its descriptor's backends, or auto (backendChoice), at core's start and
+  // whenever it changes.
+  chooseBackend?(choice: string): void
   createDriver(stageId: string, options: ChatStageOptions): ChatDriver
   command(launch: AgentLaunch): AgentCommand
   // Antumi's modes it can start in; a start asking another is refused before anything runs.

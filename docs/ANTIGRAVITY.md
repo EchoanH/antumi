@@ -12,7 +12,7 @@ Antumi 通过 ACP 接入 Antigravity，兼容 **agy 原生 ACP** 和 **独立 An
 | agy 原生 ACP | `agy-cli` | 需要支持 `acp --stdio --gemini-dir` 的 `agy` |
 | 独立 ACP Server | `managed-acp` | 使用 Antumi 下载的 Antigravity ACP Server 1.4.1，无需安装 `agy` 或编辑器 |
 
-已有安装默认保留「独立 ACP Server」，避免静默迁移；全新安装默认「自动」。全局运行时切换仅对新建会话生效，已有会话默认沿用上一阶段所绑定的后端；若原后端不可用则直接报错提示，不会自动回退到另一后端或静默触发摘要 Handoff。所选后端未安装时，仍可在该行切回其他后端。
+已有安装默认保留「独立 ACP Server」，避免静默迁移；全新安装默认「自动」。选择保存在聊天设置的 `agentBackends.antigravity`。全局运行时切换仅对新建会话生效，已有会话默认沿用上一阶段所绑定的后端；若原后端不可用则直接报错提示，不会自动回退到另一后端或静默触发摘要 Handoff。所选后端未安装时，仍可在该行切回其他后端。
 
 两种后端均使用 设置 → 账号 中的 Antigravity 账号池。`agy-cli` 的凭据和会话保存在各自 Gemini home 下的 `<home>/antigravity-cli-acp/`，通过 `--gemini-dir` 指定隔离目录，并设置 `AGY_CLI_FORCE_FILE_TOKEN_STORAGE=1`，不访问系统 Keyring，也不读写 `~/.gemini/antigravity-cli/`。
 

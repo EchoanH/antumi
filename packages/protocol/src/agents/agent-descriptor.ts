@@ -8,7 +8,7 @@ export type AgentModeText = { label: string; description: string }
 // the agent's rules here rather than re-encoding them, and a new agent is one more descriptor.
 export type AgentDescriptor = {
   label: string
-  translations?: { en: Partial<Pick<AgentDescriptor, 'modes' | 'environment' | 'usageWhere' | 'nativePlanRun' | 'accountKeys'>> }
+  translations?: { en: Partial<Pick<AgentDescriptor, 'modes' | 'backendNames' | 'environment' | 'usageWhere' | 'nativePlanRun' | 'accountKeys'>> }
   // The command the user runs themselves, to sign in or refresh its credentials.
   cli: string
   // Where native credentials come from; separate from Antumi-managed model providers.
@@ -19,7 +19,12 @@ export type AgentDescriptor = {
   // The first is the fallback when defaultStartMode is unavailable.
   startModes: readonly ChatPermissionMode[]
   // Per-backend start modes when an agent supports multiple backends with different native modes.
+  // Its keys are the backends the user picks among in Settings → Agents, besides auto (agent-backend.ts).
   backendModes?: Readonly<Record<string, readonly ChatPermissionMode[]>>
+  // How Settings → Agents names each of backendModes' backends.
+  backendNames?: Readonly<Record<string, string>>
+  // What it ran on before it had a choice: a stage that recorded none, and an install from then.
+  legacyBackend?: string
   defaultStartMode: ChatPermissionMode
   // What it runs in as a member of a group chat: it reads the projects and answers in words, and
   // changes nothing. A conversation opened to look into an inbox issue starts in it too.
