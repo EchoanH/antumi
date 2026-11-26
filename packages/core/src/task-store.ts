@@ -461,7 +461,8 @@ export const MIGRATIONS = [
   // here in the change's own transaction and gone once delivered. next_at: when to try, or try again.
   `CREATE TABLE source_intents (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, next_at INTEGER NOT NULL DEFAULT 0, data TEXT NOT NULL);
    CREATE INDEX source_intents_due ON source_intents(next_at);`,
-  `CREATE TABLE source_fixes (id TEXT PRIMARY KEY, task_id TEXT UNIQUE, data TEXT NOT NULL);`
+  `CREATE TABLE source_fixes (id TEXT PRIMARY KEY, task_id TEXT UNIQUE, data TEXT NOT NULL);`,
+  `CREATE TABLE project_choices (path TEXT PRIMARY KEY, data TEXT NOT NULL);`
 ]
 
 
