@@ -575,7 +575,7 @@ export function ChatComposer({ conversation, state, compact = false }: { convers
             <span className="chat-dock-spacer" />
             <HandoffModelPicker conversationId={id} agent={handingOff} />
           </>
-        ) : optionsSupported && state ? <ChatOptionsBar compact={compact} conversation={conversation} state={state} /> : compact ? <HelperStartOptions conversation={conversation} /> : null}
+        ) : optionsSupported && (state || (!conversation.sessionId && conversation.chatOptions)) ? <ChatOptionsBar compact={compact} conversation={conversation} state={state} /> : compact ? <HelperStartOptions conversation={conversation} /> : null}
         {suggestion && suggestionKey && (
           <span className="chat-suggestion-hint" aria-hidden="true">{tr('ChatComposer.useSuggestion', { value1: <kbd>{suggestionKey}</kbd> })}</span>
         )}

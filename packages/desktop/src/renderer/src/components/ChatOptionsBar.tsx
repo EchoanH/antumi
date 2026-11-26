@@ -1,6 +1,8 @@
 import { getLocale, localized, t } from '../i18n'
-import { agentDescriptor, agentModeText, helperAllowsMode, isHelper, type AgentKind, type ChatItem, type ChatModel, type ChatOption, type ChatPermissionMode, type Conversation } from '@antumi/protocol'
-import { perform, setConversationAccount } from '../core-store'
+import { agentDescriptor, agentModeText, helperAllowsMode, isHelper, startModes, type AgentKind, type ChatItem, type ChatModel, type ChatOption, type ChatPermissionMode, type Conversation } from '@antumi/protocol'
+import { perform, setConversationAccount, useCore } from '../core-store'
+import { useAgentCatalog } from '../agent-models'
+import { providerFor } from '../model-provider-choice'
 import { AccountPicker } from './AccountPicker'
 import { ChatModelPicker, ChatPicker, modelMeta, type PickerOption } from './ChatPicker'
 import { ContextUsage } from './ContextUsage'
@@ -53,31 +55,35 @@ function withCurrent(values: readonly string[], current: string | null): string[
 // the right, the model and effort it runs beside how full its context is. A click switches each;
 // the model and effort change between turns, the mode at any time. With no agent running, the
 // choices are for the next start, from what the last stage offered: as chosen since, or as that
-// stage left them.
-export function ChatOptionsBar({ conversation, state, compact = false }: { conversation: Conversation; state: StateItem; compact?: boolean }) {
+// stage left them. Imported histories get their choices from the agent until first resumed.
+export function ChatOptionsBar({ conversation, state, compact = false }: { conversation: Conversation; state: StateItem | null; compact?: boolean }) {
   const { id, agent, chatOptions: next } = conversation
   const managed = Boolean(conversation.squadRunId || conversation.parentConversationId || conversation.workspaceReadOnly)
   const running = conversation.sessionId !== null
+  const providers = useCore((s) => s.modelProviders)
+  const catalog = useAgentCatalog(agent, !running && !state?.models.length, providerFor(providers, conversation.modelProvider, agent))
+  const availableModels = state?.models.length ? state.models : running ? [] : catalog?.models ?? []
+  const permissionModes = state?.permissionModes.length ? state.permissionModes : running ? [] : conversation.planOnly ? ['plan'] : startModes(agent, availableModels.find((each) => each.isDefault))
   // An older core takes options only from a running agent.
   if (!running && !next) return null
   // Work the agent left in the background runs on between turns, which take a new model as well.
   const idle = !running || conversation.chat?.turn === 'idle' || Boolean(conversation.chat?.betweenTurns)
   const set = (option: ChatOption, value: string) => void perform((rpc) => rpc.call('conversations.setOption', { id, option, value }))
-  const permissionMode = running ? state.permissionMode : (next?.permissionMode ?? state.permissionMode)
-  const modelId = running ? state.model : (next?.model ?? state.model)
+  const permissionMode = (running ? state?.permissionMode : next?.permissionMode ?? state?.permissionMode) ?? null
+  const modelId = (running ? state?.model : next?.model ?? state?.model) ?? null
   // A model picked since takes its own default effort unless one was picked for it too.
-  const effort = running ? state.effort : (next?.effort ?? (next?.model && next.model !== state.model ? null : state.effort))
+  const effort = (running ? state?.effort : next?.effort ?? (next?.model && next.model !== state?.model ? null : state?.effort)) ?? null
   // The next start offers bypass where the agent has it, even if this one started without; a task
   // that only plans never. A helper never plans.
   const offered = (running || conversation.planOnly
-    ? state.permissionModes
-    : [...state.permissionModes.filter((mode) => mode !== 'bypass'), ...(agentDescriptor(agent).capabilities.bypass ? ['bypass'] : [])]
+    ? permissionModes
+    : [...permissionModes.filter((mode) => mode !== 'bypass'), ...(agentDescriptor(agent).capabilities.bypass ? ['bypass'] : [])]
   ).filter((mode) => !isHelper(conversation) || helperAllowsMode(mode))
-  const model = state.models.find((each) => each.id === modelId)
+  const model = availableModels.find((each) => each.id === modelId)
   const modes = withCurrent(offered, permissionMode)
   const models = model || !modelId
-    ? state.models
-    : [{ id: modelId, label: modelId, description: null, efforts: [], isDefault: false }, ...state.models]
+    ? availableModels
+    : [{ id: modelId, label: modelId, description: null, efforts: [], isDefault: false }, ...availableModels]
   const later = running ? null : t('ChatOptionsBar.appliesWhenYouSendTheNextMessage')
   return (
     <>
@@ -114,7 +120,7 @@ export function ChatOptionsBar({ conversation, state, compact = false }: { conve
           onEffort={(value) => set('effort', value)}
         />
       )}
-      {!compact && state.context && <ContextUsage context={state.context} />}
+      {!compact && state?.context && <ContextUsage context={state.context} />}
     </>
   )
 }

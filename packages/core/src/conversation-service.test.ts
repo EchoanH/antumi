@@ -7,6 +7,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ConversationService, type ConversationEvent } from './conversation-service'
 import { ConversationStore } from './conversation-store'
+import { zcode } from './agents/zcode/zcode-adapter'
 import { dsh } from './agents/dsh/dsh-adapter'
 import { antigravity } from './agents/antigravity/antigravity-adapter'
 import { claudeEditDenials, claudeReadRules } from './agents/claude/claude-command'
@@ -1431,6 +1432,30 @@ describe('ConversationService', () => {
     await service.setOption(created.id, 'effort', 'low')
     await service.continue(created.id)
     expect(daemon.spawns.at(-1)?.args).toEqual(expect.arrayContaining(['--permission-mode', 'plan', '--model', 'sonnet', '--effort', 'low']))
+  })
+
+  it('takes models for an imported ZCode session before its first resume and keeps the choice across restarts', async () => {
+    const catalog = vi.spyOn(zcode, 'catalog').mockResolvedValue({ models: [
+      { id: 'zai/glm', label: 'GLM', description: null, efforts: ['disabled', 'enabled'], isDefault: true },
+      { id: 'zai/flash', label: 'Flash', description: null, efforts: [], isDefault: false }
+    ] })
+    try {
+      const created = await service.create('zcode', [], undefined, { deferStart: true })
+      service.importStage(created.id, 'zcode', 'sess_imported', {
+        entries: [{ at: 1, item: { id: 'u:old', kind: 'user', text: 'earlier message', images: [] } }], messages: []
+      })
+      expect(service.chatPage(created.id).items.find((item) => item.kind === 'state')).toMatchObject({ models: [] })
+      await expect(service.setOption(created.id, 'model', 'unknown')).rejects.toMatchObject({ reason: 'chat-option-invalid' })
+      await service.setOption(created.id, 'model', 'zai/glm')
+      await service.setOption(created.id, 'effort', 'enabled')
+      expect(service.get(created.id).chatOptions).toMatchObject({ model: 'zai/glm', effort: 'enabled' })
+      await service.setOption(created.id, 'model', 'zai/flash')
+      await expect(service.setOption(created.id, 'effort', 'enabled')).rejects.toMatchObject({ reason: 'chat-option-invalid' })
+      service = serve()
+      expect(service.get(created.id).chatOptions).toMatchObject({ model: 'zai/flash', effort: null })
+      expect(service.stages(created.id).at(-1)?.providerSessionId).toBe('sess_imported')
+      expect(daemon.spawns).toEqual([])
+    } finally { catalog.mockRestore() }
   })
 
   it('lets an idle chat agent go after 30 minutes, and never one with work in hand', async () => {
