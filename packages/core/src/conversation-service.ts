@@ -1,4 +1,4 @@
-import { applyActiveAgentProxy, refreshActiveAgentProxy } from './agent-proxy'
+import { applyActiveAgentProxy, blankProxyUnset, refreshActiveAgentProxy } from './agent-proxy'
 import type { ChatReference, AgentProfile, SkillRef } from '@antumi/protocol'
 import { agentCliAccess } from './agent-cli-access'
 import { limitChatPage } from './chat-page-limit'
@@ -1452,7 +1452,8 @@ export class ConversationService {
       unsetEnv = proxy.unsetEnv
       this.wire?.record(id, stage.id, [{ dir: 'spawn', text: JSON.stringify({ command: command.command, args: command.args, cwd: current.workspacePath }) }])
       if (unsetEnv.length && !(await this.daemon.request('info', {})).features?.includes('unset-env')) {
-        throw new Rejection('daemon-outdated', '当前运行的 Antumi 后台版本过旧，无法安全隔离环境变量，请重启后台后重试')
+        ({ env, unsetEnv } = blankProxyUnset({ env, unsetEnv }))
+        if (unsetEnv.length) throw new Rejection('daemon-outdated', '当前运行的 Antumi 后台版本过旧，无法安全隔离环境变量，请重启后台后重试')
       }
       // Locked down, it gets none of the daemon's own environment either (the user's keys and tokens).
       const spawned = await agentCliAccess.use(agent, () => this.daemon.request(locked ? 'spawnPipeClean' : 'spawnPipe', { agent, command: command.command, args: command.args, cwd: current.workspacePath, env: { ...env, [PROCESS_OWNER_ENV]: processOwner({ kind: 'conversation', id }) }, ...(unsetEnv.length ? { unsetEnv } : {}) }))

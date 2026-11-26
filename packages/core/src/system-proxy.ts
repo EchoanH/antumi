@@ -5,8 +5,8 @@ import { Agent, Dispatcher, ProxyAgent, setGlobalDispatcher } from 'undici'
 
 // The proxy the user set for their computer, which a browser uses and Node's fetch does not: a VPN
 // in system-proxy mode leaves direct connections to GitHub timing out, so core's own requests
-// (plugins, pets, release checks) go through it as the browser would. Agents are separate processes
-// and keep whatever their environment says.
+// (plugins, pets, release checks) go through it as the browser would. Agents are separate processes;
+// which proxy they get is agent-proxy.ts's to decide.
 export type ProxySettings = {
   socks?: string | null
   http: string | null

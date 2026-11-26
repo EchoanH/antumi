@@ -1,5 +1,6 @@
 import { Agent, Dispatcher, ProxyAgent, fetch } from 'undici'
 import { AgentProxySettings, DEFAULT_AGENT_PROXY_SETTINGS, agentProxyPolicy, formatCliNoProxy, normalizeProxyUrl, parseNoProxyEntries, redactProxyUrl, sanitizeProxyErrorMessage, validateAgentProxySettings, type AgentKind, type AgentProxyStatus, type AgentProxyTestErrorCode, type AgentProxyTestResult, type SystemProxySource } from '@antumi/protocol'
+import { withoutEnv } from '@antumi/protocol/node'
 import { bypassed, readOsProxySettings, type ProxyHost, type ProxySettings } from './system-proxy'
 
 export const PROXY_UNSET_KEYS = ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy', 'npm_config_proxy', 'npm_config_http_proxy', 'npm_config_https_proxy', 'npm_config_no_proxy', 'npm_config_noproxy', 'NPM_CONFIG_PROXY', 'NPM_CONFIG_HTTP_PROXY', 'NPM_CONFIG_HTTPS_PROXY', 'NPM_CONFIG_NO_PROXY', 'NPM_CONFIG_NOPROXY'] as const
@@ -63,9 +64,19 @@ export function resolveAgentProxy(settings: AgentProxySettings = DEFAULT_AGENT_P
   }
   return { mode, env, unsetEnv, httpProxy: proxy.http, httpsProxy: proxy.https, allProxy: proxy.all, bypass: proxy.bypass, warning }
 }
-export function withoutEnv(env: NodeJS.ProcessEnv, unset: readonly string[], platform: NodeJS.Platform): NodeJS.ProcessEnv {
-  const keys = new Set(unset.map((key) => platform === 'win32' ? key.toLowerCase() : key))
-  return Object.fromEntries(Object.entries(env).filter(([key]) => !keys.has(platform === 'win32' ? key.toLowerCase() : key)))
+// A daemon from before unset-env cannot strip what it inherited. Blanking the proxy variables is the
+// closest it comes, so a proxy policy alone never stops a launch on it.
+export function blankProxyUnset(launch: { env: Record<string, string>; unsetEnv: readonly string[] }, platform: NodeJS.Platform = process.platform): { env: Record<string, string>; unsetEnv: string[] } {
+  const proxyKeys = new Set<string>(PROXY_UNSET_KEYS)
+  const name = (key: string) => platform === 'win32' ? key.toUpperCase() : key
+  const env = { ...launch.env }
+  const present = new Set(Object.keys(env).map(name))
+  for (const key of launch.unsetEnv) {
+    if (!proxyKeys.has(key) || present.has(name(key))) continue
+    env[name(key)] = ''
+    present.add(name(key))
+  }
+  return { env, unsetEnv: launch.unsetEnv.filter((key) => !proxyKeys.has(key)) }
 }
 const undiciProxyUrl = (url: string) => (normalized(url) ?? url).replace(/^socks5h:/i, 'socks5:')
 class AgentProxyDispatcher extends Dispatcher {
@@ -128,8 +139,10 @@ export class AgentProxyService {
   }
   applyToLaunch(agent: AgentKind, baseEnv: Record<string, string> = {}, baseUnsetEnv: readonly string[] = [], clean = false, inheritedEnv: NodeJS.ProcessEnv = this.env) {
     const resolved = resolveAgentProxy(this.settings, agent, { env: inheritedEnv, osProxy: this.os, platform: this.platform })
+    // A proxy the launch itself names (an account's or provider's env) is as explicit as the user's own.
+    const given = agentProxyPolicy(this.settings, agent) === 'followGlobal' ? readExplicitEnvProxy(baseEnv, this.platform) : null
     // The daemon may have inherited a different environment before core restarted.
-    const inherited = resolved.mode === 'inherit-env' ? readExplicitEnvProxy(inheritedEnv, this.platform) : null
+    const inherited = given?.present ? given : resolved.mode === 'inherit-env' ? readExplicitEnvProxy(inheritedEnv, this.platform) : null
     const unsetEnv = inherited ? [...PROXY_UNSET_KEYS] : resolved.unsetEnv
     const proxyEnv = inherited ? buildProxyEnvVars(inherited, this.platform) : resolved.env
     const env: Record<string, string> = {}

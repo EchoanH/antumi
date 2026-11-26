@@ -1,4 +1,4 @@
-import { refreshActiveAgentProxy, applyActiveAgentProxy } from './agent-proxy'
+import { refreshActiveAgentProxy, applyActiveAgentProxy, blankProxyUnset } from './agent-proxy'
 import { Rejection } from './rejection'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import os from 'node:os'
@@ -28,8 +28,11 @@ export async function daemonQuick(host: SessionHost, command: QuickCommand, cwd:
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     if (agent) await refreshActiveAgentProxy()
-    const proxy = agent ? applyActiveAgentProxy(agent, command.env, command.unsetEnv) : { env: command.env ?? {}, unsetEnv: [...(command.unsetEnv ?? [])] }
-    if (proxy.unsetEnv.length && !(await host.request('info', {})).features?.includes('unset-env')) throw new Rejection('daemon-outdated', '请重启后台后重试')
+    let proxy = agent ? applyActiveAgentProxy(agent, command.env, command.unsetEnv) : { env: command.env ?? {}, unsetEnv: [...(command.unsetEnv ?? [])] }
+    if (proxy.unsetEnv.length && !(await host.request('info', {})).features?.includes('unset-env')) {
+      proxy = blankProxyUnset(proxy)
+      if (proxy.unsetEnv.length) throw new Rejection('daemon-outdated', '当前运行的 Antumi 后台版本过旧，无法安全隔离环境变量，请重启后台后重试')
+    }
     const created = await host.request('spawnPipe', { agent, command: command.command, args: command.args, cwd, ...proxy })
     session = created.sessionId
     const attached = await host.request('attach', { sessionId: session })

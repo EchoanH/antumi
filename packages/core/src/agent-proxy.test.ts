@@ -3,7 +3,7 @@ import { connect, type Socket } from 'node:net'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ProxyAgent, getGlobalDispatcher, setGlobalDispatcher } from 'undici'
 import { AGENT_KINDS, AGENT_PROXY_POLICIES, GLOBAL_PROXY_MODES, AgentProxySettings, type GlobalProxyMode } from '@antumi/protocol'
-import { AgentProxyService, PROXY_UNSET_KEYS, applyActiveAgentProxy, buildActiveAgentChildEnv, buildProxyEnvVars, proxyTestErrorCode, readExplicitEnvProxy, refreshActiveAgentProxy, resolveAgentProxy, setActiveAgentProxy } from './agent-proxy'
+import { AgentProxyService, PROXY_UNSET_KEYS, applyActiveAgentProxy, blankProxyUnset, buildActiveAgentChildEnv, buildProxyEnvVars, proxyTestErrorCode, readExplicitEnvProxy, refreshActiveAgentProxy, resolveAgentProxy, setActiveAgentProxy } from './agent-proxy'
 import type { ProxyHost } from './system-proxy'
 
 const osProxy = { http: 'http://os:8080', https: 'http://os:8443', socks: 'socks5://os:1080', bypass: ['*.corp'] }
@@ -196,7 +196,7 @@ it.each(['socks5', 'socks5h', 'socks'])('accepts undici 7 SOCKS scheme %s withou
 
 it.each([false, true])('materializes inherited proxy variables and exclusions for clean=%s launches', (clean) => {
   const value = service(settings('none'), { ...host, env: { HTTPS_PROXY: 'http://explicit:7897', NO_PROXY: '*.corp', SECRET: 'must-not-copy' } })
-  const launch = value.applyToLaunch('claude', { GIVEN: 'yes', ALL_PROXY: 'socks5://stale:1080' }, ['ANTIGRAVITY_API_KEY'], clean)
+  const launch = value.applyToLaunch('claude', { GIVEN: 'yes' }, ['ANTIGRAVITY_API_KEY'], clean)
   expect(launch.env).toMatchObject({ HTTPS_PROXY: 'http://explicit:7897', NO_PROXY: 'localhost,127.0.0.1,::1,.corp', GIVEN: 'yes' })
   expect(launch.env).not.toHaveProperty('SECRET')
   expect(launch.env).not.toHaveProperty('ALL_PROXY')
@@ -272,4 +272,21 @@ it('dispatches a proxied redirect to loopback directly', async () => {
     expect(response.url).toBe('http://127.0.0.1:' + fixture.port + '/direct')
     expect(fixture.connections.map((connection) => connection.target)).toEqual(['upstream.invalid:80'])
   } finally { await fixture.close() }
+})
+
+it('keeps a proxy the launch names itself under followGlobal, and only there', () => {
+  const value = service(settings(), { ...host, env: { HTTPS_PROXY: 'http://inherited:80' } })
+  const given = value.applyToLaunch('claude', { HTTPS_PROXY: 'http://account:3128', GIVEN: 'yes' })
+  expect(given.env).toMatchObject({ HTTPS_PROXY: 'http://account:3128', https_proxy: 'http://account:3128', GIVEN: 'yes' })
+  expect(given.unsetEnv).toEqual([...PROXY_UNSET_KEYS])
+  const forced = service(AgentProxySettings.parse({ ...settings(), agents: { claude: 'useProxy' } })).applyToLaunch('claude', { HTTPS_PROXY: 'http://account:3128' })
+  expect(forced.env.HTTPS_PROXY).toBe('http://user:secret@manual:7897')
+})
+it.each(['win32', 'linux'] as const)('blanks proxy variables for a daemon without unset-env on %s', (platform) => {
+  const result = blankProxyUnset({ env: { HTTPS_PROXY: 'http://p:1' }, unsetEnv: ['SECRET', ...PROXY_UNSET_KEYS] }, platform)
+  expect(result.unsetEnv).toEqual(['SECRET'])
+  expect(result.env.HTTPS_PROXY).toBe('http://p:1')
+  expect(result.env.HTTP_PROXY).toBe('')
+  if (platform === 'win32') expect(Object.keys(result.env).filter((key) => key.toUpperCase() === 'HTTPS_PROXY')).toEqual(['HTTPS_PROXY'])
+  else expect(result.env.https_proxy).toBe('')
 })
