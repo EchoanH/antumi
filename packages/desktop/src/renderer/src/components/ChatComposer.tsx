@@ -34,6 +34,7 @@ import { useOccludesBrowser } from '../browser-occlusion'
 import { sendWayKeys, sendWays, type SendWay } from '../chat-send-ways'
 import { sendToNewConversation, useReuseConversationSupported } from './ConversationActions'
 import { useInitialMessages } from '../initial-messages'
+import { usePermissionSwitching } from '../permission-switching'
 import { keepChatDelivery, useChatDeliveries } from '../chat-deliveries'
 import { sendChatDelivery } from '../chat-delivery-send'
 
@@ -307,6 +308,7 @@ export function ChatComposer({ conversation, state, compact = false }: { convers
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
   const running = conversation.sessionId !== null
+  const switchingPermission = usePermissionSwitching(id) !== null
   // An older core reports only the first waiting message, without a ref to act on it by.
   const queue: readonly ChatQueued[] = !running || !state ? []
     : state.queue.length > 0 ? state.queue
@@ -318,20 +320,22 @@ export function ChatComposer({ conversation, state, compact = false }: { convers
   const idle = running && (turn === 'idle' || betweenTurns)
   const working = running && !betweenTurns && (turn === 'running' || turn === 'awaiting')
   const opening = running && Boolean(conversation.starting)
-  const interruptible = working || opening
+  const interruptible = working || (opening && !switchingPermission)
   // An older core takes a message only between turns.
   const queueable = optionsSupported && working
   const stopped = !running
   // An issue's conversation takes nothing until its agent has started on the issue.
   const preparing = conversation.preparing ?? null
   const starting = Boolean(conversation.starting) || (stopped && busy) || Boolean(initialMessage) || preparing !== null
+  // Keep the editor writable while a process starts or restarts (e.g. bypass switch); only sending waits.
+  const inputReadOnly = Boolean(initialMessage) || preparing !== null
   const mentionMenu = useChatMentionMenu({ conversationId: conversation.id, value, setText, setValue, roots: conversation.projectPaths, cwd: conversation.workspacePath, agent: conversation.agent })
   const files = useComposerFiles({
     conversationId: id, cwd: conversation.workspacePath, input: mentionMenu.inputProps.input, setValue, addImages: attached.add,
-    images: imagesSupported, mentions: mentionsSupported, pastes: pastedTextSupported, readOnly: starting
+    images: imagesSupported, mentions: mentionsSupported, pastes: pastedTextSupported, readOnly: inputReadOnly
   })
   const initialHint = initialMessage ? initialMessage.phase === 'failed' ? t('ChatComposer.retryTheFirstMessageAboveFirst') : initialMessage.phase === 'sending' ? t('ChatComposer.sendingFirstMessage') : t('ChatComposer.starting', { value1: agentLabel(conversation.agent) }) : null
-  const canTake = (idle || queueable || stopped) && !busy && !delivering && !starting && !surface.sendBlocker && !conversation.delegation?.writing && attached.uploading === 0 && files.pasting === 0
+  const canTake = (idle || queueable || stopped) && !busy && !delivering && !starting && !switchingPermission && !surface.sendBlocker && !conversation.delegation?.writing && attached.uploading === 0 && files.pasting === 0
   const canSend = canTake && (text.trim() !== '' || attached.images.length > 0 || quotes.length > 0)
   // What the agent guesses comes next, as Claude Code shows it: grey in the empty input, Tab or →
   // takes it, typing anything else puts it away for good.
@@ -344,7 +348,7 @@ export function ChatComposer({ conversation, state, compact = false }: { convers
   const canSteer = !handingOff && queueable && steerable && canSend
   // Not held by this conversation's turn: the new one runs beside it.
   const reusable = useReuseConversationSupported() && canReuseConversation(conversation) && !compact
-  const canSendNew = reusable && !handingOff && !busy && !starting && attached.uploading === 0 && files.pasting === 0 && (text.trim() !== '' || attached.images.length > 0 || quotes.length > 0)
+  const canSendNew = reusable && !handingOff && !busy && !starting && !switchingPermission && attached.uploading === 0 && files.pasting === 0 && (text.trim() !== '' || attached.images.length > 0 || quotes.length > 0)
   const chatCommands = useCore((s) => s.chatCommands)
   const commandEntries = useMemo(
     () => [...antumiEntries(chatCommands, conversation.projectPaths), ...agentEntries(state?.commands ?? [])],
@@ -450,7 +454,7 @@ export function ChatComposer({ conversation, state, compact = false }: { convers
   }
   // The note and images go together in the new agent's first message.
   const handOff = async () => {
-    if (busy || starting || submitting.current || handoff.blocker || attached.uploading > 0 || files.pasting > 0) return
+    if (busy || starting || switchingPermission || submitting.current || handoff.blocker || attached.uploading > 0 || files.pasting > 0) return
     const quoting = quotes.length > 0
     submitting.current = true
     setBusy(true)
@@ -512,7 +516,7 @@ export function ChatComposer({ conversation, state, compact = false }: { convers
     )}
     <div
       className="chat-input-card"
-      data-working={working || starting || undefined}
+      data-working={working || starting || switchingPermission || undefined}
       data-awaiting={turn === 'awaiting' || undefined}
       onDragOver={files.onDragOver}
       onDropCapture={files.onDropCapture}
@@ -526,11 +530,11 @@ export function ChatComposer({ conversation, state, compact = false }: { convers
         aria-label={t('ChatComposer.messageToAgent')}
         {...commandMenu.inputProps}
         {...mentionMenu.inputProps}
-        readOnly={starting}
+        readOnly={inputReadOnly}
         autoFocus={compact}
         placeholder={compact ? t('ChatComposer.askHelper') :
           handingOff ? t('ChatComposer.handOffToAddInstructionsOrPressEnter', { value1: agentLabel(handingOff), send: sendHint })
-          : surface.sendBlocker ?? initialHint ?? suggestion ?? (idle || stopped ? t('ChatComposer.messageAgentEnterToSendShiftEnterFor', { send: sendHint, value1: commandEntries.length > 0 ? t('ChatComposer.forCommands') : '', value2: mentionsSupported ? t('ChatComposer.toReferenceFiles') : '' })
+          : surface.sendBlocker ?? initialHint ?? (switchingPermission ? t('ChatComposer.switchingPermission') : null) ?? suggestion ?? (idle || stopped ? t('ChatComposer.messageAgentEnterToSendShiftEnterFor', { send: sendHint, value1: commandEntries.length > 0 ? t('ChatComposer.forCommands') : '', value2: mentionsSupported ? t('ChatComposer.toReferenceFiles') : '' })
             : workingPlaceholder({ awaiting: turn === 'awaiting', queueable, steerable }, { send: currentShortcutLabel('send-message', shortcuts), steer: steerKey, interrupt: currentShortcutLabel('interrupt-turn', shortcuts) }))
         }
         setValue={(next) => {
@@ -566,8 +570,8 @@ export function ChatComposer({ conversation, state, compact = false }: { convers
       />
       {/* Under the input, inside its box: what goes with the message, how the agent runs, and send. */}
       <div className="chat-options">
-        {(imagesSupported || files.picksFiles) && <ChatAddMenu disabled={starting} onAdd={attached.add} onFiles={files.picksFiles ? files.addPicked : undefined} />}
-        {!compact && handoff.targets.length > 0 && <HandoffAgentPicker conversationId={id} handoff={handoff} disabled={busy || starting} />}
+        {(imagesSupported || files.picksFiles) && <ChatAddMenu disabled={inputReadOnly} onAdd={attached.add} onFiles={files.picksFiles ? files.addPicked : undefined} />}
+        {!compact && handoff.targets.length > 0 && <HandoffAgentPicker conversationId={id} handoff={handoff} disabled={busy || starting || switchingPermission} />}
         {!compact && !handoff.target && <RouteBadge conversation={conversation} locked />}
         {handingOff ? (
           <>
@@ -611,11 +615,11 @@ export function ChatComposer({ conversation, state, compact = false }: { convers
             data-tooltip-side="top-end"
             aria-disabled={handoff.blocker !== null}
             data-tooltip={handoff.blocker ? t('ChatComposer.cannotHandOffYet', { value1: handoff.blocker }) : t('ChatComposer.handOffToEnter', { value1: handoff.stopsRunning ? t('ChatComposer.stop', { value1: agentLabel(handoff.from) }) : '', value2: agentLabel(handingOff), keys: sendKey ? ` · ${sendKey}` : '' })}
-            disabled={busy || starting || attached.uploading > 0 || files.pasting > 0}
+            disabled={busy || starting || switchingPermission || attached.uploading > 0 || files.pasting > 0}
             onClick={() => void handOff()}
           >{t('ChatComposer.handOff')}</button>
         ) : (
-          <SendCard rows={sendRows} note={initialHint ?? (preparing ? t(preparing.error === null ? 'InvestigationPreparing.waitForTheIssue' : 'InvestigationPreparing.retryFirst') : starting ? t('ChatComposer.starting', { value1: agentLabel(conversation.agent) }) : null)}>
+          <SendCard rows={sendRows} note={initialHint ?? (switchingPermission ? t('ChatComposer.switchingPermission') : preparing ? t(preparing.error === null ? 'InvestigationPreparing.waitForTheIssue' : 'InvestigationPreparing.retryFirst') : starting ? t('ChatComposer.starting', { value1: agentLabel(conversation.agent) }) : null)}>
             {interruptible ? (
               <button type="button" className="chat-input-button" data-stop aria-label={opening ? t('ChatComposer.cancelStartup') : interruptLabel} onClick={interrupt}>
                 <StopIcon />

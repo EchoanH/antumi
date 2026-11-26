@@ -127,6 +127,27 @@ describe('SessionImports', () => {
     expect(daemon.spawns.at(-1)?.args).toEqual(expect.arrayContaining(['--resume', SESSION]))
   })
 
+  it.each([
+    { account: 'work-1', nativeSessionId: SESSION },
+    { account: null, nativeSessionId: null }
+  ])('preserves Antigravity history attribution on initial and incremental imports: %s', async ({ account, nativeSessionId }) => {
+    const origin = { agent: 'antigravity' as const, transcripts: { scan: async () => summaries, read: async (file: string) => transcripts.get(file)! } }
+    imports = new SessionImports(store, service, path.join(root, 'home'), [origin], [], undefined, () => now)
+    const metadata = { backend: 'agy-cli', account, nativeSessionId }
+    summaries = [summary(SESSION, metadata)]
+    const [imported] = await imports.import([{ agent: 'antigravity', sessionId: SESSION }])
+    expect(service.stages(imported!.id)).toMatchObject([{ providerSessionId: nativeSessionId, backend: 'agy-cli', account }])
+    // A later external turn after an intervening local stage is imported as a new stage.
+    const local = store.startStage(imported!.id, 'antigravity', null, 0)
+    store.endStage(local.id, 0)
+    const later = Date.now() + 60_000
+    transcripts.set(SESSION, joined(turn('u1', 100, 'Fix the build', 'Fixed.'), turn('u2', later, 'Next fix', 'Done.')))
+    summaries = [summary(SESSION, { ...metadata, modifiedAt: later + 1 })]
+    await imports.import([{ agent: 'antigravity', sessionId: SESSION }])
+    expect(service.stages(imported!.id)).toHaveLength(3)
+    expect(service.stages(imported!.id).at(-1)).toMatchObject({ providerSessionId: nativeSessionId, backend: 'agy-cli', account })
+  })
+
   it('brings in what the terminal added since, not what ran here', async () => {
     const [imported] = await imports.import([{ agent: 'claude', sessionId: SESSION }])
     await service.continue(imported!.id)

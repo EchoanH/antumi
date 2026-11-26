@@ -219,7 +219,8 @@ export function createSessionHost(emit: (event: DaemonEvent) => void, awake: Awa
     },
     info() {
       // clean-pipe: spawnPipeClean, which an agent answering on a chat platform is started with.
-      return { version: lifecycle.version, pid: process.pid, features: ['agent-cli-maintenance', 'clean-pipe'] }
+      // unset-env: removes Launch.unsetEnv keys before spawning an agent or login terminal.
+      return { version: lifecycle.version, pid: process.pid, features: ['agent-cli-maintenance', 'clean-pipe', 'unset-env'] }
     },
     retire() {
       if (retiring) return { retired: true, live: 0, blockers: [] }

@@ -174,7 +174,7 @@ describe('retiring for an update', () => {
   it('says what it is, refuses while anything runs, and leaves once nothing does', async () => {
     const leave = vi.fn()
     const { host, until, stdout, exited } = pipeHost({ version: '9.9.9', leave })
-    expect(host.handlers.info({})).toEqual({ version: '9.9.9', pid: process.pid, features: ['agent-cli-maintenance', 'clean-pipe'] })
+    expect(host.handlers.info({})).toEqual({ version: '9.9.9', pid: process.pid, features: ['agent-cli-maintenance', 'clean-pipe', 'unset-env'] })
     const keep = `process.stdout.write('ready'); setTimeout(() => {}, 20_000)`
     const owner = 'conversation:11111111-1111-4111-8111-111111111111'
     const agent = host.handlers.spawnPipe({ command: process.execPath, args: ['-e', keep], cwd: process.cwd(), env: { ANTUMI_OWNER: owner } }).sessionId

@@ -132,6 +132,8 @@ export const ConversationStage = z.object({
   id: z.string().uuid(),
   conversationId: z.string().uuid(),
   agent: AgentKind,
+  // The runtime backend the stage ran on. Older cores leave it out.
+  backend: z.string().nullable().optional(),
   providerSessionId: z.string().nullable(),
   sessionId: z.string().nullable(),
   receivedSequence: z.number().int().nonnegative(),

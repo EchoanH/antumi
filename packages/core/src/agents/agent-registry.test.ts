@@ -16,6 +16,11 @@ describe('agent registry', () => {
     expect(adapter.permissionModes.includes('bypass')).toBe(descriptor.capabilities.bypass)
     expect(adapter.permissionModes.includes('auto')).toBe(descriptor.capabilities.autoMode)
     if (adapter.fallbackMode) expect(adapter.permissionModes).toContain(adapter.fallbackMode)
+    if (descriptor.backendModes) {
+      for (const [backend, modes] of Object.entries(descriptor.backendModes)) {
+        expect([...modes].sort()).toEqual([...(adapter.permissionModesFor?.(backend) ?? adapter.permissionModes)].sort())
+      }
+    }
     // A client is told whether the agent takes a skills bundle only where its command gives one,
     // on its command line or in its environment.
     const launch = { providerSessionId: null, resume: false, handoffPath: null, extraProjects: [], skills: { dir: '/antumi/skills/bundles/abc' } }

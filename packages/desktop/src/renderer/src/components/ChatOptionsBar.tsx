@@ -3,6 +3,7 @@ import { agentDescriptor, agentModeText, helperAllowsMode, isHelper, startModes,
 import { perform, setConversationAccount, useCore } from '../core-store'
 import { useAgentCatalog } from '../agent-models'
 import { providerFor } from '../model-provider-choice'
+import { beginPermissionSwitch, endPermissionSwitch, usePermissionSwitching } from '../permission-switching'
 import { AccountPicker } from './AccountPicker'
 import { ChatModelPicker, ChatPicker, modelMeta, type PickerOption } from './ChatPicker'
 import { ContextUsage } from './ContextUsage'
@@ -30,6 +31,22 @@ export function modeTone(mode: string | null): string | undefined {
 
 // Shared with core, which starts runs nobody watches in them (unattendedPermission), and the phone.
 export { defaultStartMode, startModes } from '@antumi/protocol'
+
+export function useAgentBackend(agent: AgentKind | null): string | null {
+  return useCore((s) => (agent ? s.environment?.checks.find((check) => check.tool === agent)?.runtime?.active ?? null : null))
+}
+
+// What a stopped conversation can start in next: keeps its last stage's modes (existing stages
+// stay on their own backend), or follows the active backend's modes when no stage has run yet.
+export function nextStartModes(agent: AgentKind, stateModes: readonly string[], defaultModel: ChatModel | undefined, backend: string | null, planOnly: boolean): string[] {
+  if (planOnly) return ['plan']
+  const backendModes = backend ? agentDescriptor(agent).backendModes?.[backend] : undefined
+  const base = stateModes.length > 0 ? stateModes : startModes(agent, defaultModel, backend)
+  const canBypass = stateModes.length === 0 && backendModes
+    ? backendModes.includes('bypass')
+    : agentDescriptor(agent).capabilities.bypass
+  return [...base.filter((mode) => mode !== 'bypass'), ...(canBypass ? ['bypass'] : [])]
+}
 
 const EFFORT_LABEL: Record<string, string> = localized(() => ({
   none: t('ChatOptionsBar.none'),
@@ -60,24 +77,32 @@ export function ChatOptionsBar({ conversation, state, compact = false }: { conve
   const { id, agent, chatOptions: next } = conversation
   const managed = Boolean(conversation.squadRunId || conversation.parentConversationId || conversation.workspaceReadOnly)
   const running = conversation.sessionId !== null
+  const switchingPermission = usePermissionSwitching(id) !== null
   const providers = useCore((s) => s.modelProviders)
+  const activeBackend = useAgentBackend(agent)
   const catalog = useAgentCatalog(agent, !running && !state?.models.length, providerFor(providers, conversation.modelProvider, agent))
   const availableModels = state?.models.length ? state.models : running ? [] : catalog?.models ?? []
-  const permissionModes = state?.permissionModes.length ? state.permissionModes : running ? [] : conversation.planOnly ? ['plan'] : startModes(agent, availableModels.find((each) => each.isDefault))
   // An older core takes options only from a running agent.
   if (!running && !next) return null
   // Work the agent left in the background runs on between turns, which take a new model as well.
   const idle = !running || conversation.chat?.turn === 'idle' || Boolean(conversation.chat?.betweenTurns)
-  const set = (option: ChatOption, value: string) => void perform((rpc) => rpc.call('conversations.setOption', { id, option, value }))
+  const set = (option: ChatOption, value: string) => {
+    if (option !== 'permissionMode' || !running) {
+      void perform((rpc) => rpc.call('conversations.setOption', { id, option, value }))
+      return
+    }
+    beginPermissionSwitch(id, value)
+    void perform((rpc) => rpc.call('conversations.setOption', { id, option, value }))
+      .finally(() => endPermissionSwitch(id))
+  }
   const permissionMode = (running ? state?.permissionMode : next?.permissionMode ?? state?.permissionMode) ?? null
   const modelId = (running ? state?.model : next?.model ?? state?.model) ?? null
   // A model picked since takes its own default effort unless one was picked for it too.
   const effort = (running ? state?.effort : next?.effort ?? (next?.model && next.model !== state?.model ? null : state?.effort)) ?? null
-  // The next start offers bypass where the agent has it, even if this one started without; a task
-  // that only plans never. A helper never plans.
-  const offered = (running || conversation.planOnly
-    ? permissionModes
-    : [...permissionModes.filter((mode) => mode !== 'bypass'), ...(agentDescriptor(agent).capabilities.bypass ? ['bypass'] : [])]
+  // Running stages offer exactly what the runtime reported; stopped ones follow the active backend.
+  const offered = (running
+    ? (state?.permissionModes ?? [])
+    : nextStartModes(agent, state?.permissionModes ?? [], availableModels.find((each) => each.isDefault), activeBackend, Boolean(conversation.planOnly))
   ).filter((mode) => !isHelper(conversation) || helperAllowsMode(mode))
   const model = availableModels.find((each) => each.id === modelId)
   const modes = withCurrent(offered, permissionMode)
@@ -94,16 +119,19 @@ export function ChatOptionsBar({ conversation, state, compact = false }: { conve
           placeholder={t('ChatHandoff.permissionMode')}
           options={modeOptions(agent, modes, offered).map((option) => conversation.workspaceReadOnly ? { ...option, label: conversation.squadRunId || conversation.profile ? t('ChatOptionsBar.readOnly') : t('ChatOptionsBar.readOnlyCoordination') } : option)}
           tone={modeTone(permissionMode)}
-          disabled={managed || (!agentDescriptor(agent).capabilities.optionsWhileBusy && !idle)}
-          title={managed ? t(conversation.profile ? 'AgentProfiles.fixedConfig' : 'ChatOptionsBar.useThisSquadSConfiguration') : later ?? undefined}
+          disabled={managed || switchingPermission || (!agentDescriptor(agent).capabilities.optionsWhileBusy && !idle)}
+          title={managed ? t(conversation.profile ? 'AgentProfiles.fixedConfig' : 'ChatOptionsBar.useThisSquadSConfiguration') : switchingPermission ? t('ChatOptionsBar.switchingPermission') : later ?? undefined}
           onChange={(mode) => set('permissionMode', mode)}
         />
+      )}
+      {switchingPermission && (
+        <span className="chat-suggestion-hint" role="status">{t('ChatOptionsBar.switchingPermission')}</span>
       )}
       {!conversation.modelProvider && !isHelper(conversation) && (
         <AccountPicker
           agent={agent}
           value={next?.account ?? null}
-          disabled={managed || !idle}
+          disabled={managed || switchingPermission || !idle}
           title={managed ? t(conversation.profile ? 'AgentProfiles.fixedConfig' : 'ChatOptionsBar.useThisSquadSConfiguration') : idle ? (running ? t('AccountPicker.restarts') : undefined) : t('AccountPicker.afterTurn')}
           onChange={(account) => void setConversationAccount(id, account)}
         />
@@ -114,7 +142,7 @@ export function ChatOptionsBar({ conversation, state, compact = false }: { conve
           models={models.map((each) => ({ value: each.id, label: each.label, description: each.description, suffix: modelMeta(each), efforts: each.efforts.map((one) => ({ value: one, label: effortLabel(one) })) }))}
           model={modelId}
           effort={effort}
-          disabled={managed || !idle}
+          disabled={managed || switchingPermission || !idle}
           title={managed ? t(conversation.profile ? 'AgentProfiles.fixedConfig' : 'ChatOptionsBar.useThisSquadSConfiguration') : later ?? (idle ? undefined : t('ChatOptionsBar.changeModelAndReasoningEffortAfterThisTurn'))}
           onModel={(value) => set('model', value)}
           onEffort={(value) => set('effort', value)}

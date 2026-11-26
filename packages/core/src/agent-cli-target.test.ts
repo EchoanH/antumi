@@ -20,6 +20,19 @@ describe('CLI install identity and release versions', () => {
     expect(launched).toBe(false)
   })
 
+  it.each(['agy-cli', 'managed-acp'] as const)('resolves the CLI version and channel for %s', async (active) => {
+    const selected = '/bin/agy'
+    const installed: Environment = { ...environment, checks: [{ tool: 'antigravity', status: 'ok', path: selected, version: '1.4.1', signedIn: false, runtime: { active, available: [active] } }] }
+    const probes: string[][] = []
+    const info = await resolveCliTarget('antigravity', installed, host({ platform: 'linux', run: async ({ command, args }) => {
+      expect(command).toBe(selected)
+      probes.push(args)
+      return 'agy 2.3.4'
+    } }))
+    expect(info).toMatchObject({ version: active === 'agy-cli' ? '2.3.4' : '1.4.1', channel: active === 'agy-cli' ? 'unknown' : 'desktop' })
+    expect(probes).toEqual(active === 'agy-cli' ? [['--version']] : [])
+  })
+
   it('closes stdin on CLI probes that wait for the end of redirected input', async () => {
     await expect(cliTargetHost.run({ command: process.execPath, args: ['-e', 'process.stdin.on(\'end\', () => console.log(\'done\')); process.stdin.resume()'] }))
       .resolves.toBe('done')

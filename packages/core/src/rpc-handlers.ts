@@ -502,7 +502,11 @@ export function createRpcHandlers(
     'accounts.login': ({ agent, id }) => accountStore().login(agent, id),
     'accounts.rename': ({ agent, id, label }) => accountStore().rename(agent, id, label),
     'accounts.remove': async ({ agent, id }) => { await accountStore().remove(agent, id); return OK },
-    'accounts.activate': ({ agent, id }) => accountStore().activate(agent, id),
+    'accounts.activate': async ({ agent, id }) => {
+      const accounts = await accountStore().activate(agent, id)
+      conversations.invalidateCli(agent)
+      return accounts
+    },
     'accounts.setAutoSwitch': ({ autoSwitch }) => accountStore().setAutoSwitch(autoSwitch),
     'debug.wire': ({ id, stageId, before }) => {
       const known = new Map(conversations.stages(id).map((stage) => [stage.id, stage]))

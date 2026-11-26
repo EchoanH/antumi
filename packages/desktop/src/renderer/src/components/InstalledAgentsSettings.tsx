@@ -1,15 +1,15 @@
 import { SupportActions } from './ContactAuthor'
 import { getLocale, t, tr } from '../i18n'
 import { useEffect, useId, useState, type ReactNode } from 'react'
-import { AGENT_KINDS, agentDescriptor, agentReadiness, type AgentCliInstallation, type AgentKind, type DetectedAgent, type EnvironmentCheck } from '@antumi/protocol'
-import { refreshAgentCli, upgradeAgentCli, cancelAgentCliUpgrade, selectConversation, installAgentCli, refreshEnvironment, showTerminal, useCore } from '../core-store'
+import { AGENT_KINDS, ANTIGRAVITY_RUNTIMES, agentDescriptor, agentReadiness, type AgentCliInstallation, type AgentKind, type AntigravityRuntimeMode, type DetectedAgent, type EnvironmentCheck } from '@antumi/protocol'
+import { refreshAgentCli, upgradeAgentCli, cancelAgentCliUpgrade, selectConversation, installAgentCli, refreshEnvironment, showTerminal, setChatSettings, useCore } from '../core-store'
 import { cliStatusText, cliErrorText, cliBackendOutdated, cliChannelText, cliCompatibilityText } from '../agent-cli-text'
 import { checkStatusText } from '../environment-text'
 import { agentLabel, reasonText } from '../labels'
 import { setPreference, usePreferences } from '../preferences'
 import { CopyButton } from './CopyButton'
 import { AgentIcon, RefreshIcon } from './icons'
-import { Toggle } from './SettingsControls'
+import { Segmented, Toggle } from './SettingsControls'
 import { agentReadinessText } from '../agent-readiness-text'
 import { useProviderProbes } from '../provider-probes'
 import { IntegrationHelp } from './IntegrationHelp'
@@ -29,6 +29,34 @@ function Fix({ label, command }: { label: string; command: string }) {
       <code>{command}</code>
       <CopyButton text={command} label={t('InstalledAgentsSettings.copyCommand')} />
     </p>
+  )
+}
+
+function AntigravityRuntimeControl({ active }: { active?: string | null }) {
+  const labelId = useId()
+  const mode = useCore((s) => s.chatSettings?.antigravityRuntime)
+  if (mode === undefined) return null
+  const labels = {
+    auto: t('InstalledAgentsSettings.antigravityRuntimeAuto'),
+    'agy-cli': t('InstalledAgentsSettings.antigravityRuntimeAgyCli'),
+    'managed-acp': t('InstalledAgentsSettings.antigravityRuntimeManagedAcp')
+  }
+  const activeLabel = active === 'agy-cli' || active === 'managed-acp' ? labels[active] : active
+  return (
+    <div>
+      <div className="agent-install-actions">
+        <span id={labelId} className="settings-row-description">{t('InstalledAgentsSettings.antigravityRuntime')}</span>
+        <Segmented<AntigravityRuntimeMode>
+          labelId={labelId}
+          value={mode}
+          options={ANTIGRAVITY_RUNTIMES.map((value) => ({ value, label: labels[value] }))}
+          onChange={(next) => void setChatSettings({ antigravityRuntime: next })}
+        />
+      </div>
+      <p className="settings-row-description">
+        {activeLabel ? t('InstalledAgentsSettings.antigravityRuntimeActive', { active: activeLabel }) : t('InstalledAgentsSettings.antigravityRuntimeHint')}
+      </p>
+    </div>
   )
 }
 
@@ -223,6 +251,7 @@ function AgentRow({ kind, check, enabled, last }: { kind: AgentKind; check: Envi
             </span>
           </div>
         ) : (readiness.state === 'needs-account' || readiness.state === 'needs-provider' || readiness.state === 'unknown-auth' || readiness.state === 'authorize-on-use') && <Fix label={t('InstalledAgentsSettings.signIn')} command={agentDescriptor(kind, getLocale()).environment.signIn} />}
+        {kind === 'antigravity' && <AntigravityRuntimeControl active={check.runtime?.active} />}
         <CliMaintenance kind={kind} check={check} />
       </div>
       <div className="settings-row-control">
@@ -262,6 +291,7 @@ function MissingAgentRow({ kind, installation }: { kind: AgentKind; installation
           <span className="agent-row-pill">{environment.missing?.status ?? (appFound ? t('InstalledAgentsSettings.cliNotFound') : t('AgentPicker.notInstalled'))}</span>
         </div>
         <p className="settings-row-description">{environment.missing?.hint ?? (appFound ? t('InstalledAgentsSettings.appDetectedInstallItsCliToUseIt', { value1: agentLabel(kind) }) : environment.role)}</p>
+        {kind === 'antigravity' && <AntigravityRuntimeControl active={null} />}
         {!installation && <Fix label={t('InstalledAgentsSettings.install')} command={environment.install} />}
         {installation && (
           <div className="agent-install-actions">

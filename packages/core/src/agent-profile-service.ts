@@ -240,8 +240,10 @@ export class AgentProfileService {
       }
       if (this.store.calls(id).filter(agentCallOpen).length >= 10) throw new Rejection('agent-call-limit', '请先等待已有委派完成')
       const readOnly = profile.capability === 'readOnly' || callerReadOnly(parent)
+      const adapter = adapterOf(profile.agent)
+      const backend = adapter.resolveBackend ? await adapter.resolveBackend() : undefined
       const permissionMode = readOnly ? agentDescriptor(profile.agent).readOnlyMode
-        : delegatedMode(parent.chatOptions?.permissionMode, this.chats.allowsBypass(id), adapterOf(profile.agent).permissionModes, profile.delegationMode)
+        : delegatedMode(parent.chatOptions?.permissionMode, this.chats.allowsBypass(id), adapter.permissionModesFor?.(backend) ?? adapter.permissionModes, profile.delegationMode)
       await this.chats.validateStartOptions(profile.agent, { permissionMode, model: profile.model, effort: profile.effort }, profile.modelProvider ?? undefined)
       if (workspace === 'worktree') await this.checkWorktreeSource(parent, readOnly)
       const at = Date.now()

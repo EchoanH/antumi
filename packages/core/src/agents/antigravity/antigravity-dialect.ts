@@ -21,3 +21,17 @@ export const antigravityDialect: AcpDialect = {
   // Its session takes no additional directories.
   startNote: (options) => options.extraDirs.length ? `此会话还包含以下项目，请按绝对路径访问；命令分别指定各项目的工作目录：\n${options.extraDirs.map((dir) => `- ${dir}`).join('\n')}` : null
 }
+
+export const antigravityAgyCliDialect: AcpDialect = {
+  name: 'Antigravity',
+  idPrefix: 'antigravity',
+  modes: { ask: 'default', acceptEdits: 'accept-edits', auto: 'auto', plan: 'plan' },
+  processBypass: true,
+  preferResume: true,
+  authMethod: 'oauth-personal',
+  isSessionLostError: (message) => /conversation not found|invalid session|session.*not found|does not exist|failed to read session/i.test(message),
+  toolInput: antigravityDialect.toolInput,
+  startNote: antigravityDialect.startNote
+}
+
+export const dialectForBackend = (backend?: string | null): AcpDialect => backend === 'agy-cli' ? antigravityAgyCliDialect : antigravityDialect

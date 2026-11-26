@@ -58,6 +58,23 @@ describe('Gemini CLI ACP', () => {
     expect(() => driver.setOption('permissionMode', 'readOnly')).toThrow()
   })
 
+  it('logs idle mode updates and restores their permission mode on replay', () => {
+    const driver = opened()
+    const frame = { method: 'session/update', params: { sessionId: 'provider-session', update: {
+      sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '[MODE_UPDATE] plan' }
+    } } }
+    receive(driver, frame)
+    const logged = driver.logged(frame)
+    expect(logged).not.toBeNull()
+    const replay = new AcpDriver(geminiDialect, 'stage', options)
+    for (const frame of replay.due()) sent(replay, frame)
+    receive(replay, { id: 'gemini-init', result: init })
+    for (const frame of replay.due()) sent(replay, frame)
+    receive(replay, { id: 'gemini-session', result: openedResult })
+    replay.apply({ dir: 'in', at: 102, frame: logged })
+    expect(items(replay, 'state').at(-1)?.permissionMode).toBe('plan')
+  })
+
   it('shows the full plan from a completed diff, and switches back to Default after its native approval', () => {
     const driver = new AcpDriver(geminiDialect, 'stage', options)
     plan.forEach((record) => driver.apply(record))

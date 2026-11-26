@@ -1315,6 +1315,286 @@ describe('ConversationService', () => {
     } finally { probe.mockRestore(); prepare.mockRestore() }
   })
 
+  it('rejects an isolated launch on an old daemon without leaving a stage behind', async () => {
+    const created = await service.create('antigravity', [], false, { deferStart: true })
+    if (!antigravity.launch) throw new Error('missing Antigravity launch')
+    const prepare = vi.spyOn(antigravity.launch, 'prepare').mockResolvedValue({ unsetEnv: ['GOOGLE_API_KEY'] })
+    daemon.features = []
+    try {
+      await expect(service.continue(created.id)).rejects.toMatchObject({ reason: 'daemon-outdated' })
+      expect(daemon.spawns).toHaveLength(0)
+      expect(daemon.ptySpawns).toHaveLength(0)
+      expect(service.stages(created.id)).toHaveLength(0)
+      expect(service.get(created.id)).toMatchObject({ sessionId: null, starting: false })
+    } finally { prepare.mockRestore() }
+  })
+
+  it('keeps the session attached when a strict stop cannot confirm exit', async () => {
+    const created = await service.create('claude', [])
+    daemon.exitOnKill = false
+    try {
+      vi.useFakeTimers()
+      const stopped = expect(service.stop(created.id, true)).rejects.toMatchObject({ reason: 'chat-stop-timeout' })
+      await vi.advanceTimersByTimeAsync(60_000)
+      await stopped
+      expect(service.get(created.id).sessionId).toBe(created.sessionId)
+      expect(daemon.killed).toEqual([{ sessionId: created.sessionId, force: false }, { sessionId: created.sessionId, force: true }])
+    } finally {
+      vi.useRealTimers()
+      daemon.exit(created.sessionId!, 143)
+    }
+  })
+
+  it('does not leave agy-cli bypass or spawn a replacement without confirmed exit', async () => {
+    const resolveBackend = vi.spyOn(antigravity, 'resolveBackend').mockResolvedValue('agy-cli')
+    if (!antigravity.launch) throw new Error('missing Antigravity launch')
+    const prepare = vi.spyOn(antigravity.launch, 'prepare').mockResolvedValue({})
+    const sessionId = 'pipe-1'
+    try {
+      const creating = service.create('antigravity', [], true, { permissionMode: 'bypass' })
+      const answer = async (id: string, result: unknown) => {
+        await vi.waitFor(() => expect(daemon.written(sessionId)).toContainEqual(expect.objectContaining({ id })))
+        daemon.emit(sessionId, { id, result })
+      }
+      await answer('antigravity-init', { protocolVersion: 1, authMethods: [{ id: 'oauth-personal' }] })
+      await answer('antigravity-auth', {})
+      await answer('antigravity-session', { sessionId: 'live-agy', configOptions: [
+        { id: 'mode', name: 'Mode', category: 'mode', currentValue: 'default', options: [{ value: 'default', name: 'Default' }] }
+      ] })
+      const created = await creating
+      expect(daemon.spawns[0]?.args).toContain('--dangerously-skip-permissions')
+      expect(store.chatOptions(created.id).permissionMode).toBe('bypass')
+      daemon.exitOnKill = false
+      vi.useFakeTimers()
+      const switched = expect(service.setOption(created.id, 'permissionMode', 'ask')).rejects.toMatchObject({ reason: 'chat-stop-timeout' })
+      await vi.advanceTimersByTimeAsync(60_000)
+      await switched
+      expect(daemon.spawns).toHaveLength(1)
+      expect(service.get(created.id).sessionId).toBe(sessionId)
+      expect(store.chatOptions(created.id).permissionMode).toBe('bypass')
+    } finally {
+      vi.useRealTimers()
+      daemon.exit(sessionId, 143)
+      prepare.mockRestore()
+      resolveBackend.mockRestore()
+    }
+  })
+
+  it('restarts agy-cli with and without --dangerously-skip-permissions when entering or leaving bypass while preserving backend, account, model and effort', async () => {
+    const agyOptions = [
+      { value: 'default', name: 'Default' },
+      { value: 'accept-edits', name: 'Accept edits' },
+      { value: 'auto', name: 'Auto' },
+      { value: 'plan', name: 'Plan' }
+    ]
+    const opened = (model = 'gemini-4-neon', effort = 'high') => ({
+      sessionId: 'live-agy',
+      configOptions: [
+        { id: 'mode', name: 'Mode', category: 'mode', currentValue: 'default', options: agyOptions },
+        { id: 'model', name: 'Model', category: 'model', currentValue: model, options: [{ value: 'gemini-4-neon', name: 'Gemini 4 Neon' }, { value: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash' }] },
+        { id: 'thinking_level', name: 'Thinking Level', category: 'thought_level', currentValue: effort, options: [{ value: 'low', name: 'Low' }, { value: 'high', name: 'High' }] }
+      ]
+    })
+    const init = { protocolVersion: 1, agentCapabilities: { sessionCapabilities: { resume: {} } }, authMethods: [{ id: 'oauth-personal' }] }
+    let globalBackend: 'agy-cli' | 'managed-acp' = 'agy-cli'
+    let activeAccountId = 'acct-a'
+    const launchedAccounts: Array<string | undefined> = []
+    const resolveBackend = vi.spyOn(antigravity, 'resolveBackend').mockImplementation(async () => globalBackend)
+    if (!antigravity.launch) throw new Error('missing Antigravity launch')
+    const prepare = vi.spyOn(antigravity.launch, 'prepare').mockResolvedValue({})
+    service.setAccounts({
+      activeOf: () => activeAccountId,
+      exists: (_agent, id) => id === 'acct-a' || id === 'acct-b' || id === 'default',
+      launch: async (_agent, picked) => {
+        const id = picked ?? activeAccountId
+        launchedAccounts.push(id)
+        return { id, env: { GEMINI_HOME: path.join(root, id) } }
+      }
+    })
+    const handshake = async (pipeId: string, expectMethod: 'session/new' | 'session/resume', model = 'gemini-4-neon', effort = 'high') => {
+      const answer = async (id: string, result: unknown) => {
+        await vi.waitFor(() => expect(daemon.written(pipeId)).toEqual(expect.arrayContaining([expect.objectContaining({ id })])))
+        daemon.emit(pipeId, { id, result })
+      }
+      await answer('antigravity-init', init)
+      await answer('antigravity-auth', {})
+      await vi.waitFor(() => expect(daemon.written(pipeId)).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'antigravity-session', method: expectMethod })])))
+      daemon.emit(pipeId, { id: 'antigravity-session', result: opened(model, effort) })
+    }
+    try {
+      const p1 = `pipe-${daemon.spawns.length + 1}`
+      const creating = service.create('antigravity', [], true, { permissionMode: 'ask' })
+      await handshake(p1, 'session/new')
+      const created = await creating
+      expect(daemon.spawns.at(-1)?.args).not.toContain('--dangerously-skip-permissions')
+      expect(service.stages(created.id).at(-1)).toMatchObject({ backend: 'agy-cli', account: 'acct-a' })
+      expect(service.stageChatItems(created.id, service.stages(created.id).at(-1)!.id).findLast((item) => item.kind === 'state')).toMatchObject({
+        permissionMode: 'ask',
+        permissionModes: ['ask', 'acceptEdits', 'auto', 'plan', 'bypass'],
+        model: 'gemini-4-neon',
+        effort: 'high'
+      })
+
+      // Even if global runtime AND global active account change while running, entering bypass
+      // stays on agy-cli + acct-a + gemini-4-neon/high and resumes via session/resume with no handoff.
+      globalBackend = 'managed-acp'
+      activeAccountId = 'acct-b'
+      const p2 = `pipe-${daemon.spawns.length + 1}`
+      const entering = service.setOption(created.id, 'permissionMode', 'bypass')
+      await handshake(p2, 'session/resume')
+      await entering
+      expect(daemon.spawns.at(-1)?.args).toContain('--dangerously-skip-permissions')
+      expect(service.stages(created.id).at(-1)).toMatchObject({ backend: 'agy-cli', account: 'acct-a', providerSessionId: 'live-agy' })
+      expect(launchedAccounts.at(-1)).toBe('acct-a')
+      expect(service.stageChatItems(created.id, service.stages(created.id).at(-1)!.id).findLast((item) => item.kind === 'state')).toMatchObject({
+        permissionMode: 'bypass',
+        model: 'gemini-4-neon',
+        effort: 'high'
+      })
+
+      // Leave bypass back to ask: stops bypass process, restarts WITHOUT flag on same backend/account/model/effort.
+      const p3 = `pipe-${daemon.spawns.length + 1}`
+      const leaving = service.setOption(created.id, 'permissionMode', 'ask')
+      await handshake(p3, 'session/resume')
+      await leaving
+      expect(daemon.spawns.at(-1)?.args).not.toContain('--dangerously-skip-permissions')
+      expect(service.stages(created.id).at(-1)).toMatchObject({ backend: 'agy-cli', account: 'acct-a', providerSessionId: 'live-agy' })
+      expect(launchedAccounts.at(-1)).toBe('acct-a')
+      expect(service.stageChatItems(created.id, service.stages(created.id).at(-1)!.id).findLast((item) => item.kind === 'state')?.permissionMode).toBe('ask')
+
+      // Reopening a stopped existing agy-cli conversation on the same account after global runtime
+      // switched to managed-acp still resumes agy-cli via session/resume (no cross-backend handoff).
+      activeAccountId = 'acct-a'
+      await service.stop(created.id)
+      const p4 = `pipe-${daemon.spawns.length + 1}`
+      const resuming = service.continue(created.id, true)
+      await handshake(p4, 'session/resume')
+      await resuming
+      expect(service.stages(created.id).at(-1)).toMatchObject({ backend: 'agy-cli', account: 'acct-a', providerSessionId: 'live-agy' })
+      await service.stop(created.id)
+
+      // When the original backend is unavailable, reopening fails with a clear error rather than
+      // silently falling back to managed-acp or triggering a handoff.
+      prepare.mockRejectedValueOnce(new Rejection('antigravity-agy-missing', '未检测到支持 ACP 的 agy CLI'))
+      await expect(service.continue(created.id, true)).rejects.toMatchObject({ reason: 'antigravity-agy-missing' })
+
+      // A brand-new conversation follows the new global runtime setting (managed-acp).
+      const p5 = `pipe-${daemon.spawns.length + 1}`
+      const freshManaged = service.create('antigravity', [], true, { permissionMode: 'ask' })
+      await handshake(p5, 'session/new', 'gemini-3.8-flash', 'low')
+      const managedConv = await freshManaged
+      expect(service.stages(managedConv.id).at(-1)?.backend).toBe('managed-acp')
+      await service.stop(managedConv.id)
+
+      // Switching model via optionsFromState and chooseForNextStart preserves account binding.
+      globalBackend = 'agy-cli'
+      const p6 = `pipe-${daemon.spawns.length + 1}`
+      const creatingWithAcct = service.create('antigravity', [], false, { permissionMode: 'ask', account: 'acct-a' })
+      await handshake(p6, 'session/new')
+      const withAcct = await creatingWithAcct
+      expect(service.stageChatItems(withAcct.id, service.stages(withAcct.id).at(-1)!.id).findLast((item) => item.kind === 'state')?.permissionModes).toEqual(['ask', 'acceptEdits', 'auto', 'plan'])
+      await expect(service.setOption(withAcct.id, 'permissionMode', 'bypass')).rejects.toMatchObject({ reason: 'chat-option-invalid' })
+      const switchingModel = service.setOption(withAcct.id, 'model', 'gemini-3.8-flash')
+      await vi.waitFor(() => expect(daemon.written(p6)).toEqual(expect.arrayContaining([expect.objectContaining({ method: 'session/set_config_option', params: expect.objectContaining({ configId: 'model', value: 'gemini-3.8-flash' }) })])))
+      const reqId = daemon.written(p6).flatMap((frame) => {
+        if (typeof frame !== 'object' || frame === null || !('method' in frame) || frame.method !== 'session/set_config_option' || !('id' in frame)) return []
+        return [frame.id]
+      }).at(-1)
+      daemon.emit(p6, { id: reqId, result: opened('gemini-3.8-flash', 'low') })
+      await switchingModel
+      expect(store.chatOptions(withAcct.id).antigravity).toEqual({ account: 'acct-a', model: 'gemini-3.8-flash', effort: 'low' })
+      await service.stop(withAcct.id)
+      await service.setOption(withAcct.id, 'model', 'gemini-4-neon')
+      expect(store.chatOptions(withAcct.id).antigravity).toEqual({ account: 'acct-a', model: 'gemini-4-neon', effort: 'low' })
+    } finally { resolveBackend.mockRestore(); prepare.mockRestore() }
+  })
+
+  it('guards agy-cli cross-agent handoff return by account isolation and falls back to session/load when valid session resume asks for it', async () => {
+    const agyOptions = [
+      { value: 'default', name: 'Default' },
+      { value: 'accept-edits', name: 'Accept edits' },
+      { value: 'auto', name: 'Auto' },
+      { value: 'plan', name: 'Plan' }
+    ]
+    const opened = (sessionId: string) => ({
+      sessionId,
+      configOptions: [
+        { id: 'mode', name: 'Mode', category: 'mode', currentValue: 'default', options: agyOptions },
+        { id: 'model', name: 'Model', category: 'model', currentValue: 'gemini-4-neon', options: [{ value: 'gemini-4-neon', name: 'Gemini 4 Neon' }, { value: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash' }] }
+      ]
+    })
+    const init = { protocolVersion: 1, agentCapabilities: { loadSession: true, sessionCapabilities: { resume: {} } }, authMethods: [{ id: 'oauth-personal' }] }
+    const resolveBackend = vi.spyOn(antigravity, 'resolveBackend').mockResolvedValue('agy-cli')
+    const catalog = vi.spyOn(antigravity, 'catalog').mockResolvedValue({
+      models: [
+        { id: 'gemini-4-neon', label: 'Gemini 4 Neon', description: null, efforts: ['low', 'high'], isDefault: true },
+        { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash', description: null, efforts: ['low', 'high'], isDefault: false }
+      ]
+    })
+    if (!antigravity.launch) throw new Error('missing Antigravity launch')
+    const prepare = vi.spyOn(antigravity.launch, 'prepare').mockResolvedValue({})
+    let activeAccountId = 'acct-a'
+    service.setAccounts({
+      activeOf: () => activeAccountId,
+      exists: (_agent, id) => id === 'acct-a' || id === 'default',
+      launch: async (_agent, picked) => {
+        const id = picked ?? activeAccountId
+        return { id, env: id === 'default' ? null : { GEMINI_HOME: path.join(root, id) } }
+      }
+    })
+    const answerFrame = async (pipeId: string, id: string, frame: Record<string, unknown>) => {
+      await vi.waitFor(() => expect(daemon.written(pipeId)).toEqual(expect.arrayContaining([expect.objectContaining({ id })])))
+      daemon.emit(pipeId, { id, ...frame })
+    }
+    try {
+      // 1. Start Antigravity on agy-cli with acct-a -> session 'agy-sess-a'.
+      const p1 = `pipe-${daemon.spawns.length + 1}`
+      const creating = service.create('antigravity', [], true, { permissionMode: 'ask', account: 'acct-a' })
+      await answerFrame(p1, 'antigravity-init', { result: init })
+      await answerFrame(p1, 'antigravity-auth', { result: {} })
+      await answerFrame(p1, 'antigravity-session', { result: opened('agy-sess-a') })
+      const conv = await creating
+      await service.stop(conv.id)
+      // Simulate an intervening Codex stage recorded on the conversation.
+      const codexStage = store.startStage(conv.id, 'codex', 'codex-thread-1', 0)
+      store.addMessage({ conversationId: conv.id, stageId: codexStage.id, role: 'user', agent: 'codex', text: 'hi codex', eventKey: 'chat:1:user', complete: true })
+      store.addMessage({ conversationId: conv.id, stageId: codexStage.id, role: 'assistant', agent: 'codex', text: 'hi back', eventKey: 'chat:1:assistant', complete: true })
+      store.endStage(codexStage.id, 0)
+      store.update(conv.id, { agent: 'codex', sessionId: null })
+
+      // 2. Hand off back to Antigravity on the SAME account (acct-a) with a model choice:
+      //    pickModel must keep account='acct-a', and session/resume error falls back to session/load on 'agy-sess-a'.
+      const p2 = `pipe-${daemon.spawns.length + 1}`
+      const returningSame = service.handoff(conv.id, 'antigravity', 'back to agy', false, true, { model: 'gemini-4-neon' })
+      await answerFrame(p2, 'antigravity-init', { result: init })
+      await answerFrame(p2, 'antigravity-auth', { result: {} })
+      await vi.waitFor(() => expect(daemon.written(p2)).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'antigravity-session', method: 'session/resume', params: expect.objectContaining({ sessionId: 'agy-sess-a' }) })])))
+      daemon.emit(p2, { id: 'antigravity-session', error: { code: -32603, message: 'Failed to read session; retry, or load it with session/load' } })
+      await vi.waitFor(() => expect(daemon.written(p2)).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'antigravity-session-load', method: 'session/load', params: expect.objectContaining({ sessionId: 'agy-sess-a' }) })])))
+      daemon.emit(p2, { id: 'antigravity-session-load', result: opened('agy-sess-a') })
+      await vi.waitFor(() => expect(daemon.written(p2)).toEqual(expect.arrayContaining([expect.objectContaining({ method: 'session/prompt' })])))
+      await returningSame
+      expect(store.chatOptions(conv.id).antigravity?.account).toBe('acct-a')
+      expect(service.stages(conv.id).at(-1)).toMatchObject({ agent: 'antigravity', backend: 'agy-cli', account: 'acct-a', providerSessionId: 'agy-sess-a' })
+      await service.stop(conv.id)
+
+      // 3. Switch account to 'default' (isolated agy-cli directory without 'agy-sess-a'), then hand off back from Codex:
+      //    must NOT try to session/resume 'agy-sess-a' in default's folder; opens clean session/new instead.
+      store.setChatOptions(conv.id, { antigravity: { account: 'default' } })
+      store.update(conv.id, { agent: 'codex', sessionId: null })
+      const p3 = `pipe-${daemon.spawns.length + 1}`
+      const returningOther = service.handoff(conv.id, 'antigravity', 'switch account return', false, true)
+      await answerFrame(p3, 'antigravity-init', { result: init })
+      await answerFrame(p3, 'antigravity-auth', { result: {} })
+      await vi.waitFor(() => expect(daemon.written(p3)).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'antigravity-session', method: 'session/new' })])))
+      daemon.emit(p3, { id: 'antigravity-session', result: opened('agy-sess-default') })
+      await vi.waitFor(() => expect(daemon.written(p3)).toEqual(expect.arrayContaining([expect.objectContaining({ method: 'session/prompt' })])))
+      await returningOther
+      expect(service.stages(conv.id).at(-1)).toMatchObject({ agent: 'antigravity', backend: 'agy-cli', account: 'default', providerSessionId: 'agy-sess-default' })
+      await service.stop(conv.id)
+    } finally { resolveBackend.mockRestore(); catalog.mockRestore(); prepare.mockRestore() }
+  })
+
   it.each([
     ['stop', false],
     ['interrupt', false],

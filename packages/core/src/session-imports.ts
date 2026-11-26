@@ -138,7 +138,7 @@ export class SessionImports {
       let conversation: Conversation
       if (!record) {
         const created = await this.conversations.create(summary.agent, [summary.cwd], undefined, { deferStart: true })
-        conversation = this.conversations.importStage(created.id, summary.agent, nativeId(summary), transcript, { text: summary.title, locked: summary.named })
+        conversation = this.conversations.importStage(created.id, summary.agent, nativeId(summary), transcript, { text: summary.title, locked: summary.named }, undefined, { account: summary.account ?? null, backend: summary.backend ?? null })
         const saved = { agent: summary.agent, sessionId: summary.sessionId, conversationId: conversation.id, importedThrough: through, sourceModifiedAt: summary.modifiedAt }
         this.store.recordSessionImport(saved)
         const stage = this.store.stages(conversation.id).at(-1)!
@@ -174,7 +174,8 @@ export class SessionImports {
         conversation = this.conversations.get(record.conversationId)
         for (const [existingStageId, group] of groups) {
           conversation = this.conversations.importStage(record.conversationId, summary.agent, nativeId(summary), group, null,
-            existingStageId ? { stageId: existingStageId, order: transcript.entries.map((entry) => entry.item.id) } : undefined)
+            existingStageId ? { stageId: existingStageId, order: transcript.entries.map((entry) => entry.item.id) } : undefined,
+            { account: summary.account ?? null, backend: summary.backend ?? null })
           const stageId = existingStageId ?? this.store.stages(conversation.id).at(-1)!.id
           this.store.recordImportedItems(record, manifest(group, stageId))
         }

@@ -16,8 +16,15 @@ export interface AcpDialect {
   // Starts the id of every request Antumi sends. Logs keep the ids and replay matches on them, so
   // an agent's prefix never changes.
   readonly idPrefix: string
+  // Prefer resume when advertised, avoiding the full replay of session/load.
+  readonly preferResume?: boolean
+  // Backend-specific restore failures that require a handoff.
+  isSessionLostError?(message: string): boolean
   // The session mode the agent offers for each of Antumi's permission modes it has.
   readonly modes: Partial<Record<ChatPermissionMode, string>>
+  // Bypass is controlled by a process launch flag rather than session/set_config_option, so
+  // entering or leaving bypass requires restarting the process (and resuming the session).
+  readonly processBypass?: boolean
   // A mode notification carried as an agent text chunk instead of current_mode_update.
   modeUpdate?(text: string): string | null
   // Some providers include cache reads in inputTokens rather than reporting them separately.

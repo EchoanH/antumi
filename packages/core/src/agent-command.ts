@@ -1,7 +1,7 @@
 import { AGENT_CALL_TOOLS, BROWSER_BOOKMARKS_TOOL, browserToolName, HISTORY_TOOLS, historyToolName, MANAGEMENT_READ_TOOLS, SHOW_PREVIEW_TOOL, SOURCE_REPORT_TOOL, SOURCE_TASK_READ_TOOLS, SQUAD_TOOL_NAMES, SQUAD_CALL_TOOLS, terminalToolName, TODO_TOOLS, todoToolName } from '@antumi/protocol'
 
 // env is added to what the agent runs with, for an agent configured through its environment.
-export type AgentCommand = { command: string; args: string[]; env?: Record<string, string> }
+export type AgentCommand = { command: string; args: string[]; env?: Record<string, string>; unsetEnv?: readonly string[] }
 
 // An MCP server the agent starts over stdio.
 // env is added to what the agent starts the server with.

@@ -8,7 +8,7 @@ import {
   AGENT_KINDS, AgentAccountId, AgentKind, DEFAULT_ACCOUNT, accountsSupported, activeAccount, agentDescriptor, pickAccount, quotaVerdict, accountUsage,
   type AccountKey, type AgentAccount, type AgentAccounts, type AgentUsage, type Terminal
 } from '@antumi/protocol'
-import { planLaunch, readJsonIfExists, writePrivateJson } from '@antumi/protocol/node'
+import { planLaunch, readJsonIfExists, withoutEnv, writePrivateJson } from '@antumi/protocol/node'
 import { adapterOf } from './agents'
 import type { AccountSupport } from './agents/agent-adapter'
 import type { CredentialStore } from './credential-store'
@@ -37,14 +37,17 @@ const LOGOUT_TIMEOUT_MS = 30_000
 
 export type AccountDeps = {
   // Signs in, in a terminal the user follows.
-  signIn(argv: { command: string; args: readonly string[] }, env: Record<string, string>, title: string, agent?: AgentKind, cwd?: string): Promise<Terminal>
+  signIn(argv: { command: string; args: readonly string[] }, env: Record<string, string>, title: string, agent?: AgentKind, cwd?: string, unsetEnv?: readonly string[]): Promise<Terminal>
   waitForExit(terminalId: string): Promise<number | null>
   // An account was signed in, or out, or removed: its usage is worth reading now, or no more.
   accountChanged(agent: AgentKind, id: string, removed: boolean): void
   changed(accounts: AgentAccounts): void
+  inUse?(agent: AgentKind, id: string): boolean
+  // Stops idle conversations still holding a process on this account before logout and archiving.
+  releaseIdle?(agent: AgentKind, id: string): Promise<void>
   newId?(): string
   // Runs the CLI's sign-out to its end, whatever it says.
-  signOut?(command: string, args: readonly string[], env: Record<string, string>): Promise<void>
+  signOut?(command: string, args: readonly string[], env: Record<string, string>, unsetEnv?: readonly string[]): Promise<void>
   // Where an account's API key is kept, never in the accounts file.
   credentials?: Pick<CredentialStore, 'get' | 'set' | 'delete'>
 }
@@ -77,6 +80,7 @@ export class AgentAccountStore {
   private active: Partial<Record<AgentKind, string>> = {}
   private autoSwitch = true
   private readonly signedIn = new Map<string, boolean>()
+  private readonly activeLogins = new Set<string>()
   private chain: Promise<unknown> = Promise.resolve()
 
   constructor(
@@ -231,13 +235,18 @@ export class AgentAccountStore {
     if (id === DEFAULT_ACCOUNT) throw new Rejection('account-default', '本机账号不能删除')
     return this.serially(async () => {
       this.require(agent, id)
+      if (this.activeLogins.has(key(agent, id))) throw new Rejection('account-login-running', '该账号正在登录中，请先关闭登录终端后再删除账号')
+      if (this.deps.inUse?.(agent, id)) throw new Rejection('account-in-use', '该账号仍有正在执行中的会话，请先停止相关会话后再删除账号')
+      await this.deps.releaseIdle?.(agent, id)
+      if (this.deps.inUse?.(agent, id)) throw new Rejection('account-in-use', '该账号仍有正在执行中的会话，请先停止相关会话后再删除账号')
       const home = this.home(agent, id)!
       // A key account has nothing signed in to sign out of: its key goes instead.
       if (this.find(agent, id)?.edition) await this.deps.credentials?.delete(KEY_CREDENTIAL, keyInstance(agent, id))
       else await agentCliAccess.use(agent, async () => {
-        const command = await accounts.authCommand?.('logout') ?? { command: agentDescriptor(agent).cli, args: [...accounts.logout] }
-        await (this.deps.signOut ?? runQuietly)(command.command, command.args, { ...accounts.env(home), ...command.env })
+        const command = await accounts.authCommand?.('logout', home) ?? { command: agentDescriptor(agent).cli, args: [...accounts.logout] }
+        await (this.deps.signOut ?? runQuietly)(command.command, command.args, { ...accounts.env(home), ...command.env }, command.unsetEnv)
       })
+      await accounts.beforeRemove?.(home)
       const active = { ...this.active }
       if (active[agent] === id) delete active[agent]
       this.active = active
@@ -305,17 +314,35 @@ export class AgentAccountStore {
   private async signIn(agent: AgentKind, id: string): Promise<Terminal> {
     const accounts = support(agent)
     if (this.find(agent, id)?.edition) throw new Rejection('account-key-unsupported', '这个账号用 API Key 登录，请在设置 → 账号里更换 Key')
-    const home = this.home(agent, id)
-    const name = this.require(agent, id)
-    const title = `登录 ${agentDescriptor(agent).label}${name.label ? `（${name.label}）` : ''}`
-    const folder = accounts.signInFolder ? path.join(this.root, agent, '.sign-in') : undefined
-    if (folder) await mkdir(folder, { recursive: true, mode: 0o700 })
-    const terminal = await agentCliAccess.use(agent, async () => {
-      const command = await accounts.authCommand?.('login') ?? { command: agentDescriptor(agent).cli, args: [...accounts.login] }
-      return this.deps.signIn(command, { ...(home ? accounts.env(home) : {}), ...command.env }, title, agent, folder)
-    })
-    void this.deps.waitForExit(terminal.id).then(() => this.check(agent, id)).then(() => this.deps.accountChanged(agent, id, false))
-    return terminal
+    const slot = key(agent, id)
+    if (this.activeLogins.has(slot)) throw new Rejection('account-login-running', '该账号正在登录中，请先完成或关闭当前登录终端')
+    this.activeLogins.add(slot)
+    try {
+      const home = this.home(agent, id)
+      const name = this.require(agent, id)
+      const title = `登录 ${agentDescriptor(agent).label}${name.label ? `（${name.label}）` : ''}`
+      const folder = accounts.signInFolder ? path.join(this.root, agent, '.sign-in') : undefined
+      if (folder) await mkdir(folder, { recursive: true, mode: 0o700 })
+      const { terminal, loginBackend } = await agentCliAccess.use(agent, async () => {
+        const command = await accounts.authCommand?.('login', home) ?? { command: agentDescriptor(agent).cli, args: [...accounts.login] }
+        const loginBackend = 'backend' in command ? command.backend : undefined
+        const terminal = await this.deps.signIn(command, { ...(home ? accounts.env(home) : {}), ...command.env }, title, agent, folder, command.unsetEnv)
+        return { terminal, loginBackend }
+      })
+      void this.deps.waitForExit(terminal.id).then(async (exitCode) => {
+        try {
+          if (exitCode === 0) await accounts.afterLogin?.(home, loginBackend).catch((error: unknown) => console.error('[antumi-core] post-login sync failed', error))
+          await this.check(agent, id)
+          this.deps.accountChanged(agent, id, false)
+        } finally {
+          this.activeLogins.delete(slot)
+        }
+      }).catch(() => { this.activeLogins.delete(slot) })
+      return terminal
+    } catch (error) {
+      this.activeLogins.delete(slot)
+      throw error
+    }
   }
 
   async refresh(agent: AgentKind): Promise<void> {
@@ -381,10 +408,10 @@ function key(agent: AgentKind, id: string): string {
 }
 
 // The CLI's sign-out, which may find nothing to sign out of: whatever it says, the folder goes.
-function runQuietly(command: string, args: readonly string[], env: Record<string, string>): Promise<void> {
+function runQuietly(command: string, args: readonly string[], env: Record<string, string>, unsetEnv?: readonly string[]): Promise<void> {
   return new Promise((resolve) => {
     try {
-      const launch = planLaunch(command, [...args], process.cwd(), { ...process.env, ...env })
+      const launch = planLaunch(command, [...args], process.cwd(), { ...withoutEnv(process.env, unsetEnv), ...env })
       execFile(launch.file, launch.args, { env: launch.env, timeout: LOGOUT_TIMEOUT_MS, windowsHide: true }, () => resolve())
     } catch {
       resolve()

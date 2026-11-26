@@ -38,7 +38,9 @@ const Launch = z.object({
   command: z.string(),
   args: z.array(z.string()),
   cwd: z.string(),
-  env: z.record(z.string(), z.string())
+  env: z.record(z.string(), z.string()),
+  // Variables stripped from the inherited environment before merging env. Older daemons ignore it.
+  unsetEnv: z.array(z.string()).optional()
 })
 
 // What a clean start keeps of the daemon's environment: where programs and the user's home are,
@@ -57,6 +59,12 @@ export function cleanEnv(env: NodeJS.ProcessEnv): Record<string, string> {
     if (value !== undefined && CLEAN_ENV_KEYS.includes(key.toUpperCase())) kept[key] = value
   }
   return kept
+}
+
+export function withoutEnv(env: NodeJS.ProcessEnv, unset?: readonly string[], platform: NodeJS.Platform = process.platform): NodeJS.ProcessEnv {
+  if (!unset?.length) return env
+  const names = new Set(unset.map((name) => platform === 'win32' ? name.toUpperCase() : name))
+  return Object.fromEntries(Object.entries(env).filter(([key]) => !names.has(platform === 'win32' ? key.toUpperCase() : key)))
 }
 
 export const daemonMethods = {
