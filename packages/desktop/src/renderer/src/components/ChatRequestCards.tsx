@@ -142,6 +142,15 @@ export function ChatApprovalCard({ conversationId, item, tool, singleApproval = 
   // Nothing here remembers anything, so the same kind of call will ask again.
   const remembersNothing = item.choices !== undefined && !item.choices.some((choice) => choice.grants.length > 0)
   const reasonInput = useRef<HTMLInputElement>(null)
+  const card = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const active = document.activeElement
+    const editor = active instanceof HTMLElement && active.isContentEditable
+    const writing = active instanceof HTMLTextAreaElement ? active.value !== '' : editor && !active.querySelector('.cm-placeholder') && active.textContent !== ''
+    const within = active === document.body || (active !== null && card.current?.closest('[data-pending-hotkey-scope]')?.contains(active))
+    // Take keys from an idle composer or the request tabs, without interrupting typing elsewhere.
+    if (!writing && (within || active instanceof HTMLTextAreaElement || editor)) card.current?.focus()
+  }, [])
   const shorten = useContext(ChatPaths)
   const command = isCommandTool(item.tool)
   const host = isHostApproval(item)
@@ -166,6 +175,7 @@ export function ChatApprovalCard({ conversationId, item, tool, singleApproval = 
   const pick = (option: ApprovalOption) => {
     setPicked(option.key)
     if (option.denies) reasonInput.current?.focus()
+    else card.current?.focus()
   }
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.metaKey || event.ctrlKey || event.altKey || event.nativeEvent.isComposing) return
@@ -183,11 +193,10 @@ export function ChatApprovalCard({ conversationId, item, tool, singleApproval = 
       const at = options.findIndex((option) => option.key === current?.key)
       const next = options[(at + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length]
       if (next) pick(next)
-      if (!next?.denies) reasonInput.current?.blur()
     }
   }
   return (
-    <div className="chat-request" data-waiting onKeyDown={onKeyDown}>
+    <div ref={card} className="chat-request" data-waiting tabIndex={-1} onKeyDown={onKeyDown}>
       <div className="chat-request-title">{tr('ChatRequestCards.approvalNeeded', { value1: terminal !== null ? what : detail ?? what })}</div>
       {detail && terminal === null && <p className="chat-request-detail muted">{what}</p>}
       {host && item.detail && <p className="chat-request-detail mono muted">{item.detail}</p>}
