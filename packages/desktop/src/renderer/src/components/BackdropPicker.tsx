@@ -1,11 +1,10 @@
-import { t } from '../i18n'
-import { BACKDROPS, BACKDROP_LABEL } from '../backdrops'
-import { setPreference, usePreferences, type Preferences } from '../preferences'
+import { BACKDROPS, BACKDROP_LABEL, BACKDROP_ORIGIN, type Backdrop } from '../backdrops'
+import { setPreference, usePreferences } from '../preferences'
 
 // Each gradient as a split swatch, light side and dark side, painted by its own [data-backdrop].
-function Swatch({ backdrop }: { backdrop: Preferences['backdrop'] }) {
+function Swatch({ backdrop }: { backdrop: Backdrop }) {
   return (
-    <span className="backdrop-swatch" data-backdrop={backdrop === 'none' ? undefined : backdrop} aria-hidden="true">
+    <span className="backdrop-swatch" data-backdrop={backdrop} aria-hidden="true">
       <span className="backdrop-swatch-half" data-scheme="light" />
       <span className="backdrop-swatch-half" data-scheme="dark" />
     </span>
@@ -13,22 +12,25 @@ function Swatch({ backdrop }: { backdrop: Preferences['backdrop'] }) {
 }
 
 export function BackdropPicker({ labelId }: { labelId: string }) {
-  const backdrop = usePreferences((s) => s.backdrop)
-  const options: Preferences['backdrop'][] = ['none', ...BACKDROPS]
+  const backdropMode = usePreferences((s) => s.backdropMode)
+  const backdropPreset = usePreferences((s) => s.backdropPreset)
   return (
     <div className="palette-picker backdrop-picker" role="radiogroup" aria-labelledby={labelId}>
-      {options.map((each) => {
-        const name = each === 'none' ? t('common.off') : BACKDROP_LABEL[each]
+      {BACKDROPS.map((each) => {
+        const name = BACKDROP_LABEL[each]
         return (
           <button
             key={each}
             type="button"
             role="radio"
-            aria-checked={each === backdrop}
+            aria-checked={backdropMode === 'preset' && backdropPreset === each}
             className="palette-option"
-            aria-label={each === 'none' ? t('BackdropPicker.disableGradientBackground') : t('BackdropPicker.fromTheSlackThemeOfTheSameName', { name: name })}
-            title={each === 'none' ? undefined : t('BackdropPicker.fromSlackSTheme', { name: name })}
-            onClick={() => setPreference('backdrop', each)}
+            aria-label={name}
+            title={BACKDROP_ORIGIN[each]}
+            onClick={() => {
+              setPreference('backdropPreset', each)
+              setPreference('backdropMode', 'preset')
+            }}
           >
             <Swatch backdrop={each} />
             <span className="palette-name">{name}</span>

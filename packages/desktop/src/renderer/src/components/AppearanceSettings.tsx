@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState } from 'react'
+import { useCallback, useEffect, useId, useState, type DragEvent } from 'react'
 import { t } from '../i18n'
 import { useCore } from '../core-store'
 import { DEFAULT_PREFERENCES, setPreference, usePreferences } from '../preferences'
@@ -7,7 +7,10 @@ import { readingStyle } from '../reading-style'
 import { changedAppearancePreferences, withAppearanceDefaults, type AppearanceSection } from '../appearance-preferences'
 import { codeFontStack } from '../code-font'
 import { PALETTE_LABEL } from '../palettes'
-import { BACKDROP_LABEL } from '../backdrops'
+import { BACKDROP_LABEL, backdropCssVariables, resolveActiveBackdrop } from '../backdrops'
+import { canManageWallpaper, clearWallpaper, pickWallpaper, setWallpaperFromDrop } from '../desktop-bridge'
+import { wallpaperUrl, type WallpaperErrorReason, type WallpaperResult } from '../../../shared/wallpaper'
+import { formatBytes } from '../wire-entries'
 import { Resettable, Segmented, SettingsGroup, SettingsRow, Stepper, Toggle } from './SettingsControls'
 import { ChatFontPicker } from './ChatFontPicker'
 import { CodeFontPicker } from './CodeFontPicker'
@@ -18,7 +21,62 @@ import { MarkdownThemePicker } from './MarkdownThemePicker'
 import { MarkdownThemePreview } from './MarkdownThemePreview'
 import { resolveMarkdownTheme, type MarkdownThemePack } from '../markdown-theme-packs'
 import { MarkdownThemeLibrary } from './MarkdownThemeLibrary'
-import { ArrowUpIcon, BookIcon, CheckIcon, ChatIcon, ChevronDownIcon, ContrastIcon, DocumentIcon, GlobeIcon, RobotIcon, RotateLeftIcon, TerminalIcon } from './icons'
+import { ArrowUpIcon, BookIcon, CheckIcon, ChatIcon, ImageIcon, TrashIcon, ContrastIcon, DocumentIcon, GlobeIcon, RobotIcon, RotateLeftIcon, TerminalIcon } from './icons'
+
+function WallpaperUploadRow() {
+  const wallpaper = usePreferences((s) => s.wallpaper)
+  const [dragging, setDragging] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<WallpaperErrorReason | 'clear-failed' | null>(null)
+  const applyWallpaperResult = (result: WallpaperResult) => {
+    if (result.ok) {
+      setPreference('wallpaper', result.wallpaper)
+      setError(null)
+    } else if (result.reason !== 'canceled') setError(result.reason)
+  }
+  const handlePick = async () => {
+    if (busy) return
+    setBusy(true)
+    try { applyWallpaperResult(await pickWallpaper()) } finally { setBusy(false) }
+  }
+  const handleClear = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      if (await clearWallpaper()) { setPreference('wallpaper', null); setError(null) }
+      else setError('clear-failed')
+    } finally { setBusy(false) }
+  }
+  const drag = (event: DragEvent<HTMLElement>) => { event.preventDefault(); event.stopPropagation() }
+  const dropHandlers = {
+    onDragEnter: (event: DragEvent<HTMLElement>) => { drag(event); if (!busy) setDragging(true) },
+    onDragOver: (event: DragEvent<HTMLElement>) => { drag(event); event.dataTransfer.dropEffect = busy ? 'none' : 'copy' },
+    onDragLeave: (event: DragEvent<HTMLElement>) => {
+      drag(event)
+      if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) setDragging(false)
+    },
+    onDrop: async (event: DragEvent<HTMLElement>) => {
+      drag(event); setDragging(false)
+      const file = event.dataTransfer.files[0]
+      if (busy || !file) return
+      setBusy(true)
+      try { applyWallpaperResult(await setWallpaperFromDrop(file)) } finally { setBusy(false) }
+    }
+  }
+  const errorText = error === 'too-large' ? t('Backdrop.errorTooLarge')
+    : error === 'unsupported-format' ? t('Backdrop.errorUnsupportedFormat')
+    : error === 'clear-failed' ? t('Backdrop.errorClearFailed') : t('Backdrop.errorReadFailed')
+  return <SettingsRow label={t('Backdrop.image')} description={!canManageWallpaper() ? t('Backdrop.desktopOnly') : undefined} control={(labelId) => !canManageWallpaper() ? null : <div className="wallpaper-upload" aria-busy={busy}>
+    {wallpaper === null ? <button type="button" className="wallpaper-dropzone" aria-labelledby={labelId} data-dragging={dragging || undefined} disabled={busy} onClick={handlePick} {...dropHandlers}>
+      <ImageIcon /><span className="wallpaper-dropzone-title">{t('Backdrop.uploadPrompt')}</span><span className="wallpaper-dropzone-hint">{t('Backdrop.uploadHint')}</span>
+    </button> : <div className="wallpaper-card" data-dragging={dragging || undefined} {...dropHandlers}>
+      <img className="wallpaper-thumb" src={wallpaperUrl(wallpaper)} alt="" />
+      <div className="wallpaper-meta"><strong>{wallpaper.ext.toUpperCase()} · {formatBytes(wallpaper.size)}</strong><span>{t('Backdrop.dropReplaceHint')}</span></div>
+      <div className="wallpaper-actions"><button type="button" className="button" disabled={busy} onClick={handlePick}>{t('Backdrop.replaceImage')}</button><button type="button" className="button ghost" disabled={busy} onClick={handleClear}><TrashIcon />{t('Backdrop.clearImage')}</button></div>
+    </div>}
+    {error !== null && <p className="wallpaper-error" role="alert">{errorText}</p>}
+  </div>} />
+}
 
 function ThemeMiniature({ scheme }: { scheme: 'light' | 'dark' }) {
   return (
@@ -63,7 +121,8 @@ function AppearancePreview({ section, comparing, onCompare, draft }: { section: 
   const preview = comparing ? withAppearanceDefaults(current, DEFAULT_PREFERENCES, section) : current
   const markdownPacks = draft && !comparing ? [...preview.markdownThemePacks.filter((each) => each.id !== draft.id), draft] : preview.markdownThemePacks
   const markdownSelection = draft && !comparing ? `user:${draft.id}` : preview.markdownTheme
-  const { palette, theme, backdrop, chatWidth, foldTurns, terminalFontSize, terminalLineHeight, colorPrompt } = preview
+  const { palette, theme, chatWidth, foldTurns, terminalFontSize, terminalLineHeight, colorPrompt } = preview
+  const backdrop = resolveActiveBackdrop(preview, canManageWallpaper())
   const codeStyle = { fontFamily: codeFontStack(preview.codeFontFamily, preview.codeCjkFontFamily) }
   const [systemDark, setSystemDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
   useEffect(() => {
@@ -78,9 +137,9 @@ function AppearancePreview({ section, comparing, onCompare, draft }: { section: 
     : typeface
   return (
     <aside className="appearance-preview" aria-label={t('SettingsPage.livePreview')}>
-      <div className="appearance-preview-heading"><h3>{t('SettingsPage.livePreview')}</h3><span>{section === 'markdown' ? resolveMarkdownTheme(markdownSelection, markdownPacks).name : PALETTE_LABEL[palette].name}</span></div>
+      <div className="appearance-preview-heading"><h3>{t('SettingsPage.livePreview')}</h3><span>{section === 'markdown' ? resolveMarkdownTheme(markdownSelection, markdownPacks).name : backdrop.kind === 'none' ? PALETTE_LABEL[palette].name : `${PALETTE_LABEL[palette].name} · ${backdrop.kind === 'preset' ? BACKDROP_LABEL[backdrop.preset] : t('Backdrop.modeImage')}`}</span></div>
       {section !== 'language' && <button type="button" className="button appearance-compare" disabled={!comparing && !(section === 'markdown' && draft) && changedAppearancePreferences(current, DEFAULT_PREFERENCES, section).length === 0} aria-pressed={comparing} onClick={onCompare}>{comparing ? t('SettingsPage.showCurrent') : t('SettingsPage.compareDefaults')}</button>}
-      <div className="appearance-preview-window" data-palette={palette} data-backdrop={backdrop === 'none' ? undefined : backdrop} data-section={section} data-comparing={comparing || undefined} style={{ colorScheme: scheme, ...{ '--md-color-scheme': scheme } }}>
+      <div className="appearance-preview-window" data-palette={palette} data-backdrop={backdrop.kind === 'none' ? undefined : backdrop.kind === 'preset' ? backdrop.preset : 'custom'} data-backdrop-scope={backdrop.kind === 'none' ? undefined : backdrop.scope} data-section={section} data-comparing={comparing || undefined} style={{ colorScheme: scheme, ...{ '--md-color-scheme': scheme }, ...backdropCssVariables(preview, canManageWallpaper()) }}>
         <div className="appearance-preview-toolbar"><ChatIcon /><span>Antumi</span><span className="appearance-preview-sample">{t('SettingsPage.sample')}</span></div>
         {section === 'markdown' ? <MarkdownThemePreview theme={markdownSelection} packs={markdownPacks} reading={preview} /> : <>
         <div className="appearance-preview-chat chat-view" {...previewTypeface}>
@@ -121,18 +180,11 @@ export function AppearanceSettings() {
     for (const key of changed) setPreference(key, DEFAULT_PREFERENCES[key])
     setComparing(false)
   }
-  const backdropLabelId = useId()
-  const backdrop = usePreferences((s) => s.backdrop)
-  const language = usePreferences((s) => s.language)
-  const terminalFontSize = usePreferences((s) => s.terminalFontSize)
-  const terminalLineHeight = usePreferences((s) => s.terminalLineHeight)
-  const colorPrompt = usePreferences((s) => s.colorPrompt)
+  const {
+    backdropMode, backdropScope, backdropOpacity, backdropBlur, backdropSurfaceOpacity, backdropGlassBlur, backdropFit,
+    language, terminalFontSize, terminalLineHeight, colorPrompt, chatFontSize, chatLineHeight, chatParagraphSpacing, chatWidth, foldTurns
+  } = current
   const colorPromptSupported = useCore((s) => s.rpc?.features.includes('terminal-color-prompt') ?? false)
-  const chatFontSize = usePreferences((s) => s.chatFontSize)
-  const chatLineHeight = usePreferences((s) => s.chatLineHeight)
-  const chatParagraphSpacing = usePreferences((s) => s.chatParagraphSpacing)
-  const chatWidth = usePreferences((s) => s.chatWidth)
-  const foldTurns = usePreferences((s) => s.foldTurns)
   return (
     <div className="appearance-workspace">
       <div className="appearance-sections">
@@ -155,15 +207,39 @@ export function AppearanceSettings() {
             description={t('SettingsPage.colorsForTheEntireInterfaceWithLightAnd')}
             control={(labelId) => <PalettePicker labelId={labelId} />}
           />
-          <details className="appearance-backdrop">
-            <summary id={backdropLabelId}>
-              <span>{t('SettingsPage.gradientBackgroundExperimental')}</span>
-              <span className="appearance-backdrop-value">{backdrop === 'none' ? t('common.off') : BACKDROP_LABEL[backdrop]}</span>
-              <ChevronDownIcon />
-            </summary>
-            <p>{t('SettingsPage.aGradientBehindTheSidebarAndWindowEdges')}</p>
-            <BackdropPicker labelId={backdropLabelId} />
-          </details>
+        </SettingsGroup>
+        <SettingsGroup title={t('Backdrop.title')} icon={<ImageIcon />}>
+          <SettingsRow label={t('Backdrop.mode')} description={t('Backdrop.modeDescription')} control={(labelId) => <Resettable label={t('Backdrop.mode')} changed={backdropMode !== DEFAULT_PREFERENCES.backdropMode} onReset={() => setPreference('backdropMode', DEFAULT_PREFERENCES.backdropMode)}>
+            <Segmented labelId={labelId} value={backdropMode} onChange={(value) => setPreference('backdropMode', value)} options={[
+              { value: 'none', label: t('common.off') }, { value: 'preset', label: t('Backdrop.modePreset') }, { value: 'image', label: t('Backdrop.modeImage') }
+            ]} />
+          </Resettable>} />
+          {backdropMode === 'preset' && <SettingsRow label={t('Backdrop.preset')} description={t('Backdrop.presetDescription')} control={(labelId) => <BackdropPicker labelId={labelId} />} />}
+          {backdropMode === 'image' && <WallpaperUploadRow />}
+          {backdropMode !== 'none' && <>
+            <SettingsRow label={t('Backdrop.scope')} description={t('Backdrop.scopeDescription')} control={(labelId) => <Resettable label={t('Backdrop.scope')} changed={backdropScope !== DEFAULT_PREFERENCES.backdropScope} onReset={() => setPreference('backdropScope', DEFAULT_PREFERENCES.backdropScope)}>
+              <Segmented labelId={labelId} value={backdropScope} onChange={(value) => setPreference('backdropScope', value)} options={[
+                { value: 'full', label: t('Backdrop.scopeFull') }, { value: 'frame', label: t('Backdrop.scopeFrame') }
+              ]} />
+            </Resettable>} />
+            <SettingsRow label={t('Backdrop.opacity')} description={t('Backdrop.opacityDescription')} control={(labelId) => <Resettable label={t('Backdrop.opacity')} changed={backdropOpacity !== DEFAULT_PREFERENCES.backdropOpacity} onReset={() => setPreference('backdropOpacity', DEFAULT_PREFERENCES.backdropOpacity)}>
+              <span className="appearance-slider"><input type="range" min={5} max={100} step={1} value={backdropOpacity} aria-labelledby={labelId} onChange={(e) => setPreference('backdropOpacity', Number(e.target.value))} /><output>{backdropOpacity}%</output></span>
+            </Resettable>} />
+            <SettingsRow label={t('Backdrop.blur')} description={t('Backdrop.blurDescription')} control={(labelId) => <Resettable label={t('Backdrop.blur')} changed={backdropBlur !== DEFAULT_PREFERENCES.backdropBlur} onReset={() => setPreference('backdropBlur', DEFAULT_PREFERENCES.backdropBlur)}>
+              <span className="appearance-slider"><input type="range" min={0} max={30} step={1} value={backdropBlur} aria-labelledby={labelId} onChange={(e) => setPreference('backdropBlur', Number(e.target.value))} /><output>{backdropBlur} px</output></span>
+            </Resettable>} />
+            <SettingsRow label={t('Backdrop.surfaceOpacity')} description={t('Backdrop.surfaceOpacityDescription')} control={(labelId) => <Resettable label={t('Backdrop.surfaceOpacity')} changed={backdropSurfaceOpacity !== DEFAULT_PREFERENCES.backdropSurfaceOpacity} onReset={() => setPreference('backdropSurfaceOpacity', DEFAULT_PREFERENCES.backdropSurfaceOpacity)}>
+              <span className="appearance-slider"><input type="range" min={30} max={95} step={1} value={backdropSurfaceOpacity} aria-labelledby={labelId} onChange={(e) => setPreference('backdropSurfaceOpacity', Number(e.target.value))} /><output>{backdropSurfaceOpacity}%</output></span>
+            </Resettable>} />
+            <SettingsRow label={t('Backdrop.glassBlur')} description={t('Backdrop.glassBlurDescription')} control={(labelId) => <Resettable label={t('Backdrop.glassBlur')} changed={backdropGlassBlur !== DEFAULT_PREFERENCES.backdropGlassBlur} onReset={() => setPreference('backdropGlassBlur', DEFAULT_PREFERENCES.backdropGlassBlur)}>
+              <span className="appearance-slider"><input type="range" min={0} max={24} step={1} value={backdropGlassBlur} aria-labelledby={labelId} onChange={(e) => setPreference('backdropGlassBlur', Number(e.target.value))} /><output>{backdropGlassBlur} px</output></span>
+            </Resettable>} />
+            <SettingsRow label={t('Backdrop.fit')} description={t('Backdrop.fitDescription')} control={(labelId) => <Resettable label={t('Backdrop.fit')} changed={backdropFit !== DEFAULT_PREFERENCES.backdropFit} onReset={() => setPreference('backdropFit', DEFAULT_PREFERENCES.backdropFit)}>
+              <Segmented labelId={labelId} value={backdropFit} onChange={(value) => setPreference('backdropFit', value)} options={[
+                { value: 'cover', label: t('Backdrop.fitCover') }, { value: 'contain', label: t('Backdrop.fitContain') }
+              ]} />
+            </Resettable>} />
+          </>}
         </SettingsGroup>
         </div>
         <div hidden={section !== 'chat'}>

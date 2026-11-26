@@ -1,5 +1,5 @@
 import type { ITheme } from '@xterm/xterm'
-import { isDarkTheme } from '../appearance'
+import { isDarkTheme, isTransparentTerminalSurface } from '../appearance'
 import { tokenColor as token, withAlpha } from '../css-color'
 
 type AnsiPalette = Pick<
@@ -66,11 +66,12 @@ const LIGHT_ANSI: AnsiPalette = {
 
 // Chrome colors come from the app's CSS tokens, so the terminal reads as part of the page.
 export function terminalTheme(): ITheme {
+  const solidSurface = token(getComputedStyle(document.documentElement).getPropertyValue('--palette-surface').trim() ? '--palette-surface' : '--surface')
   return {
-    background: token('--surface'),
+    background: isTransparentTerminalSurface() ? 'rgba(0, 0, 0, 0)' : solidSurface,
     foreground: token('--text'),
     cursor: token('--accent'),
-    cursorAccent: token('--surface'),
+    cursorAccent: solidSurface,
     selectionBackground: token('--focus'),
     scrollbarSliderBackground: withAlpha(token('--text-muted'), 0.33),
     scrollbarSliderHoverBackground: withAlpha(token('--text-muted'), 0.53),
