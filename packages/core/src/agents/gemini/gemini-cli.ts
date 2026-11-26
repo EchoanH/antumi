@@ -1,3 +1,4 @@
+import { refreshActiveAgentProxy, buildActiveAgentChildEnv } from '../../agent-proxy'
 import { execFile } from 'node:child_process'
 import { access, readFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -41,7 +42,8 @@ export function geminiCompatible(version: string | null): boolean {
 
 async function geminiVersion(command: string): Promise<string | null> {
   try {
-    const launch = launchFile(command, ['--version'], process.env)
+    await refreshActiveAgentProxy()
+    const launch = launchFile(command, ['--version'], buildActiveAgentChildEnv('gemini'))
     const result = await execute(launch.file, launch.args, { env: launch.env, timeout: 10_000, maxBuffer: 1024 * 1024, windowsHide: true })
     return /\b\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?/.exec(result.stdout)?.[0] ?? null
   } catch {
@@ -67,7 +69,7 @@ export async function requireGemini(): Promise<string> {
 
 export async function geminiCatalog(cwd: string): Promise<ChatCatalog | null> {
   if (!await geminiSignedIn()) return null
-  return probeChatCatalog(new AcpDriver(geminiDialect, 'catalog', { cwd, extraDirs: [], resume: null }), { command: await requireGemini(), args: ['--acp', '--skip-trust'] }, cwd)
+  return probeChatCatalog(new AcpDriver(geminiDialect, 'catalog', { cwd, extraDirs: [], resume: null }), { command: await requireGemini(), args: ['--acp', '--skip-trust'] }, cwd, undefined, 'gemini')
 }
 
 export function geminiInstallation(platform: NodeJS.Platform): AgentCliInstallation {

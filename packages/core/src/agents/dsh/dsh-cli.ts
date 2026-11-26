@@ -1,3 +1,4 @@
+import { refreshActiveAgentProxy, buildActiveAgentChildEnv } from '../../agent-proxy'
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { readFile, mkdir, writeFile } from 'node:fs/promises'
@@ -34,7 +35,8 @@ type DshProbe = { host: LaunchHost; output(launch: Launch): Promise<string> }
 async function versionOf(command: string, env: NodeJS.ProcessEnv, probe: DshProbe): Promise<string | null> {
   let printed: string
   try {
-    printed = (await probe.output(launchFile(command, ['--version'], env, probe.host))).trim()
+    await refreshActiveAgentProxy()
+    printed = (await probe.output(launchFile(command, ['--version'], buildActiveAgentChildEnv('dsh', {}, [], env), probe.host))).trim()
   } catch {
     return null
   }
@@ -126,7 +128,10 @@ export async function prepareDshProfile(command: string, bundle = bundledDsh(), 
     const marker = path.join(profile, '.antumi-runtime')
     const installed = path.join(profile, 'node_modules', '@antumi', 'dsh-runtime', 'package.json')
     if ((await readFile(marker, 'utf8').catch(() => '')) === hash && existsSync(installed)) return
-    const run = (...args: string[]) => launchOutput(launchFile(command, ['plugin', '--profile', 'antumi', ...args], { ...process.env, DSH_HOME: home }), 180_000)
+    const run = async (...args: string[]) => {
+      await refreshActiveAgentProxy()
+      return launchOutput(launchFile(command, ['plugin', '--profile', 'antumi', ...args], buildActiveAgentChildEnv('dsh', { DSH_HOME: home })), 180_000)
+    }
     // Some pnpm releases keep the tarball they already resolved at this path, so drop the old plugin first.
     if (existsSync(installed)) await run('remove', '@antumi/dsh-runtime').catch(() => {})
     try {
@@ -170,5 +175,5 @@ export async function dshCatalog(cwd: string): Promise<ChatCatalog | null> {
   const command = await requireDsh()
   await prepareDshProfile(command)
   const launch = dshCommand({ providerSessionId: null, resume: false, handoffPath: null, extraProjects: [] })
-  return probeChatCatalog(new AcpDriver(dshDialect, 'catalog', { cwd, extraDirs: [], resume: null }, true), { ...launch, command }, cwd)
+  return probeChatCatalog(new AcpDriver(dshDialect, 'catalog', { cwd, extraDirs: [], resume: null }, true), { ...launch, command }, cwd, undefined, 'dsh')
 }

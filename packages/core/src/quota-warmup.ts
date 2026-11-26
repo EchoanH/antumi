@@ -1,3 +1,5 @@
+import { refreshActiveAgentProxy, applyActiveAgentProxy } from './agent-proxy'
+import { Rejection } from './rejection'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -12,7 +14,7 @@ export class WarmupUncertain extends Error {
   constructor() { super('预热结果未确认，本次不会自动重发') }
 }
 
-export async function daemonQuick(host: SessionHost, command: QuickCommand, cwd: string): Promise<string> {
+export async function daemonQuick(host: SessionHost, command: QuickCommand, cwd: string, agent?: AgentKind): Promise<string> {
   let session: string | null = null, output = '', end = 0, finished = false
   let settle: (code: number) => void = () => {}
   const exited = new Promise<number>((resolve) => { settle = (code) => { if (!finished) { finished = true; resolve(code) } } })
@@ -25,7 +27,10 @@ export async function daemonQuick(host: SessionHost, command: QuickCommand, cwd:
   })
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
-    const created = await host.request('spawnPipe', { command: command.command, args: command.args, cwd, env: command.env ?? {} })
+    if (agent) await refreshActiveAgentProxy()
+    const proxy = agent ? applyActiveAgentProxy(agent, command.env, command.unsetEnv) : { env: command.env ?? {}, unsetEnv: [...(command.unsetEnv ?? [])] }
+    if (proxy.unsetEnv.length && !(await host.request('info', {})).features?.includes('unset-env')) throw new Rejection('daemon-outdated', '请重启后台后重试')
+    const created = await host.request('spawnPipe', { agent, command: command.command, args: command.args, cwd, ...proxy })
     session = created.sessionId
     const attached = await host.request('attach', { sessionId: session })
     const tail = end > attached.endOffset ? output.slice(Math.max(0, attached.endOffset - (end - output.length))) : ''
@@ -62,12 +67,12 @@ export async function warmAccount(host: SessionHost, accounts: Pick<AgentAccount
     const model = agentDescriptor(agent).quotaAutomation?.model
     if (!model) throw new Error('没有可用于额度预热的轻量模型')
     const command = await quick.command('Reply with exactly OK. Do not use any tools.', model, file)
-    const overrides = adapter.warmup ? adapter.warmup.args(await daemonQuick(host, { ...adapter.warmup.probe, env: { ...adapter.warmup.probe.env, ...launch.env } }, dir)) : []
+    const overrides = adapter.warmup ? adapter.warmup.args(await daemonQuick(host, { ...adapter.warmup.probe, env: { ...adapter.warmup.probe.env, ...launch.env } }, dir, agent)) : []
     const boundary = command.args.lastIndexOf('--')
     const guarded = boundary === -1 ? [...command.args, ...overrides] : [...command.args.slice(0, boundary), ...overrides, ...command.args.slice(boundary)]
     const args = command.stdin === null ? guarded : guarded.at(-1) === '-'
       ? [...guarded.slice(0, -1), command.stdin] : [...guarded, '--', command.stdin]
-    const printed = await daemonQuick(host, { ...command, args, stdin: null, env: { ...command.env, ...launch.env } }, dir)
+    const printed = await daemonQuick(host, { ...command, args, stdin: null, env: { ...command.env, ...launch.env } }, dir, agent)
     const answer = quick.parse(printed, model)
     if (answer.metering) record(answer.metering)
     const text = command.output === 'file' ? await readFile(file, 'utf8').catch(() => '') : answer.text

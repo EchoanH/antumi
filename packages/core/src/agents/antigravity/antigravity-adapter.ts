@@ -46,7 +46,7 @@ async function antigravityCatalog(cwd: string, account?: { id: string; home?: st
   const env = { ...account?.env, ...(home ? { GEMINI_HOME: home } : {}) }
   try {
     const cmd = backend === 'agy-cli' ? agyCliCommand(await requireAgyCli(), home) : { command: await requireAntigravity(), args: args(), env: { ...env, PYTHONUNBUFFERED: '1', AGY_ACP_FORCE_FILE_STORAGE: '1' } }
-    return await probeChatCatalog(driver, { ...cmd, unsetEnv: [...ANTIGRAVITY_STRIPPED_ENV], env: { ...env, ...cmd.env } }, cwd, CATALOG_TIMEOUT_MS)
+    return await probeChatCatalog(driver, { ...cmd, unsetEnv: [...ANTIGRAVITY_STRIPPED_ENV], env: { ...env, ...cmd.env } }, cwd, CATALOG_TIMEOUT_MS, 'antigravity')
   } finally {
     const sessionId = driver.providerSessionId()
     if (sessionId && /^[\w-]+$/.test(sessionId)) {

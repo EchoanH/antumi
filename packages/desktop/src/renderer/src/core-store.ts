@@ -12,6 +12,8 @@ import {
   coreUrl,
   type AgentCliStatus,
   type AgentKind,
+  type AgentProxyStatus,
+  type AgentProxyTestResult,
   type AgentUsage,
   type ResetCreditOutcome,
   type LoginNotice,
@@ -1447,6 +1449,18 @@ export function useAccountsSupported(): boolean {
   return useCore((s) => s.rpc?.features.includes('agent-accounts') ?? false)
 }
 
+export function useAgentProxySupported(): boolean {
+  return useCore((s) => s.rpc?.features.includes('agent-proxy') ?? false)
+}
+
+export function fetchAgentProxyStatus(refresh = false): Promise<AgentProxyStatus | null> {
+  return perform((rpc) => rpc.call('system.agentProxyStatus', refresh ? { refresh: true } : {}))
+}
+
+export function testAgentProxy(params: RpcParams<'system.testAgentProxy'> = {}): Promise<AgentProxyTestResult | null> {
+  return perform((rpc) => rpc.call('system.testAgentProxy', params))
+}
+
 export function useModelProvidersSupported(): boolean {
   return useCore((s) => s.rpc?.features.includes('model-providers') ?? false)
 }
@@ -1467,9 +1481,10 @@ export function useDashboardSupported(): boolean {
   return useCore((s) => s.rpc?.features.includes('dashboard') ?? false)
 }
 
-export async function setChatSettings(patch: Partial<ChatSettings>): Promise<void> {
+export async function setChatSettings(patch: Partial<ChatSettings>): Promise<boolean> {
   const settings = await perform((rpc) => rpc.call('system.setChatSettings', patch))
   if (settings) useCore.setState({ chatSettings: settings })
+  return Boolean(settings)
 }
 
 export function useEnvironmentSupported(): boolean {

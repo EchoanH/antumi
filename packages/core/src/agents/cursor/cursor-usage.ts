@@ -73,9 +73,9 @@ export async function readCursorUsage(): Promise<UsageReading> {
   }
   const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'Connect-Protocol-Version': '1' }
   const [usage, plan] = await Promise.all([
-    fetchUsageJson(`${DASHBOARD_URL}/GetCurrentPeriodUsage`, headers, '{}'),
+    fetchUsageJson(`${DASHBOARD_URL}/GetCurrentPeriodUsage`, headers, '{}', undefined, 'cursor'),
     // The plan's name is a nicety: the numbers stand without it.
-    fetchUsageJson(`${DASHBOARD_URL}/GetPlanInfo`, headers, '{}').catch(() => null)
+    fetchUsageJson(`${DASHBOARD_URL}/GetPlanInfo`, headers, '{}', undefined, 'cursor').catch(() => null)
   ])
   return { signedIn: true, windows: parseCursorUsage(usage), plan: parseCursorPlan(plan) }
 }

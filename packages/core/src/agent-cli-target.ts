@@ -1,3 +1,4 @@
+import { refreshActiveAgentProxy, buildActiveAgentChildEnv, fetchWithAgentProxy } from './agent-proxy'
 import { execFile } from 'node:child_process'
 import { readFile, realpath } from 'node:fs/promises'
 import os from 'node:os'
@@ -12,6 +13,7 @@ import { stripAnsi } from './ansi-text'
 
 export type CliCommand = { command: string; args: string[] }
 export type CliTarget = {
+  agent?: AgentKind
   path: string
   identity: string
   version: string | null
@@ -26,7 +28,7 @@ export type CliTarget = {
 export type CliTargetHost = {
   platform: NodeJS.Platform
   home: string
-  run(command: CliCommand): Promise<string>
+  run(command: CliCommand, agent?: AgentKind): Promise<string>
   canonical(file: string): Promise<string>
   read(file: string): Promise<string>
 }
@@ -35,8 +37,9 @@ export const cliTargetHost: CliTargetHost = {
   platform: process.platform, home: os.homedir(),
   canonical: realpath,
   read: (file) => readFile(file, 'utf8'),
-  async run(command) {
-    const launch = planLaunch(command.command, command.args, os.homedir(), { ...process.env, OPENCODE_DISABLE_AUTOUPDATE: '1', PI_OFFLINE: '1' })
+  async run(command, agent) {
+    if (agent) await refreshActiveAgentProxy()
+    const launch = planLaunch(command.command, command.args, os.homedir(), agent ? buildActiveAgentChildEnv(agent, { OPENCODE_DISABLE_AUTOUPDATE: '1', PI_OFFLINE: '1' }) : { ...process.env, OPENCODE_DISABLE_AUTOUPDATE: '1', PI_OFFLINE: '1' })
     const pending = execute(launch.file, launch.args, { env: launch.env, timeout: 5000, maxBuffer: 256 * 1024, windowsHide: true })
     // Read-only probes have no input. Some Windows launchers wait for EOF before exiting.
     pending.child.stdin?.end()
@@ -84,8 +87,8 @@ export async function resolveCliTarget(agent: AgentKind, environment: Environmen
   const canonical = await host.canonical(selected).catch(() => selected)
   const maintenance = adapterOf(agent).maintenance
   const managedOnly = Boolean(maintenance?.managedRuntime) && (!check.runtime?.active || check.runtime.active === 'managed-acp')
-  const version = managedOnly ? check.version : cliVersion(await host.run({ command: selected, args: ['--version'] }).catch(() => ''))
-  const base = { path: selected, version, ...(maintenance?.checkedVersion ? { checkedVersion: maintenance.checkedVersion } : {}) }
+  const version = managedOnly ? check.version : cliVersion(await host.run({ command: selected, args: ['--version'] }, agent).catch(() => ''))
+  const base = { agent, path: selected, version, ...(maintenance?.checkedVersion ? { checkedVersion: maintenance.checkedVersion } : {}) }
   const target = (channel: CliTarget['channel'], command: CliCommand | null, latestUrl: string | null, tagPrefix?: string): CliTarget => ({ ...base, channel, command, latestUrl, tagPrefix, identity: JSON.stringify({ selected, canonical, channel, command }) })
   if (managedOnly || check.requiresStandaloneCli || desktopCli(selected, host.platform) || desktopCli(canonical, host.platform)) return target('desktop', null, null)
   const packageName = maintenance?.packageName
@@ -93,7 +96,7 @@ export async function resolveCliTarget(agent: AgentKind, environment: Environmen
     const proofs: CliTarget[] = []
     for (const manager of ['npm', 'pnpm', 'bun'] as const) {
       try {
-        const output = await host.run({ command: manager, args: manager === 'bun' ? ['pm', 'bin', '-g'] : ['root', '-g'] })
+        const output = await host.run({ command: manager, args: manager === 'bun' ? ['pm', 'bin', '-g'] : ['root', '-g'] }, agent)
         const root = output.split(/\r?\n/).map((line) => line.trim()).find((line) => paths.isAbsolute(line))
         if (!root) continue
         const packageRoot = manager === 'bun' ? paths.resolve(root, '..', 'install/global/node_modules', packageName) : paths.join(root, packageName)
@@ -124,10 +127,10 @@ export async function resolveCliTarget(agent: AgentKind, environment: Environmen
   const brew = maintenance?.brew
   if (brew && host.platform !== 'win32') {
     try {
-      const prefix = await host.run({ command: 'brew', args: ['--prefix', ...(brew.cask ? ['--cask'] : []), brew.name] })
+      const prefix = await host.run({ command: 'brew', args: ['--prefix', ...(brew.cask ? ['--cask'] : []), brew.name] }, agent)
       const root = await host.canonical(prefix.trim())
       if (inside(canonical, root, host.platform)) {
-        const json = BrewInfo.parse(JSON.parse(await host.run({ command: 'brew', args: ['info', '--json=v2', ...(brew.cask ? ['--cask'] : ['--formula']), brew.name] })))
+        const json = BrewInfo.parse(JSON.parse(await host.run({ command: 'brew', args: ['info', '--json=v2', ...(brew.cask ? ['--cask'] : ['--formula']), brew.name] }, agent)))
         if (brew.cask ? Boolean(json.casks?.[0]?.installed) : Boolean(json.formulae?.[0]?.installed.length)) {
           return target('homebrew', { command: 'brew', args: ['upgrade', brew.cask ? '--cask' : '--formula', brew.name] }, `https://formulae.brew.sh/api/${brew.cask ? 'cask' : 'formula'}/${brew.name}.json`)
         }
@@ -137,7 +140,7 @@ export async function resolveCliTarget(agent: AgentKind, environment: Environmen
   const native = maintenance?.native
   if (native?.roots[host.platform]?.some((root) => inside(canonical, paths.join(host.home, root), host.platform))) {
     // Old CLIs may interpret unknown commands as prompts. Help is the read-only capability probe.
-    const help = await host.run({ command: selected, args: ['--help'] }).catch(() => '')
+    const help = await host.run({ command: selected, args: ['--help'] }, agent).catch(() => '')
     const subcommand = native.args[0]
     if (subcommand && new RegExp(`^\\s*${subcommand}(?:[\\s|,]|$)`, 'm').test(help)) {
       return target('native', { command: selected, args: [...native.args] }, native.latestUrl ?? null, native.tagPrefix)
@@ -147,9 +150,9 @@ export async function resolveCliTarget(agent: AgentKind, environment: Environmen
 }
 
 const Latest = z.object({ version: z.string().optional(), tag_name: z.string().optional(), versions: z.object({ stable: z.string().nullable() }).optional() })
-export async function latestCliVersion(target: CliTarget, fetchImpl: typeof fetch = fetch): Promise<string | null> {
+export async function latestCliVersion(target: CliTarget, fetchImpl?: typeof fetch): Promise<string | null> {
   if (!target.latestUrl) return null
-  const response = await fetchImpl(target.latestUrl, { signal: AbortSignal.timeout(5000), headers: { Accept: 'application/json', 'User-Agent': 'Antumi-CLI-Maintenance' } })
+  const response = await (fetchImpl ?? (target.agent ? fetchWithAgentProxy.bind(null, target.agent) : fetch))(target.latestUrl, { signal: AbortSignal.timeout(5000), headers: { Accept: 'application/json', 'User-Agent': 'Antumi-CLI-Maintenance' } })
   if (!response.ok) throw new Error('agent-cli-network')
   const json = Latest.parse(await response.json())
   return cliVersion(json.version ?? json.versions?.stable ?? json.tag_name?.replace(target.tagPrefix ?? /^v/, '') ?? '')

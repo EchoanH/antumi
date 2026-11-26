@@ -4,7 +4,7 @@ import type { BrowserSite, BrowserStatus, WireUsage } from '@antumi/protocol'
 import { useEffect, useId, useMemo, useRef, useState, type ReactElement } from 'react'
 import { AGENT_KINDS, agentDescriptor, LANGUAGE_NAMES, PROTOCOL_VERSION, quickModel, TRANSLATE_LANGUAGES, UNATTENDED_MODES, type AgentKind, type SourceDescriptor, type UnattendedMode } from '@antumi/protocol'
 import packageJson from '../../../../package.json'
-import { perform, setAwakeMode, setChatSettings, setSettingsOpen, useAwakeSupported, useCore, useBrowserSupported, useChatCommandsSupported, useConversationArchiveSupported, useKnowledgeBaseSupported, useMcpServersSupported, useModelProvidersSupported, useSessionImportSupported, useAccountsSupported, useProjectConfigEditSupported, useSkillsSupported, useTranslateSupported, useWireLogSupported } from '../core-store'
+import { perform, setAwakeMode, setChatSettings, setSettingsOpen, useAwakeSupported, useCore, useBrowserSupported, useChatCommandsSupported, useConversationArchiveSupported, useKnowledgeBaseSupported, useMcpServersSupported, useModelProvidersSupported, useSessionImportSupported, useAccountsSupported, useAgentProxySupported, useProjectConfigEditSupported, useSkillsSupported, useTranslateSupported, useWireLogSupported } from '../core-store'
 import { MAX_PROJECT_NAME, setPreference, usePreferences, type Preferences } from '../preferences'
 import { renameProject } from '../project-names'
 import { ProjectColorPicker } from './ProjectColorPicker'
@@ -49,6 +49,7 @@ import {
   BoltIcon,
   RobotIcon,
   PulseIcon,
+  ProxyIcon,
   TerminalIcon, PhoneIcon, ArchiveIcon, LaptopIcon } from './icons'
 import { ChatCommandSettings } from './ChatCommandSettings'
 import { KnowledgeBaseSettings } from './KnowledgeBaseSettings'
@@ -58,6 +59,7 @@ import { SessionImportSettings } from './SessionImportSettings'
 import { ArchivedConversationSettings } from './ArchivedConversationSettings'
 import { ModelProviderSettings } from './ModelProviderSettings'
 import { AgentAccountSettings } from './AgentAccountSettings'
+import { AgentProxySettings } from './AgentProxySettings'
 import { CopyButton } from './CopyButton'
 import { checkStatusText, GIT_INSTALL_HINT } from '../environment-text'
 import { settingsSectionOf } from './SourceInboxView'
@@ -816,6 +818,18 @@ const MODEL_PROVIDERS_SECTION: Section = localized(() => ({
   grouped: true
 }))
 
+// On a core with local CLI proxy management: global and per-CLI proxy rules; it follows 服务商.
+const AGENT_PROXY_SECTION: Section = localized(() => ({
+  id: 'agent-proxy',
+  group: t('AgentProfiles.title'),
+  title: t('AgentProxy.title'),
+  description: t('AgentProxy.description'),
+  keywords: [t('AgentProxy.title'), 'proxy', '代理', 'http', 'https', 'socks5', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'TUN', t('AgentProxy.modeSystem'), t('AgentProxy.modeManual'), t('AgentProxy.modeNone'), ...AGENT_KINDS],
+  Icon: ProxyIcon,
+  Body: AgentProxySettings,
+  grouped: true
+}))
+
 // On a core that keeps a wire log: whether it does, and what it holds.
 const DEBUG_SECTION: Section = localized(() => ({
   id: 'debug',
@@ -936,6 +950,7 @@ export function SettingsPage() {
   const sessionImport = useSessionImportSupported()
   const modelProviders = useModelProvidersSupported()
   const accounts = useAccountsSupported()
+  const agentProxy = useAgentProxySupported()
   const chatCommands = useChatCommandsSupported()
   const wireLog = useWireLogSupported()
   const run = useRunSettingsShown()
@@ -947,11 +962,11 @@ export function SettingsPage() {
     const support = SECTIONS.filter((section) => section.id === 'support')
     const own = SECTIONS.filter((section) => section.id !== 'about' && section.id !== 'support' && (section.id !== 'notifications' || canNotify() || canShowRequestPopup()))
       .flatMap((section) => (section.id === 'agents' ? [
-        section, ...(accounts ? [ACCOUNTS_SECTION] : []), ...(modelProviders ? [MODEL_PROVIDERS_SECTION] : []), ...(run || permissions ? [RUN_PERMISSIONS_SECTION] : []),
+        section, ...(accounts ? [ACCOUNTS_SECTION] : []), ...(modelProviders ? [MODEL_PROVIDERS_SECTION] : []), ...(agentProxy ? [AGENT_PROXY_SECTION] : []), ...(run || permissions ? [RUN_PERMISSIONS_SECTION] : []),
         CONVERSATION_SECTION, ...(chatCommands ? [CHAT_COMMANDS_SECTION] : []), ...(sessionImport ? [SESSION_IMPORT_SECTION] : [])
       ] : [section]))
     return [...own, ...(plugins ? [PLUGINS_SECTION] : []), ...sourceSections(sources ?? []), ...(knowledge ? [KNOWLEDGE_SECTION] : []), ...(browser ? [BROWSER_SECTION] : []), ...(phones ? [MOBILE_SECTION] : []), ...(skills ? [SKILLS_SECTION] : []), ...(mcp ? [MCP_SECTION] : []), ...update, ...(storage ? [STORAGE_SECTION] : []), ...(backendLocation ? [BACKEND_LOCATION_SECTION] : []), ...support, ...(wireLog ? [DEBUG_SECTION] : [])]
-  }, [sources, browser, phones, storage, knowledge, skills, mcp, sessionImport, accounts, modelProviders, chatCommands, wireLog, plugins, run, permissions, backendLocation, locale])
+  }, [sources, browser, phones, storage, knowledge, skills, mcp, sessionImport, accounts, modelProviders, agentProxy, chatCommands, wireLog, plugins, run, permissions, backendLocation, locale])
   const requestedId = useCore((state) => state.settingsSection)
   const activeId = requestedId === 'run' ? 'permissions' : requestedId ?? SECTIONS[0]?.id ?? ''
   const [query, setQuery] = useState('')

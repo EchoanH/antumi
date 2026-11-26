@@ -86,7 +86,7 @@ export function antigravityInstallation(platform: NodeJS.Platform, host: Host = 
       shell: 'powershell',
       command: [
         `$d = ${psQuoted(dir)}; $z = Join-Path $env:TEMP 'agy-acp-${ANTIGRAVITY_VERSION}.zip'`,
-        `Invoke-WebRequest ${psQuoted(url)} -OutFile $z`,
+        `if (Get-Command curl.exe -CommandType Application -ErrorAction SilentlyContinue) { curl.exe -fL --progress-bar ${psQuoted(url)} -o $z; if ($LASTEXITCODE -ne 0) { throw 'Antigravity download failed' } } else { $p = $env:HTTPS_PROXY; if (!$p) { $p = $env:HTTP_PROXY }; if (!$p) { $p = $env:ALL_PROXY }; if ($p -and $p -notmatch '^https?://') { throw 'Antigravity SOCKS download requires curl.exe' }; $download = @{ Uri = ${psQuoted(url)}; OutFile = $z; UseBasicParsing = $true; ErrorAction = 'Stop' }; $previousProxy = [System.Net.WebRequest]::DefaultWebProxy; try { [System.Net.WebRequest]::DefaultWebProxy = $null; if ($p) { Invoke-WebRequest @download -Proxy $p } else { Invoke-WebRequest @download } } finally { [System.Net.WebRequest]::DefaultWebProxy = $previousProxy } }`,
         `if ((Get-FileHash $z -Algorithm SHA256).Hash -ne '${pin.sha256.toUpperCase()}') { throw 'Antigravity download checksum mismatch' }`,
         `Remove-Item -Recurse -Force "$d.partial" -ErrorAction SilentlyContinue; Expand-Archive $z "$d.partial"; Remove-Item -Recurse -Force $d -ErrorAction SilentlyContinue; Move-Item "$d.partial" $d; Remove-Item $z`
       ].join('; ')

@@ -1,3 +1,4 @@
+import { refreshActiveAgentProxy, buildActiveAgentChildEnv } from '../../agent-proxy'
 import { execFile } from 'node:child_process'
 import { realpath, stat } from 'node:fs/promises'
 import { basename, delimiter, join } from 'node:path'
@@ -15,7 +16,8 @@ const cache = new Map<string, Promise<{ version: string; compatible: boolean }>>
 const clean = (text: string) => text.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '')
 
 async function output(command: string, args: string[]): Promise<string> {
-  const launch = launchFile(command, args, process.env)
+  await refreshActiveAgentProxy()
+  const launch = launchFile(command, args, buildActiveAgentChildEnv('cursor'))
   const result = await execute(launch.file, launch.args, { env: launch.env, timeout: 10_000, maxBuffer: 128 * 1024, windowsHide: true })
   return clean(result.stdout)
 }
@@ -88,7 +90,7 @@ export async function cursorSignedIn(command: string): Promise<boolean | null> {
 
 export async function cursorCatalog(cwd: string): Promise<ChatCatalog | null> {
   const command = await requireCursorCli()
-  return probeChatCatalog(new CursorAcp('catalog', { cwd, extraDirs: [], resume: null }, true), { command, args: ['acp'] }, cwd)
+  return probeChatCatalog(new CursorAcp('catalog', { cwd, extraDirs: [], resume: null }, true), { command, args: ['acp'] }, cwd, undefined, 'cursor')
 }
 
 // Commands published by Cursor, selected for the core host rather than the client OS.

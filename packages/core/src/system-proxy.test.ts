@@ -1,3 +1,5 @@
+import { vi } from 'vitest'
+import { parseLinuxGsettingsProxy, readOsProxySettings, useSystemProxy } from './system-proxy'
 import http from 'node:http'
 import net from 'node:net'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -9,11 +11,11 @@ const REG = (lines: string) => `\r\nHKEY_CURRENT_USER\\Software\\Microsoft\\Wind
 describe('reading the system proxy', () => {
   it('reads Windows Internet Settings, one server for all schemes or per scheme, off when disabled', () => {
     expect(parseWindowsProxy(REG('    ProxyEnable    REG_DWORD    0x1\r\n    ProxyServer    REG_SZ    127.0.0.1:7890\r\n    ProxyOverride    REG_SZ    localhost;127.*;10.*;<local>')))
-      .toEqual({ http: 'http://127.0.0.1:7890', https: 'http://127.0.0.1:7890', bypass: ['localhost', '127.*', '10.*', '<local>'] })
+      .toEqual({ http: 'http://127.0.0.1:7890', https: 'http://127.0.0.1:7890', socks: null, bypass: ['localhost', '127.*', '10.*', '<local>'] })
     expect(parseWindowsProxy(REG('    ProxyEnable    REG_DWORD    0x1\r\n    ProxyServer    REG_SZ    http=127.0.0.1:8080;https=127.0.0.1:8443;socks=127.0.0.1:1080')))
-      .toEqual({ http: 'http://127.0.0.1:8080', https: 'http://127.0.0.1:8443', bypass: [] })
-    expect(parseWindowsProxy(REG('    ProxyEnable    REG_DWORD    0x1\r\n    ProxyServer    REG_SZ    socks=127.0.0.1:1080'))).toEqual({ http: null, https: null, bypass: [] })
-    expect(parseWindowsProxy(REG('    ProxyEnable    REG_DWORD    0x0\r\n    ProxyServer    REG_SZ    127.0.0.1:7890'))).toEqual({ http: null, https: null, bypass: [] })
+      .toEqual({ http: 'http://127.0.0.1:8080', https: 'http://127.0.0.1:8443', socks: 'socks5://127.0.0.1:1080', bypass: [] })
+    expect(parseWindowsProxy(REG('    ProxyEnable    REG_DWORD    0x1\r\n    ProxyServer    REG_SZ    socks=127.0.0.1:1080'))).toEqual({ http: null, https: null, socks: 'socks5://127.0.0.1:1080', bypass: [] })
+    expect(parseWindowsProxy(REG('    ProxyEnable    REG_DWORD    0x0\r\n    ProxyServer    REG_SZ    127.0.0.1:7890'))).toEqual({ http: null, https: null, socks: null, bypass: [] })
   })
 
   it('reads macOS proxy settings with their exceptions', () => {
@@ -31,16 +33,16 @@ describe('reading the system proxy', () => {
   HTTPSProxy : 127.0.0.1
   SOCKSEnable : 0
 }`
-    expect(parseMacProxy(text)).toEqual({ http: 'http://127.0.0.1:7890', https: 'http://127.0.0.1:7890', bypass: ['192.168.0.0/16', '*.local', '<local>'] })
-    expect(parseMacProxy('<dictionary> {\n  HTTPEnable : 0\n  HTTPSEnable : 0\n}')).toEqual({ http: null, https: null, bypass: [] })
+    expect(parseMacProxy(text)).toEqual({ http: 'http://127.0.0.1:7890', https: 'http://127.0.0.1:7890', socks: null, bypass: ['192.168.0.0/16', '*.local', '<local>'] })
+    expect(parseMacProxy('<dictionary> {\n  HTTPEnable : 0\n  HTTPSEnable : 0\n}')).toEqual({ http: null, https: null, socks: null, bypass: [] })
   })
 
   it('lets environment variables the user set win over the system', async () => {
-    expect(envProxy({ https_proxy: 'proxy.corp:3128', NO_PROXY: '.corp, intranet' })).toEqual({ http: null, https: 'http://proxy.corp:3128', bypass: ['.corp', 'intranet'] })
+    expect(envProxy({ https_proxy: 'proxy.corp:3128', NO_PROXY: '.corp, intranet' })).toEqual({ http: null, https: 'http://proxy.corp:3128', socks: null, bypass: ['.corp', 'intranet'] })
     expect(envProxy({})).toBeNull()
     const settings = await readProxySettings({ platform: 'win32', env: { HTTPS_PROXY: 'http://env:1' }, run: async () => { throw new Error('not asked') } })
     expect(settings.https).toBe('http://env:1')
-    expect(await readProxySettings({ platform: 'win32', env: {}, run: async () => { throw new Error('no reg') } })).toEqual({ http: null, https: null, bypass: [] })
+    expect(await readProxySettings({ platform: 'win32', env: {}, run: async () => { throw new Error('no reg') } })).toEqual({ http: null, https: null, socks: null, bypass: [] })
   })
 
   it('sends loopback and listed hosts direct, the rest through the proxy for their scheme', () => {
@@ -84,9 +86,43 @@ describe('routing requests', () => {
     const dispatcher = systemProxyDispatcher(() => settings)
     expect(await (await fetch('http://plugins.example:80/zip', { dispatcher })).text()).toBe('hello')
     expect(tunnelled).toEqual(['plugins.example:80'])
-    settings = { http: null, https: null, bypass: [] }
+    settings = { http: null, https: null, socks: null, bypass: [] }
     expect(await (await fetch(`http://127.0.0.1:${target}/`, { dispatcher })).text()).toBe('hello')
     expect(tunnelled).toHaveLength(1)
     await dispatcher.close()
   })
+})
+
+it('reads SOCKS-only OS proxies and Linux gsettings independently of environment', async () => {
+  expect(parseWindowsProxy(REG('    ProxyEnable    REG_DWORD    0x1\r\n    ProxyServer    REG_SZ    socks5h://localhost:1080'))).toMatchObject({ http: null, https: null, socks: 'socks5h://localhost:1080' })
+  expect(parseMacProxy('  SOCKSEnable : 1\n  SOCKSProxy : localhost\n  SOCKSPort : 1080')).toMatchObject({ socks: 'socks5://localhost:1080' })
+  expect(parseLinuxGsettingsProxy("'manual'", "'proxy'", '8080', "'secure'", '8443', "'socks'", '1080', "['localhost', '*.local']")).toEqual({ http: 'http://proxy:8080', https: 'http://secure:8443', socks: 'socks5://socks:1080', bypass: ['localhost', '*.local'] })
+  expect(parseLinuxGsettingsProxy("'auto'", '', '0', '', '0', '', '0', '[]')).toMatchObject({ http: null, https: null, socks: null })
+  const host = { platform: 'win32' as const, env: { HTTPS_PROXY: 'http://env:80' }, run: async () => REG('    ProxyEnable    REG_DWORD    0x1\r\n    ProxyServer    REG_SZ    os:8080') }
+  expect((await readOsProxySettings(host)).settings.https).toBe('http://os:8080')
+  expect((await readProxySettings(host)).https).toBe('http://env:80')
+  expect(envProxy({ HTTPS_PROXY: ' ', https_proxy: 'http://lower:80', ALL_PROXY: 'socks5://all:1080' })).toMatchObject({ https: 'http://lower:80', socks: null })
+  const values: Record<string, string> = { 'mode': "'manual'", 'org.gnome.system.proxy.http/host': "'host'", 'org.gnome.system.proxy.http/port': '8080' }
+  const linux = await readOsProxySettings({ platform: 'linux', env: {}, run: async (_command, args) => values[args[1] + '/' + args[2]] ?? values[args[2] ?? ''] ?? "''" })
+  expect(linux).toMatchObject({ source: 'linux-gsettings', settings: { http: 'http://host:8080' } })
+  expect(await readOsProxySettings({ platform: 'linux', env: {}, run: async () => { throw new Error('missing') } })).toEqual({ settings: { http: null, https: null, socks: null, bypass: [] }, source: 'none' })
+})
+it('redacts credentials when logging the Core system proxy', async () => {
+  const { getGlobalDispatcher, setGlobalDispatcher } = await import('undici')
+  const previous = getGlobalDispatcher()
+  const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+  vi.useFakeTimers()
+  try {
+    await useSystemProxy({ platform: 'win32', env: { HTTPS_PROXY: 'http://user:secret@localhost:8080' }, run: async () => '' })
+    expect(log).toHaveBeenCalledWith('[antumi-core] proxy for its own requests: http://***@localhost:8080')
+    expect(JSON.stringify(log.mock.calls)).not.toContain('secret')
+    await getGlobalDispatcher().close()
+  } finally { setGlobalDispatcher(previous); vi.clearAllTimers(); vi.useRealTimers(); log.mockRestore() }
+})
+
+it.each(['ALL_PROXY', 'all_proxy'])('keeps the Core OS HTTP proxy when only %s is inherited', async (key) => {
+  const env = { [key]: 'socks5://env:1080' }
+  expect(envProxy(env)).toBeNull()
+  const settings = await readProxySettings({ platform: 'win32', env, run: async () => REG('    ProxyEnable    REG_DWORD    0x1\r\n    ProxyServer    REG_SZ    os:8080') })
+  expect(settings).toEqual({ http: 'http://os:8080', https: 'http://os:8080', socks: null, bypass: [] })
 })

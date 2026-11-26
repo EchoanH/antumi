@@ -1,4 +1,5 @@
-import type { ResetCreditOutcome, ResetCredits, UsageWindow } from '@antumi/protocol'
+import { fetchWithAgentProxy } from './agent-proxy'
+import type { AgentKind, ResetCreditOutcome, ResetCredits, UsageWindow } from '@antumi/protocol'
 
 export type UsageReading =
   | { signedIn: false }
@@ -47,10 +48,10 @@ export class UsageFetchError extends Error {
 const TIMEOUT_MS = 10_000
 
 // A body makes it a POST, as an RPC-style endpoint wants.
-export async function fetchUsageJson(url: string, headers: Record<string, string>, body?: string, timeoutMs = TIMEOUT_MS): Promise<unknown> {
-  let response: Response
+export async function fetchUsageJson(url: string, headers: Record<string, string>, body?: string, timeoutMs = TIMEOUT_MS, agent?: AgentKind): Promise<unknown> {
+  let response: Awaited<ReturnType<typeof fetchWithAgentProxy>>
   try {
-    response = await fetch(url, { headers, signal: AbortSignal.timeout(timeoutMs), ...(body === undefined ? {} : { method: 'POST', body }) })
+    response = await (agent ? fetchWithAgentProxy.bind(null, agent) : fetch)(url, { headers, signal: AbortSignal.timeout(timeoutMs), ...(body === undefined ? {} : { method: 'POST', body }) })
   } catch (error) {
     throw new UsageFetchError('request-failed', error instanceof Error ? error.message : String(error))
   }

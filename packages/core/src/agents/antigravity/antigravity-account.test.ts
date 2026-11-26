@@ -1,3 +1,5 @@
+import { AgentProxySettings } from '@antumi/protocol'
+import { AgentProxyService, setActiveAgentProxy } from '../../agent-proxy'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises'
@@ -12,9 +14,9 @@ import { UsageFetchError } from '../../usage-source'
 import { antigravityTokenFile } from './antigravity-runtime'
 import { readAntigravityUsage } from './antigravity-usage'
 import * as runtime from './antigravity-runtime'
-import { agyCliCommand, agyCliTokenFile, antigravityMetaFile, antigravitySettingsFile, backendDataDir, ensureOAuthSettings, setAntigravityRuntimeMode } from './antigravity-backend'
+import { ANTIGRAVITY_STRIPPED_ENV, agyCliCommand, agyCliTokenFile, antigravityMetaFile, antigravitySettingsFile, backendDataDir, ensureOAuthSettings, setAntigravityRuntimeMode } from './antigravity-backend'
 import { clearAgyAccessTokenCache, refreshAgyCliAccessTokenSilently, resolveCredentialIdentity, readAntigravityIdentity, clearAntigravityCredentials, readManagedCredential, readAgyCliCredential, readAntigravityMeta, refreshHash, syncAfterAntigravityLogin, syncForAntigravityBackendSwitch, writePrivateJson } from './antigravity-credentials'
-import { AgentAccountStore } from '../../agent-accounts'
+import { AgentAccountStore, type AccountDeps } from '../../agent-accounts'
 
 let root: string
 let own: string
@@ -387,3 +389,29 @@ it('distinguishes project/quota fetch failures from valid empty quota windows', 
   vi.mocked(fetch).mockImplementation(async () => Response.json({ groups: [] }))
   expect(await readAntigravityUsage()).toEqual({ signedIn: true, windows: [], plan: null })
 })
+
+for (const backend of ['agy-cli', 'managed-acp'] as const) for (const policy of ['useProxy', 'noProxy'] as const) {
+  it(backend + ' login applies ' + policy + ' and keeps Antigravity stripped variables', async () => {
+    setAntigravityRuntimeMode(backend)
+    vi.spyOn(backendRuntime, 'requireAgyCli').mockResolvedValue('/bin/agy')
+    vi.spyOn(runtime, 'requireAntigravity').mockResolvedValue('/managed/agy_acp_server')
+    const proxy = new AgentProxyService(AgentProxySettings.parse({ mode: 'system', agents: { antigravity: policy } }), { platform: 'win32', env: { HTTPS_PROXY: 'http://stale:80' }, run: async () => '    ProxyEnable    REG_DWORD    0x1\n    ProxyServer    REG_SZ    127.0.0.1:7897' })
+    await proxy.start()
+    setActiveAgentProxy(proxy)
+    const signIn = vi.fn<AccountDeps['signIn']>(async () => ({ id: 'login', sessionId: 'login-session', cwd: root, title: 'login', createdAt: 0, command: null, exited: false, exitCode: null }))
+    const store = new AgentAccountStore(path.join(root, 'proxy-accounts.json'), path.join(root, 'proxy-accounts'), { signIn, waitForExit: () => new Promise(() => {}), accountChanged: () => {}, changed: () => {} })
+    try {
+      await store.load()
+      await store.login('antigravity', 'default')
+      const call = signIn.mock.calls.at(-1)
+      if (!call) throw new Error('login terminal was not opened')
+      const [command, env, , agent, , unsetEnv] = call
+      expect(agent).toBe('antigravity')
+      expect(unsetEnv).toEqual(expect.arrayContaining([...ANTIGRAVITY_STRIPPED_ENV, 'HTTP_PROXY', 'HTTPS_PROXY', 'npm_config_proxy']))
+      if (policy === 'useProxy') expect(env).toMatchObject({ HTTP_PROXY: 'http://127.0.0.1:7897', HTTPS_PROXY: 'http://127.0.0.1:7897', NO_PROXY: 'localhost,127.0.0.1,::1' })
+      else { expect(env).not.toHaveProperty('HTTP_PROXY'); expect(env).not.toHaveProperty('HTTPS_PROXY') }
+      if (backend === 'agy-cli') expect(command).toMatchObject({ command: '/bin/agy', args: expect.arrayContaining(['acp', '--login']) })
+      else expect(command).toMatchObject({ command: process.execPath, args: ['-e', antigravityLoginScript, '/managed/agy_acp_server'] })
+    } finally { setActiveAgentProxy(null); await proxy.close() }
+  })
+}

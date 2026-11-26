@@ -1,3 +1,4 @@
+import { refreshActiveAgentProxy, buildActiveAgentChildEnv } from '../../agent-proxy'
 import { execFile } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -259,7 +260,8 @@ async function claudeCliVersion(): Promise<string> {
   }
   let version = FALLBACK_CLI_VERSION
   try {
-    const launch = planLaunch('claude', ['--version'], os.homedir(), process.env)
+    await refreshActiveAgentProxy()
+    const launch = planLaunch('claude', ['--version'], os.homedir(), buildActiveAgentChildEnv('claude'))
     const { stdout } = await execFileAsync(launch.file, launch.args, { env: launch.env, timeout: VERSION_TIMEOUT_MS, windowsHide: true })
     version = parseCliVersion(stdout) ?? FALLBACK_CLI_VERSION
   } catch {
@@ -297,7 +299,7 @@ export async function readClaudeUsage(home?: string): Promise<UsageReading> {
     Authorization: `Bearer ${accessToken}`,
     'anthropic-beta': 'oauth-2025-04-20',
     'User-Agent': `claude-cli/${await claudeCliVersion()} (external, cli)`
-  })
+  }, undefined, undefined, 'claude')
   return {
     signedIn: true,
     windows: parseClaudeUsage(body),
