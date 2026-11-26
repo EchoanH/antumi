@@ -164,3 +164,76 @@ export function commandPrefixes(command: string): string[][] | null {
   }
   return prefixes.length ? prefixes : null
 }
+
+// What only reads, run with nobody there to ask (an automatic investigation): plain reading and
+// searching, git's and gh's reads. A flag that writes a file or runs a program, or anything it
+// does not know, is not one.
+const READ_COMMANDS = new Set([
+  'ls', 'cat', 'head', 'tail', 'wc', 'pwd', 'cd', 'rg', 'grep', 'egrep', 'fgrep', 'tree', 'file', 'stat', 'which',
+  'du', 'df', 'find', 'sort', 'uniq', 'cut', 'tr', 'diff', 'cmp', 'basename', 'dirname', 'realpath', 'readlink',
+  'jq', 'echo', 'printf', 'true', 'whoami', 'uname', 'git', 'gh'
+])
+const WRITING_FLAGS: Record<string, RegExp> = {
+  find: /^-(delete|exec|execdir|ok|okdir|fprint|fprint0|fprintf|fls)$/,
+  rg: /^--pre(-glob)?(=|$)/,
+  sort: /^(-[a-zA-Z]*o|--output)/,
+  tree: /^(-o|--output)/,
+  git: /^(--output|-O$|--open-files-in-pager)/
+}
+const GIT_READS = new Set(['log', 'diff', 'show', 'status', 'blame', 'rev-parse', 'ls-files', 'ls-tree', 'grep', 'describe', 'shortlog', 'cat-file', 'merge-base'])
+// Subcommands that only list when given no more than these flags.
+const GIT_LISTS: Record<string, ReadonlySet<string>> = {
+  branch: new Set(['-a', '-r', '-v', '-vv', '--list', '--show-current', '--all', '--remotes']),
+  tag: new Set(['-l', '--list']),
+  remote: new Set(['-v']),
+  stash: new Set(['list'])
+}
+const GH_READS: Record<string, ReadonlySet<string> | 'any'> = {
+  issue: new Set(['view', 'list', 'status']),
+  pr: new Set(['view', 'list', 'status', 'diff', 'checks']),
+  run: new Set(['view', 'list']),
+  release: new Set(['view', 'list']),
+  repo: new Set(['view']),
+  label: new Set(['list']),
+  search: 'any'
+}
+
+function readsOnly(words: readonly string[]): boolean {
+  const [tool = '', ...args] = words
+  if (!READ_COMMANDS.has(tool)) return false
+  for (const [index, arg] of args.entries()) {
+    if (WRITING_FLAGS[tool]?.test(arg)) return false
+    if (!/^\d?>>?/.test(arg) && arg !== '&>') continue
+    const target = /^\d?>>?(.+)$/.exec(arg)?.[1] ?? args[index + 1] ?? ''
+    if (!/^(&\d|\/dev\/null)$/.test(target)) return false
+  }
+  if (tool === 'git') {
+    // -C <dir> picks the repository; any other flag first (-c core.pager=…) could run a program.
+    const rest = args[0] === '-C' ? args.slice(2) : args[0] === '--no-pager' ? args.slice(1) : args
+    const [sub = '', ...more] = rest
+    if (GIT_READS.has(sub)) return true
+    const lists = GIT_LISTS[sub]
+    return !!lists && more.every((arg) => lists.has(arg))
+  }
+  if (tool === 'gh') {
+    const [sub = '', action = ''] = args
+    const reads = GH_READS[sub]
+    return reads === 'any' || !!reads?.has(action)
+  }
+  return true
+}
+
+// Whether every part of the command only reads; false for what cannot be read as plain words.
+export function readOnlyCommand(command: string): boolean {
+  const read = tokens(command.trim())
+  if (!read || read.length === 0 || read.some((token) => token.operator && token.word === '&')) return false
+  const parts: string[][] = []
+  let part: string[] = []
+  for (const token of read) {
+    if (!token.operator) { part.push(token.word); continue }
+    parts.push(part)
+    part = []
+  }
+  parts.push(part)
+  return parts.every((words) => words.length === 0 || readsOnly(words)) && parts.some((words) => words.length > 0)
+}

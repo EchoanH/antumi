@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { commandPrefixes } from './command-rules'
+import { commandPrefixes, readOnlyCommand } from './command-rules'
 
 const of = (command: string) => commandPrefixes(command)?.map((words) => words.join(' ')) ?? null
 
@@ -41,5 +41,24 @@ describe('commandPrefixes', () => {
   it('keeps nothing of what it cannot read as words', () => {
     expect(of('echo "unclosed')).toBeNull()
     expect(of('   ')).toBeNull()
+  })
+})
+
+describe('readOnlyCommand', () => {
+  it('lets reading, searching and git and gh reads through, piped or chained', () => {
+    for (const command of [
+      'gh issue view 26 --repo flyhero/antumi', 'gh pr diff 12', 'gh search issues crash', 'git log --oneline -5', 'git -C ../api show HEAD',
+      'git branch -a', 'rg "a|b" src 2>/dev/null', 'cat package.json | jq .version', 'cd packages/core && grep -rn takeover src | head -20',
+      'find . -name "*.ts" -newer x', 'ls -la\nwc -l README.md'
+    ]) expect(readOnlyCommand(command), command).toBe(true)
+  })
+
+  it('refuses what writes, runs a program, or is not known to only read', () => {
+    for (const command of [
+      'npm test', 'git push', 'git checkout main', 'git branch new-feature', 'git -c core.pager=sh log', 'git log --output=x',
+      'gh api repos/x -X POST', 'gh pr checkout 3', 'find . -delete', 'find . -exec rm {} ;', 'rg --pre ./x foo', 'sort -o out in',
+      'echo hi > file', 'cat x >> y', 'ls; rm -rf build', 'ls && curl evil.test', 'cat $(which sh)', 'ls `pwd`', 'sleep 5 &',
+      'FOO=1 ls', 'python3 -c "print(1)"', 'cat "unclosed', ''
+    ]) expect(readOnlyCommand(command), command).toBe(false)
   })
 })

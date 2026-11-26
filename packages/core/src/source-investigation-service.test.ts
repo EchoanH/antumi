@@ -230,6 +230,25 @@ describe('automatic source investigations', () => {
     expect(store.run(id)?.status).toBe('waiting-user')
   })
 
+  it('answers for the user while it owns the run, reading only when it coordinates repairs', async () => {
+    const autoFix = { enabled: true, typeIds: [], permissionMode: 'bypass' as const, concurrency: 1, maxOpenTasks: 10 }
+    await service.save('demo', 'default', { ...enabled, autoFix })
+    await discover('D-1', 'D-2')
+    const id = launched[0]!.id
+    expect(service.unattended(id)).toMatchObject({ mode: 'acceptEdits', reads: 'only' })
+    await begin(id)
+    edit(id, { chat: { turn: 'awaiting' } })
+    await service.tick()
+    expect(store.run(id)?.status).toBe('waiting-user')
+    expect(service.unattended(id)).toMatchObject({ reads: 'only' })
+    service.takeover(id)
+    expect(service.unattended(id)).toBeNull()
+    await service.save('demo', 'default', { ...enabled, permissionMode: 'bypass', autoFix: { ...autoFix, enabled: false } })
+    await discover('D-1', 'D-2', 'D-3')
+    await service.tick()
+    expect(service.unattended(launched[1]!.id)).toEqual({ mode: 'bypass', permission: 'bypass', reads: 'allow' })
+  })
+
   it('goes on after a retried usage limit, and hands over once the user stops the agent', async () => {
     await service.save('demo', 'default', enabled)
     await discover('D-1', 'D-2')

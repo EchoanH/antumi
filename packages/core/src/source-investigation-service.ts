@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import {
   AutoInvestigationConfig, AutoInvestigationRun, agentDescriptor, type AgentKind, type ChatPermissionMode,
-  type SourceTaskProposal, type SourceFixInfo, type AutoInvestigationInfo, type AutoInvestigationSummary, type Conversation, type SourceIssue
+  type SourceTaskProposal, type SourceFixInfo, type UnattendedMode, type AutoInvestigationInfo, type AutoInvestigationSummary, type Conversation, type SourceIssue
 } from '@antumi/protocol'
 import { Rejection } from './rejection'
 import { SourceInvestigationStore, investigationInstance, type InvestigationRun, type InvestigationSettings } from './source-investigation-store'
@@ -187,6 +187,17 @@ export class SourceInvestigationService {
   owns(id: string): boolean {
     const run = this.store.run(id)
     return !!run && ACTIVE.has(run.status)
+  }
+  // Nobody watches an automatic run, so what its agent asks is answered for the user until they
+  // take it over: what only reads goes through, the rest is refused unless the run may do anything;
+  // a coordinator never carries out a plan. A question it waits on still counts, so an ask right
+  // after it is answered too.
+  unattended(id: string): { mode: UnattendedMode; permission: ChatPermissionMode; reads: 'allow' | 'only' } | null {
+    const run = this.store.run(id)
+    const config = run?.config
+    if (!run || !config?.agent || !(ACTIVE.has(run.status) || (run.status === 'waiting-user' && run.reason === 'user-input'))) return null
+    if (config.autoFix?.enabled) return { mode: 'acceptEdits', permission: agentDescriptor(config.agent).readOnlyMode, reads: 'only' }
+    return { mode: config.permissionMode === 'bypass' ? 'bypass' : 'acceptEdits', permission: investigationPermission(config.agent, config.permissionMode), reads: 'allow' }
   }
   managed(id: string): boolean {
     const run = this.store.run(id)

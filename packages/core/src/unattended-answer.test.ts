@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatItem } from '@antumi/protocol'
-import { UNATTENDED_DENIAL, UNATTENDED_QUESTION, unattendedAnswer } from './unattended-answer'
+import { READ_ONLY_DENIAL, READ_ONLY_PLAN_DENIAL, UNATTENDED_DENIAL, UNATTENDED_QUESTION, unattendedAnswer } from './unattended-answer'
 
 const base = { stageId: 'stage', at: 1, revision: 1 }
 const approval = (patch: Partial<Extract<ChatItem, { kind: 'approval' }>> = {}): ChatItem => ({
@@ -26,6 +26,23 @@ describe('unattendedAnswer', () => {
 
   it('approves a plan, as a scheduled run approves the one it finds', () => {
     expect(unattendedAnswer(approval({ tool: 'ExitPlanMode' }), 'acceptEdits')).toEqual({ decision: 'allowForSession' })
+  })
+
+  it('refuses a plan in a run that only reads, whatever its mode', () => {
+    expect(unattendedAnswer(approval({ tool: 'ExitPlanMode', choices }), 'bypass', 'only')).toEqual({ decision: 'deny', message: READ_ONLY_PLAN_DENIAL, choice: 'reject' })
+    expect(unattendedAnswer(approval({ tool: 'ExitPlanMode' }), 'acceptEdits', 'allow')).toEqual({ decision: 'allowForSession' })
+  })
+
+  it('lets what only reads through when the run may read, judging a command by its full text', () => {
+    expect(unattendedAnswer(approval({ title: 'gh issue view 26', choices }), 'acceptEdits', 'only', 'gh issue view 26')).toEqual({ decision: 'allow', choice: 'once' })
+    expect(unattendedAnswer(approval({ title: 'ls' }), 'acceptEdits', 'only', 'ls\nrm -rf build')).toEqual({ decision: 'deny', message: READ_ONLY_DENIAL })
+    expect(unattendedAnswer(approval({ title: 'ls' }), 'acceptEdits', 'only', null)).toEqual({ decision: 'deny', message: READ_ONLY_DENIAL })
+    expect(unattendedAnswer(approval({ tool: 'commandExecution', title: 'npm test' }), 'acceptEdits', 'allow', 'npm test')).toEqual({ decision: 'deny', message: READ_ONLY_DENIAL })
+    expect(unattendedAnswer(approval({ tool: 'WebFetch', title: 'https://docs.test' }), 'acceptEdits', 'only')).toEqual({ decision: 'allow' })
+    expect(unattendedAnswer(approval({ tool: 'mcp__jira__get_issue', title: 'D-1' }), 'acceptEdits', 'only')).toEqual({ decision: 'allow' })
+    expect(unattendedAnswer(approval({ tool: 'mcp__antumi__browser_click', title: 'Submit' }), 'acceptEdits', 'only')).toEqual({ decision: 'deny', message: READ_ONLY_DENIAL })
+    expect(unattendedAnswer(approval({ tool: 'Edit', title: 'src/a.ts' }), 'acceptEdits', 'only')).toEqual({ decision: 'deny', message: READ_ONLY_DENIAL })
+    expect(unattendedAnswer(approval({ title: 'npm test' }), 'acceptEdits', undefined, 'npm test')).toEqual({ decision: 'deny', message: UNATTENDED_DENIAL })
   })
 
   it('leaves a question unanswered, telling the agent to assume and go on', () => {
