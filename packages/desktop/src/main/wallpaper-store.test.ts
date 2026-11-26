@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, truncate, writeFile } from 'node:fs/promises'
+import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, truncate, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { detectWallpaperExtension, MAX_WALLPAPER_BYTES, WallpaperAsset, WALLPAPER_MIME, wallpaperUrl, type WallpaperExtension } from '../shared/wallpaper'
@@ -88,6 +88,24 @@ describe('wallpaper store', () => {
     await store.clear()
     expect(await store.getState()).toBeNull()
     expect(await readdir(join(dir, 'wallpaper'))).toEqual([])
+  })
+
+  it('keeps the last of two saves of different formats made at once', async () => {
+    const results = await Promise.all([store.setFromBytes(png), store.setFromBytes(jpg)])
+    expect(results.map((result) => result.ok)).toEqual([true, true])
+    expect(await readdir(join(dir, 'wallpaper'))).toEqual(['current.jpg'])
+    expect(await store.getState()).toMatchObject({ ext: 'jpg' })
+  })
+
+  it.skipIf(process.platform === 'win32')('reports a clear that leaves the image behind', async () => {
+    await store.setFromBytes(png)
+    await chmod(join(dir, 'wallpaper'), 0o500)
+    try {
+      await expect(store.clear()).rejects.toThrow()
+    } finally {
+      await chmod(join(dir, 'wallpaper'), 0o700)
+    }
+    expect(await store.getState()).toMatchObject({ ext: 'png' })
   })
 
   it('reads local files by their magic bytes, including ordinary picked symlinks', async (context) => {

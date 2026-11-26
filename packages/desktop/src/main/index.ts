@@ -413,8 +413,7 @@ ipcMain.handle('antumi:wallpaper-set-bytes', (event, bytes: unknown) => {
 })
 ipcMain.handle('antumi:wallpaper-clear', async (event) => {
   if (!validWallpaperSender(event)) return false
-  await wallpaperStore.clear()
-  return true
+  return wallpaperStore.clear().then(() => true, () => false)
 })
 
 ipcMain.handle('antumi:core-endpoint', () => backend.coreEndpoint())

@@ -5,9 +5,20 @@ import { detectWallpaperExtension, MAX_WALLPAPER_BYTES, WALLPAPER_EXTENSIONS, WA
 const HEADERS = { 'content-security-policy': "default-src 'none'", 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer' }
 const notFound = () => new Response('not found', { status: 404, headers: { 'cache-control': 'no-store', ...HEADERS } })
 const versionOf = (info: { mtimeMs: number; size: number }) => `${Math.trunc(info.mtimeMs)}-${info.size}`
+const missing = (error: unknown) => error instanceof Error && 'code' in error && error.code === 'ENOENT'
 
 export class WallpaperStore {
+  // Writes and clears run one at a time: each removes the other formats' files, so two saves of
+  // different formats side by side could delete each other's new image.
+  private queue: Promise<unknown> = Promise.resolve()
+
   constructor(private readonly dir: string) {}
+
+  private serial<T>(work: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(work, work)
+    this.queue = run.catch(() => {})
+    return run
+  }
 
   private path(ext: WallpaperExtension): string {
     return join(this.dir, `current.${ext}`)
@@ -34,7 +45,11 @@ export class WallpaperStore {
     } catch { return { ok: false, reason: 'read-failed' } }
   }
 
-  async setFromBytes(bytes: Uint8Array): Promise<WallpaperResult> {
+  setFromBytes(bytes: Uint8Array): Promise<WallpaperResult> {
+    return this.serial(() => this.write(bytes))
+  }
+
+  private async write(bytes: Uint8Array): Promise<WallpaperResult> {
     if (bytes.byteLength <= 0) return { ok: false, reason: 'invalid-file' }
     if (bytes.byteLength > MAX_WALLPAPER_BYTES) return { ok: false, reason: 'too-large' }
     const ext = detectWallpaperExtension(bytes)
@@ -63,8 +78,13 @@ export class WallpaperStore {
     }
   }
 
-  async clear(): Promise<void> {
-    for (const ext of WALLPAPER_EXTENSIONS) await unlink(this.path(ext)).catch(() => {})
+  // Throws when a file stays behind, so the user is not told it was cleared.
+  clear(): Promise<void> {
+    return this.serial(async () => {
+      for (const ext of WALLPAPER_EXTENSIONS) {
+        await unlink(this.path(ext)).catch((error: unknown) => { if (!missing(error)) throw error })
+      }
+    })
   }
 
   async serve(request: Request): Promise<Response> {
