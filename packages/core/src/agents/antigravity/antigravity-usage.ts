@@ -86,8 +86,8 @@ export function parseAntigravityQuota(body: unknown): UsageWindow[] {
   }))
 }
 
-export async function readAntigravityUsage(): Promise<UsageReading> {
-  const credential = await readAntigravityCredential()
+export async function readAntigravityUsage(home?: string): Promise<UsageReading> {
+  const credential = await readAntigravityCredential(antigravityTokenFile(home))
   if (!credential) return { signedIn: false }
   // Saved before its onboarding finished: the server resolves the project at its next start.
   if (!credential.project_id) return { signedIn: true, windows: [], plan: null }

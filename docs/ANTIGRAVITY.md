@@ -28,6 +28,12 @@ Antumi 用 `oauth-personal`（Google 账号）认证：
 
 服务使用默认的 `GEMINI_HOME`（`~/.gemini`），所以会读取用户自己的全局规则（`~/.gemini/GEMINI.md` 等）和 `~/.gemini/config/mcp_config.json`。会话保存在 `~/.gemini/antigravity-acp/conversations`，与 `agy` CLI 的会话互不相通。
 
+## 多账号
+
+在 设置 → 账号 中添加 Antigravity 账号，终端面板会显示授权进度，浏览器打开 Google 登录页。每个账号的 `GEMINI_HOME` 指向 `~/.antumi/agent-accounts/antigravity/<账号id>`，凭据独立保存；本机账号继续使用原有目录。
+
+账号共享全局配置、规则、技能和 `antigravity-acp/conversations` 会话历史，切换账号后可继续原会话。设置中可重命名、重新登录、删除添加的账号；删除不会移除共享历史。额度按账号分别读取，开启自动切换后可按额度读数选择其他有余额的账号。服务将额度不足作为普通回复文字时，不保证当轮自动重试。
+
 ## 权限模式
 
 | Antumi | Antigravity | 行为 |
