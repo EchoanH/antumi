@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { AGENT_KINDS } from './agent'
-import { AgentProxySettings, DEFAULT_AGENT_PROXY_SETTINGS, agentProxyPolicy, formatCliNoProxy, hasEffectiveManualProxy, normalizeProxyUrl, parseNoProxyEntries, redactProxyUrl, sanitizeProxyErrorMessage, validateAgentProxySettings } from './agent-proxy'
+import { agentProxyPolicy } from './agent-proxy-policy'
+import { AgentProxySettings, DEFAULT_AGENT_PROXY_SETTINGS, formatCliNoProxy, hasEffectiveManualProxy, normalizeProxyUrl, parseNoProxyEntries, redactProxyUrl, sanitizeProxyErrorMessage, validateAgentProxySettings } from './agent-proxy'
 
 describe('proxy addresses', () => {
   it.each(['http', 'https', 'socks5', 'socks5h', 'socks'])('preserves %s addresses and credentials', (scheme) => {
@@ -28,7 +29,9 @@ describe('proxy addresses', () => {
     expect(hasEffectiveManualProxy({ ...settings.manual, url: 'bad' })).toBe(false)
     expect(hasEffectiveManualProxy({ ...settings.manual, url: 'localhost:80' })).toBe(true)
     expect(hasEffectiveManualProxy({ ...settings.manual, advanced: true, allProxy: 'socks5h://localhost:1080' })).toBe(true)
-    for (const agent of AGENT_KINDS) expect(agentProxyPolicy(undefined, agent)).toBe('followGlobal')
+    // Services in mainland China go direct by default; the rest follow the global proxy.
+    for (const agent of AGENT_KINDS) expect(agentProxyPolicy(undefined, agent)).toBe(agent === 'kimi' || agent === 'codearts' ? 'noProxy' : 'followGlobal')
+    expect(agentProxyPolicy(AgentProxySettings.parse({ agents: { kimi: 'followGlobal' } }), 'kimi')).toBe('followGlobal')
   })
 })
 it('normalizes CLI bypass entries and always protects loopback', () => {

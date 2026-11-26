@@ -97,9 +97,6 @@ export function parseNoProxyEntries(raw: string): string[] {
 export function formatCliNoProxy(entries: readonly string[]): string {
   return parseNoProxyEntries([...LOOPBACK_NO_PROXY, ...entries.map((p) => p.trim()).filter((p) => p.toLowerCase() !== '<local>' && p !== '127.*').map((p) => p.replace(/^\*\./, '.'))].join(',')).join(',')
 }
-export function agentProxyPolicy(settings: AgentProxySettings | undefined, agent: AgentKind): AgentProxyPolicy {
-  return settings?.agents[agent] ?? 'followGlobal'
-}
 export function hasEffectiveManualProxy(manual: ManualProxyConfig): boolean {
   return (manual.advanced ? [manual.httpProxy, manual.httpsProxy, manual.allProxy] : [manual.url]).some((raw) => { const result = normalizeProxyUrl(raw); return result.ok && Boolean(result.url) })
 }

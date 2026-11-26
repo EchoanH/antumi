@@ -84,3 +84,4 @@ export * from './version-order'
 
 export * from './provider-import'
 export * from './agent-proxy'
+export * from './agent-proxy-policy'

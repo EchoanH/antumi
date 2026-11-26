@@ -27,6 +27,7 @@ export const codearts: AgentDescriptor = {
   label: 'CodeArts',
   cli: 'codearts',
   setup: 'account',
+  proxyPolicy: 'noProxy',
   modes: {
     ask: { label: 'Build', description: '码道自己的 Build：改文件不问，命令在它的沙箱里运行，有风险的先问你' },
     acceptEdits: { label: '自动', description: '在项目里自由修改、运行命令；项目外的操作和码道认为有风险的命令直接拒绝，不会停下来问' },

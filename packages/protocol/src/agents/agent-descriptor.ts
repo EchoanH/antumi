@@ -102,4 +102,8 @@ export type AgentDescriptor = {
   prices?: readonly ModelPrice[]
   // Folders under %LOCALAPPDATA% its Windows installer puts the CLI in, which PATH may lack.
   windowsPathDirs?: readonly string[]
+  // How it reaches the network until the user picks in Settings → Agents → Proxy: a service in
+  // mainland China goes direct rather than through a system proxy set to reach services abroad.
+  // Unset, it follows the global proxy.
+  proxyPolicy?: 'noProxy'
 }

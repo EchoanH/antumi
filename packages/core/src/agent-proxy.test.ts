@@ -28,7 +28,7 @@ describe('agent proxy policy matrix', () => {
     const config = AgentProxySettings.parse({ ...settings(), agents: { antigravity: 'useProxy', codex: 'noProxy', claude: 'followGlobal', dsh: 'noProxy' } })
     for (const agent of AGENT_KINDS) {
       const result = resolveAgentProxy(config, agent, { env: { HTTP_PROXY: 'http://env:80' }, osProxy, platform: 'linux' })
-      expect(result.mode).toBe(agent === 'codex' || agent === 'dsh' ? 'direct' : agent === 'antigravity' ? 'inject' : 'inherit-env')
+      expect(result.mode).toBe(['codex', 'dsh', 'kimi', 'codearts'].includes(agent) ? 'direct' : agent === 'antigravity' ? 'inject' : 'inherit-env')
     }
   })
   it('supports advanced fields, empty uppercase fallback, and Windows case-insensitive lookup', () => {

@@ -3,6 +3,7 @@ import {
   AGENT_KINDS,
   DEFAULT_AGENT_PROXY_SETTINGS,
   agentProxyPolicy,
+  defaultAgentProxyPolicy,
   hasEffectiveManualProxy,
   validateAgentProxySettings,
   type AgentKind,
@@ -212,7 +213,7 @@ export function AgentProxySettings() {
   // Per-CLI warnings reflect persisted global settings so unsaved manual drafts cannot mask missing proxies.
   const savedGlobalReady = isGlobalProxyEffective(saved.mode, saved.manual, status)
   const { installed, missing } = useMemo(() => partitionProxyAgents(environment), [environment])
-  const hasCustomMissingPolicy = missing.some((kind) => agentProxyPolicy(saved, kind) !== 'followGlobal')
+  const hasCustomMissingPolicy = missing.some((kind) => agentProxyPolicy(saved, kind) !== defaultAgentProxyPolicy(kind))
 
   const persistGlobal = async (nextMode: GlobalProxyMode, nextManual: ManualProxyConfig, revertOnError = false) => {
     const check = validateAgentProxySettings({ mode: nextMode, manual: nextManual })
@@ -301,7 +302,7 @@ export function AgentProxySettings() {
     setSaving(true)
     try {
       const nextAgents = { ...saved.agents }
-      if (policy === 'followGlobal') delete nextAgents[agent]
+      if (policy === defaultAgentProxyPolicy(agent)) delete nextAgents[agent]
       else nextAgents[agent] = policy
       await setChatSettings({ agentProxy: { ...saved, agents: nextAgents } })
     } finally {
