@@ -63,6 +63,8 @@ export type AccountSupport = {
   // Its CLI's arguments to sign in, and out, in the folder its env names.
   login: readonly string[]
   logout: readonly string[]
+  // Managed runtimes may authenticate over their protocol instead of a CLI subcommand.
+  authCommand?(action: 'login' | 'logout'): Promise<AgentCommand>
   // Its sign-in is an interactive session that asks to trust the folder it starts in, warning of
   // the home folder: it starts in an empty folder of Antumi's instead.
   signInFolder?: boolean
