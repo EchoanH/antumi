@@ -6307,6 +6307,8 @@ div.inspector-empty > p { margin: 0 0 8px; }
 .source-automation-advanced-fields { display: flex; flex-direction: column; gap: 16px; padding: 0 0 20px; }
 .source-automation-advanced-fields .settings-field { gap: 8px; }
 .source-automation-advanced-fields .settings-textarea { font-size: 14px; }
+.source-automation-prompt-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.source-automation-settings > .settings-field + .settings-field { margin-top: 20px; }
 .source-automation-settings .input { font-size: 14px; }
 .source-automation-settings > .auto-investigation-summary { padding-top: 12px; }
 .source-automation-settings > .settings-field-hint { padding-top: 12px; }

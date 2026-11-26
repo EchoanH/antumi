@@ -20,6 +20,7 @@ export const kimi: AgentDescriptor = {
   label: 'Kimi Code',
   cli: 'kimi',
   setup: 'account',
+  proxyPolicy: 'noProxy',
   modes: {
     ask: { label: 'Default', description: '按 Kimi Code 的手动审批规则执行' },
     plan: { label: 'Plan', description: '探索代码、制定计划，确认后再修改' },

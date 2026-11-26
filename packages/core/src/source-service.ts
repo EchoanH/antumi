@@ -41,7 +41,7 @@ import {
 } from '@antumi/protocol'
 import type { AttachmentStore } from './attachment-store'
 import type { CredentialStore } from './credential-store'
-import { investigationBrief } from './investigation-brief'
+import { automaticInstructions, investigationBrief } from './investigation-brief'
 import { Rejection } from './rejection'
 import type { SourceConfigStore } from './source-config'
 import { sourceProblem, sourceRejection } from './source-error'
@@ -477,14 +477,13 @@ export class SourceService {
     })
   }
 
-  async fixContext(source: TaskSource): Promise<{ source: TaskSource; snapshot: SourceSnapshot; facts: Transitions; dryRun: boolean }> {
+  // A source that cannot write back says nothing of the issue's state or type: the task goes ahead.
+  async fixContext(source: TaskSource): Promise<{ source: TaskSource; snapshot: SourceSnapshot; facts: Transitions | null; dryRun: boolean }> {
     const check = this.guard(source.provider, source.instance)
-    const writer = this.writer(source)
-    if (!writer) throw new Rejection('source-writeback-unavailable', '来源无法提供事项类型和归属，不能自动修复')
-    const facts = await writer.transitions()
+    const facts = await this.writer(source)?.transitions() ?? null
     const detail = await this.fetch(this.requireReady(source.provider, source.instance), source.key, this.state(source.provider, source.instance).controller.signal)
     check()
-    return { source: { ...source, key: detail.issue.key, url: detail.issue.url }, snapshot: detail.snapshot, facts, dryRun: this.writebackFor(source.provider, source.instance, facts).options.dryRun }
+    return { source: { ...source, key: detail.issue.key, url: detail.issue.url }, snapshot: detail.snapshot, facts, dryRun: this.writebackFor(source.provider, source.instance, facts ?? {}).options.dryRun }
   }
   fixLinked(task: Task): void {
     if (task.source && task.sourceSnapshot) this.updateSink?.({ kind: 'task', id: task.id }, task.source, task.sourceSnapshot)
@@ -560,10 +559,9 @@ export class SourceService {
     }
     check()
     // Unless asked otherwise, it only reads: a finding first, then the user decides on a fix.
-    const repairCoordinator = automaticId && this.automatic?.pending(automaticId)?.config?.autoFix?.enabled
-    const permissionMode = repairCoordinator ? agentDescriptor(agent).readOnlyMode : start.permissionMode ?? agentDescriptor(agent).discussionMode
+    const permissionMode = start.permissionMode ?? agentDescriptor(agent).discussionMode
     if (automaticId) this.checkAutomatic(id, instance, automaticId)
-    const conversation = await conversations.openInvestigation(agent, projectPaths, repairCoordinator ? false : allowBypass, { ...start, permissionMode, ...(repairCoordinator ? { readOnly: true } : {}) }, { source, title: known.title.trim() || known.key, ...(automaticId ? { automaticId } : {}) })
+    const conversation = await conversations.openInvestigation(agent, projectPaths, allowBypass, { ...start, permissionMode }, { source, title: known.title.trim() || known.key, ...(automaticId ? { automaticId } : {}) })
     this.investigating.set(conversation.id, { note: note?.trim() || null, ...(references ? { references } : {}), images: imageIds, running: true })
     this.emitInbox(id, instance)
     void this.track(id, () => this.prepare(conversation.id, source, first)).catch(() => {})
@@ -632,7 +630,7 @@ export class SourceService {
         title,
         brief: investigationBrief(source, snapshot, images, later ? text.deferred : 0, Boolean(auto && this.automatic?.owns(conversationId))),
         readable: images.flatMap((image) => (image.path ? [image.path] : []))
-      }, [(pending?.note ?? auto?.config?.note.trim()) || `排查 ${source.name} ${source.key}：${title}`, auto?.config?.autoFix?.enabled ? '你是此事项的排查与分流会话，只读项目，不修改代码，不创建或委派任务。先用 source_task_options 查询已登记项目、可用执行 Agent 和服务商，再用 source_task_catalog 查询模型与推理强度。结合事项所属项目、仓库地址和项目文档自行判断处理方式与项目，无须用户配置项目映射。结束前调用 source_report，fix 中提交 decision（repair / needs_input / no_fix）、evidence 和 plan；decision 为 repair 时，task 必须给出你决定的完整任务参数：title、details（任务目标和验收标准，并要求检查、提交和 source_report 交付）、agent、repos（path、可选 reference 和 startRef），以及可选 model、effort、modelProvider、dependsOn。不指定模型等参数表示使用所选执行 Agent 的默认值，不沿用排查配置。core 只校验可执行性，权限按用户策略执行，不要在 task 中设置权限。提交参数被退回时根据具体错误修正再提交。确实缺少必要信息时选择 needs_input，不猜测。' : ''].filter(Boolean).join('\n\n'), pending?.references, pending?.images, auto ? investigationRef(auto.id) : undefined)
+      }, auto ? automaticInstructions(auto.config?.note ?? '', !manual && (this.automatic?.allowsTasks(source.provider, source.instance) ?? false)) : pending?.note || `排查 ${source.name} ${source.key}：${title}`, pending?.references, pending?.images, auto ? investigationRef(auto.id) : undefined)
       if (auto) this.automatic?.submitted(auto.id)
       this.investigating.delete(conversationId)
       this.emitInbox(source.provider, source.instance)

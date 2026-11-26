@@ -23,26 +23,10 @@ describe('source_report', () => {
     expect(calls).toHaveLength(1)
     expect(tool!.spec.inputSchema.required).toEqual(['summary'])
   })
-  it('validates and forwards a repair proposal without executing it', async () => {
+  it('no longer takes a repair proposal: tasks are opened with source_task_create', async () => {
     calls.length = 0
-    const fix = { decision: 'repair', evidence: 'A failing redirect test', plan: 'Preserve the return URL' }
-    expect((await tool!.run({ summary: 'Located the defect.', fix })).isError).toBe(false)
-    expect(calls).toEqual([{ conversationId: 'chat-1', text: 'Located the defect.', fix }])
-    expect((await tool!.run({ summary: 'Located.', fix: { ...fix, decision: 'execute_shell' } })).isError).toBe(true)
-    expect((await tool!.run({ summary: 'Located.', fix: { ...fix, plan: 'x'.repeat(4001) } })).isError).toBe(true)
-    expect(calls).toHaveLength(1)
-  })
-
-  it('forwards the coordinator task choice and rejects attempts to set permissions', async () => {
-    calls.length = 0
-    const task = { title: 'Repair redirect', details: 'Preserve the URL and add coverage.', agent: 'claude', model: 'worker-model', effort: 'high', repos: [{ path: '/api', startRef: 'refs/heads/develop' }] }
-    const fix = { decision: 'repair', evidence: 'Failing redirect test', plan: 'Repair the API', task }
-    expect((await tool!.run({ summary: 'Located.', fix })).isError).toBe(false)
-    expect(calls).toEqual([{ conversationId: 'chat-1', text: 'Located.', fix }])
-    for (const invalid of [{ ...task, permissionMode: 'bypass' }, { ...task, agent: 'unknown' }, { ...task, repos: [] }]) {
-      expect((await tool!.run({ summary: 'Located.', fix: { ...fix, task: invalid } })).isError).toBe(true)
-    }
-    expect(calls).toHaveLength(1)
+    expect((await tool!.run({ summary: 'Located.', fix: { decision: 'repair', evidence: 'x', plan: 'y' } })).isError).toBe(false)
+    expect(calls).toEqual([{ conversationId: 'chat-1', text: 'Located.' }])
   })
 
 })
@@ -82,4 +66,42 @@ it('discovers registered projects and usable workers, then queries the selected 
     expect(tool.spec.annotations.readOnlyHint).toBe(true)
     expect(antumiReadTools(false)).toContain(tool.spec.name)
   }
+})
+
+describe('source_task_create', () => {
+  const calls: { method: string; params: unknown }[] = []
+  const rpc: Pick<RpcConnection, 'call'> = { call: async (method: string, params: unknown) => { calls.push({ method, params }); return { id: 'task-1', title: 'Repair redirect' } as never } }
+  const tool = sourceToolsOverCore((action) => action(rpc as RpcConnection), 'hub').find((entry) => entry.spec.name === 'source_task_create')!
+  const task = { title: 'Repair redirect', details: 'Preserve the URL and add coverage.', agent: 'claude', model: 'worker-model', effort: 'high', repos: [{ path: '/api', startRef: 'refs/heads/develop' }] }
+
+  it('opens the task through core and says what it opened', async () => {
+    calls.length = 0
+    const result = await tool.run(task)
+    expect(result.isError).toBe(false)
+    expect(result.content[0]!.text).toContain('Repair redirect')
+    expect(calls).toEqual([{ method: 'sources.createTask', params: { id: 'hub', task } }])
+    expect(tool.spec).not.toHaveProperty('inputSchema.$schema')
+  })
+
+  it('refuses a permission, an unknown agent or no project before asking core', async () => {
+    calls.length = 0
+    for (const invalid of [{ ...task, permissionMode: 'bypass' }, { ...task, agent: 'unknown' }, { ...task, repos: [] }]) {
+      expect((await tool.run(invalid)).isError).toBe(true)
+    }
+    expect(calls).toEqual([])
+  })
+
+  it('hands core\'s refusal back to the agent to correct', async () => {
+    const refusing = sourceToolsOverCore(async () => { throw new Error('PR 类事项不新建任务') }, 'hub').find((entry) => entry.spec.name === 'source_task_create')!
+    const result = await refusing.run(task)
+    expect(result).toMatchObject({ isError: true, content: [{ text: '没有新建：PR 类事项不新建任务' }] })
+  })
+
+  it('is offered to an automatic investigation only', () => {
+    expect(sourceToolsOverCore(async () => { throw new Error('unused') }, 'task-chat', { tasks: false }).map((entry) => entry.spec.name)).not.toContain('source_task_create')
+  })
+
+  it('asks the user nothing, as the source allowed it', () => {
+    expect(antumiReadTools(false)).toContain('source_task_create')
+  })
 })

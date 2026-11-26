@@ -1235,3 +1235,14 @@ export function CustomSizeIcon() {
     </svg>
   )
 }
+
+export function ProxyIcon() {
+  return (
+    <svg {...stroked}>
+      <circle cx="4.5" cy="10" r="2" />
+      <circle cx="15.5" cy="5.5" r="2" />
+      <circle cx="15.5" cy="14.5" r="2" />
+      <path d="M6.4 9.2 13.6 6.3M6.4 10.8 13.6 13.7" />
+    </svg>
+  )
+}

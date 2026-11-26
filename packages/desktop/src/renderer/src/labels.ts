@@ -292,7 +292,10 @@ const REASON_TEXT: Record<string, string> = localized(() => ({
   'usage-limit-settled': t('labels.thisQuotaLimitEventIsAlreadySettled'),
   'usage-limit-busy': t('labels.retryingPleaseWait'),
   'usage-limit-not-found': t('labels.quotaLimitRecordNotFound'),
-  'usage-limit-retry-failed': t('labels.retryCouldNotResume')
+  'usage-limit-retry-failed': t('labels.retryCouldNotResume'),
+  'invalid-proxy-url': t('labels.invalidProxyUrl'),
+  'unsupported-protocol': t('labels.unsupportedProxyProtocol'),
+  'agent-proxy-unavailable': t('labels.agentProxyUnavailable')
 }))
 
 // Reasons whose message says what went wrong in the agent's own words, kept after the summary.

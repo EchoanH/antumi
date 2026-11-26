@@ -1,3 +1,4 @@
+import { refreshActiveAgentProxy, buildActiveAgentChildEnv } from '../../agent-proxy'
 import { execFile } from 'node:child_process'
 import { realpath, stat } from 'node:fs/promises'
 import os from 'node:os'
@@ -65,7 +66,8 @@ export async function findCodearts(pathEnv: string, platform: NodeJS.Platform, h
 }
 
 async function codeartsVersion(executable: string): Promise<string | null> {
-  const result = await execute(executable, ['--version'], { env: { ...process.env, ...codeartsEnv() }, timeout: 15_000, maxBuffer: 1024 * 1024, windowsHide: true }).catch(() => null)
+  await refreshActiveAgentProxy()
+  const result = await execute(executable, ['--version'], { env: buildActiveAgentChildEnv('codearts', codeartsEnv()), timeout: 15_000, maxBuffer: 1024 * 1024, windowsHide: true }).catch(() => null)
   return parseVersion(result?.stdout ?? '')
 }
 
@@ -97,7 +99,7 @@ export function codeartsBridge(executable: string, env: Record<string, string> =
 }
 
 export async function codeartsCatalog(cwd: string): Promise<ChatCatalog | null> {
-  return probeChatCatalog(new AcpDriver(codeartsDialect, 'catalog', { cwd, extraDirs: [], resume: null }), codeartsBridge(await requireCodearts()), cwd)
+  return probeChatCatalog(new AcpDriver(codeartsDialect, 'catalog', { cwd, extraDirs: [], resume: null }), codeartsBridge(await requireCodearts()), cwd, undefined, 'codearts')
 }
 
 // Its official install scripts (码道 CLI 用户指南, 安装).

@@ -1,3 +1,4 @@
+import { fetchWithAgentProxy } from '../../agent-proxy'
 import { readFile } from 'node:fs/promises'
 import { z } from 'zod'
 import type { UsageWindow } from '@antumi/protocol'
@@ -37,9 +38,9 @@ async function accessToken(credential: Credential, now = Date.now()): Promise<st
   const kept = tokens.get(credential.refresh_token)
   if (kept && kept.until > now) return kept.token
   const body = new URLSearchParams({ client_id: credential.client_id, client_secret: credential.client_secret, refresh_token: credential.refresh_token, grant_type: 'refresh_token' })
-  let response: Response
+  let response: Awaited<ReturnType<typeof fetchWithAgentProxy>>
   try {
-    response = await fetch(credential.token_uri, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body, signal: AbortSignal.timeout(10_000) })
+    response = await fetchWithAgentProxy('antigravity', credential.token_uri, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body, signal: AbortSignal.timeout(10_000) })
   } catch (error) {
     throw new UsageFetchError('request-failed', error instanceof Error ? error.message : String(error))
   }
@@ -118,7 +119,7 @@ export async function readAntigravityUsage(home?: string): Promise<UsageReading>
   if (!project) {
     for (const endpoint of ENDPOINTS) {
       try {
-        const data = Project.parse(await fetchUsageJson(endpoint + '/v1internal:loadCodeAssist', headers, JSON.stringify({ metadata: { ideType: 'ANTIGRAVITY', platform: 'PLATFORM_UNSPECIFIED', pluginType: 'GEMINI' } })))
+        const data = Project.parse(await fetchUsageJson(endpoint + '/v1internal:loadCodeAssist', headers, JSON.stringify({ metadata: { ideType: 'ANTIGRAVITY', platform: 'PLATFORM_UNSPECIFIED', pluginType: 'GEMINI' } }), undefined, 'antigravity'))
         project = typeof data.cloudaicompanionProject === 'string' ? data.cloudaicompanionProject : data.cloudaicompanionProject?.id
         if (project) { projectIds.set(refreshToken, project); break }
       } catch (error) {
@@ -133,7 +134,7 @@ export async function readAntigravityUsage(home?: string): Promise<UsageReading>
   let failure: unknown = null
   for (const endpoint of ENDPOINTS) {
     try {
-      const windows = parseAntigravityQuota(await fetchUsageJson(endpoint + '/v1internal:retrieveUserQuotaSummary', headers, body))
+      const windows = parseAntigravityQuota(await fetchUsageJson(endpoint + '/v1internal:retrieveUserQuotaSummary', headers, body, undefined, 'antigravity'))
       if (windows.length) return { signedIn: true, windows, plan: null }
     } catch (error) {
       if (error instanceof UsageFetchError && error.code === 'auth-expired') { tokens.delete(refreshToken); clearAgyAccessTokenCache(refreshToken) }

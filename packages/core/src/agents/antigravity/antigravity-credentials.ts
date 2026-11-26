@@ -1,9 +1,10 @@
+import { refreshActiveAgentProxy, buildActiveAgentChildEnv, fetchWithAgentProxy, type AgentFetchInit } from '../../agent-proxy'
 import { createHash } from 'node:crypto'
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { spawn, execFile } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import os from 'node:os'
-import { launchFile, nodeLaunchHost, withoutEnv } from '@antumi/protocol/node'
+import { launchFile, nodeLaunchHost } from '@antumi/protocol/node'
 import path from 'node:path'
 import { z } from 'zod'
 import { Rejection } from '../../rejection'
@@ -20,7 +21,7 @@ export const SlotMeta = z.object({
   emailHint: z.string().nullable().default(null),
   projectId: z.string().nullable().optional(),
   projectRefreshHash: z.string().nullable().optional(),
-  syncBaseline: z.object({ managedRefreshHash: z.string().nullable(), agyCliRefreshHash: z.string().nullable(), authoritative: AntigravityBackend }).nullable().default(null),
+  syncBaseline: z.object({ managedRefreshHash: z.string().nullable(), agyCliRefreshHash: z.string().nullable(), authoritative: z.enum(['agy-cli', 'managed-acp']) }).nullable().default(null),
   updatedAt: z.number()
 })
 export const refreshHash = (token: string): string => createHash('sha256').update(token).digest('hex').slice(0, 16)
@@ -49,7 +50,8 @@ async function runSilentAgyAuth(tmpHome: string, executable: string, timeoutMs: 
   const cmd = agyCliCommand(executable, tmpHome)
   // Only this isolated background helper disables browser login via SSH_CONNECTION.
   // Normal chats and interactive login must never set it.
-  const env = { ...withoutEnv(process.env, cmd.unsetEnv), ...cmd.env, SSH_CONNECTION: '127.0.0.1 0 127.0.0.1 0' }
+  await refreshActiveAgentProxy()
+  const env = buildActiveAgentChildEnv('antigravity', { ...cmd.env, SSH_CONNECTION: '127.0.0.1 0 127.0.0.1 0' }, cmd.unsetEnv)
   const launch = launchFile(cmd.command, cmd.args, env, nodeLaunchHost)
   const child = spawn(launch.file, launch.args, { env: launch.env, cwd: tmpHome, windowsHide: true, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'] })
   let closed = false
@@ -164,13 +166,14 @@ export function decodeJwtIdentity(idToken: string | undefined): { sub: string | 
     return { sub: data.sub ?? null, email: data.email ?? null }
   } catch { return { sub: null, email: null } }
 }
-export async function verifyOAuthIdentity(accessToken: string, fetchImpl = fetch): Promise<{ sub: string | null; email: string | null } | null> {
+const antigravityFetch = (input: string | URL, init?: AgentFetchInit) => fetchWithAgentProxy('antigravity', input, init)
+export async function verifyOAuthIdentity(accessToken: string, fetchImpl = antigravityFetch): Promise<{ sub: string | null; email: string | null } | null> {
   const response = await fetchImpl('https://www.googleapis.com/oauth2/v2/userinfo', { headers: { Authorization: 'Bearer ' + accessToken }, signal: AbortSignal.timeout(10_000) })
   if (!response.ok) return null
   const data = Identity.safeParse(await response.json()).data
   return data ? { sub: data.id ?? data.sub ?? null, email: data.email ?? null } : null
 }
-export async function refreshManagedAccessToken(cred: ManagedCredential, fetchImpl = fetch): Promise<{ accessToken: string; expiresIn: number; idToken?: string }> {
+export async function refreshManagedAccessToken(cred: ManagedCredential, fetchImpl = antigravityFetch): Promise<{ accessToken: string; expiresIn: number; idToken?: string }> {
   const response = await fetchImpl(cred.token_uri, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: cred.client_id, client_secret: cred.client_secret, refresh_token: cred.refresh_token, grant_type: 'refresh_token' }), signal: AbortSignal.timeout(10_000) })
   if (!response.ok) throw new Error('Google token refresh failed: ' + response.status)
   const data = z.object({ access_token: z.string().min(1), expires_in: z.number().default(3600), id_token: z.string().optional() }).parse(await response.json())

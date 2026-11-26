@@ -1,3 +1,4 @@
+import { AgentProxySettings } from './agent-proxy'
 import { z } from 'zod'
 import { ChatReference } from './chat-reference'
 import { AttachmentId } from './attachments'
@@ -26,6 +27,7 @@ export type TitleNaming = z.infer<typeof TitleNaming>
 // promptSuggestions: after each turn the agent predicts the user's next message (Claude Code only).
 // unattendedMode: see UnattendedMode; older cores leave it out.
 export const ChatSettings = z.object({
+  agentProxy: AgentProxySettings.optional(),
   promptSuggestions: z.boolean(),
   // Automatic titles after the first successful round, or after each round. Older cores omit it.
   titleNaming: TitleNaming.optional(),

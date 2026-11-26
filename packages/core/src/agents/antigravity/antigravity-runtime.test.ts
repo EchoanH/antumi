@@ -60,6 +60,18 @@ $(printf "$browser" "$1")
     expect(antigravityInstallation('freebsd', { ...host, platform: 'freebsd' })).toBeNull()
   })
 
+  it('uses injected proxy variables for Windows downloads and bypasses the OS default', () => {
+    const command = antigravityInstallation('win32', { platform: 'win32', arch: 'x64', home: 'C:\\antumi' })?.command
+    expect(command).toContain('Get-Command curl.exe -CommandType Application')
+    expect(command).toContain('curl.exe -fL --progress-bar')
+    expect(command).toContain("if ($LASTEXITCODE -ne 0) { throw 'Antigravity download failed' }")
+    expect(command).toContain('$p = $env:HTTPS_PROXY; if (!$p) { $p = $env:HTTP_PROXY }; if (!$p) { $p = $env:ALL_PROXY }')
+    expect(command).toContain("$p -notmatch '^https?://'")
+    expect(command).toContain('if ($p) { Invoke-WebRequest @download -Proxy $p } else { Invoke-WebRequest @download }')
+    expect(command).toContain('[System.Net.WebRequest]::DefaultWebProxy = $null')
+    expect(command).toContain('finally { [System.Net.WebRequest]::DefaultWebProxy = $previousProxy }')
+  })
+
   it.skipIf(!linuxHost || !commandPath('python3'))('installs with Python when unzip is missing and keeps both programs executable', async () => {
     const root = await home()
     const host = { platform: 'linux' as const, arch: 'x64', home: root }

@@ -1,3 +1,4 @@
+import { refreshActiveAgentProxy, buildActiveAgentChildEnv } from '../../agent-proxy'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { z } from 'zod'
@@ -10,7 +11,8 @@ import type { AgentDetection } from '../agent-adapter'
 const execute = promisify(execFile)
 
 async function output(command: string, args: string[], cwd?: string, timeout = 10_000): Promise<string> {
-  const launch = launchFile(command, args, { ...process.env, OPENCODE_DISABLE_AUTOUPDATE: '1' })
+  await refreshActiveAgentProxy()
+  const launch = launchFile(command, args, buildActiveAgentChildEnv('opencode', { OPENCODE_DISABLE_AUTOUPDATE: '1' }))
   const result = await execute(launch.file, launch.args, { cwd, env: launch.env, timeout, maxBuffer: 1024 * 1024, windowsHide: true })
   return result.stdout
 }

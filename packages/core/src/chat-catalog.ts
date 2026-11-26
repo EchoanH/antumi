@@ -1,3 +1,5 @@
+import { refreshActiveAgentProxy, buildActiveAgentChildEnv } from './agent-proxy'
+import type { AgentKind } from '@antumi/protocol'
 import { spawn } from 'node:child_process'
 import { z } from 'zod'
 import type { ChatCatalog, ChatItem } from '@antumi/protocol'
@@ -29,11 +31,12 @@ export function catalogOf(items: readonly ChatItem[]): ChatCatalog | null {
 // Runs the agent's chat protocol only as far as it lists its models, then lets it go. A probe,
 // not a session: nothing is sent to the model and nothing needs to outlive core, so it runs here
 // rather than in the daemon, as `claude --version` does.
-export function probeChatCatalog(driver: ChatDriver, command: AgentCommand, cwd: string, timeoutMs = PROBE_TIMEOUT_MS): Promise<ChatCatalog | null> {
+export async function probeChatCatalog(driver: ChatDriver, command: AgentCommand, cwd: string, timeoutMs = PROBE_TIMEOUT_MS, agent?: AgentKind): Promise<ChatCatalog | null> {
+  if (agent) await refreshActiveAgentProxy()
   return new Promise((resolve) => {
     let launch
     try {
-      launch = planLaunch(command.command, command.args, cwd, { ...withoutEnv(process.env, command.unsetEnv), ...command.env })
+      launch = planLaunch(command.command, command.args, cwd, agent ? buildActiveAgentChildEnv(agent, command.env, command.unsetEnv) : { ...withoutEnv(process.env, command.unsetEnv), ...command.env })
     } catch {
       return resolve(null)
     }

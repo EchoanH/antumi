@@ -138,13 +138,13 @@ export class SourceWriteback {
     })
   }
 
-  saveReport(target: SourceUpdateTarget, text: string, result: Pick<SourceReport, 'outcome' | 'verification' | 'question' | 'blocker' | 'fix'> = {}): WritebackView {
+  saveReport(target: SourceUpdateTarget, text: string, result: Pick<SourceReport, 'outcome' | 'verification' | 'question' | 'blocker'> = {}): WritebackView {
     if (!this.hooks.owner(target)) throw new Rejection('source-none', '这个会话不是从来源事项来的')
     const report = text.trim().slice(0, MAX_SOURCE_REPORT)
     if (!report) throw new Rejection('source-writeback-empty', '总结不能为空')
     if (report.length > SOURCE_REPORT_LIMIT) throw new Rejection('source-report-too-long', `总结有 ${report.length} 字，超过 ${SOURCE_REPORT_LIMIT} 字。请压缩到 2 到 4 句、300 字以内，去掉过程、commit 号和本地路径，再调用一次。`)
     const extra = Object.fromEntries(Object.entries(result).flatMap(([key, value]) => (typeof value === 'string' && value.trim() ? [[key, value.trim()]] : [])))
-    this.store.saveReport(target, { text: report, updatedAt: this.now(), ...extra, ...(result.fix ? { fix: result.fix } : {}) })
+    this.store.saveReport(target, { text: report, updatedAt: this.now(), ...extra })
     return this.emit(target)
   }
 

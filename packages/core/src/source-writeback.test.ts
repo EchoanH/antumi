@@ -548,12 +548,6 @@ describe('source writeback', () => {
     } finally { writer.transitions = original }
   })
 
-  it('stores the investigation proposal with the source report', () => {
-    const fix = { decision: 'repair' as const, evidence: 'A failing redirect test', plan: 'Preserve the URL' }
-    writeback.saveReport(target, 'Located the defect.', { fix })
-    expect(writeback.view(target).report?.fix).toEqual(fix)
-  })
-
   it('holds hand-in writes until automatic repair has completed delivery', async () => {
     rules = handIn
     writeback.close()

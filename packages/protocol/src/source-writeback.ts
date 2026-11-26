@@ -10,6 +10,8 @@ import { SourceUpdateTarget } from './source-comments'
 // The agent's tool for drafting the summary; it writes to Antumi only, so it asks the user nothing.
 export const SOURCE_REPORT_TOOL = 'source_report'
 export const SOURCE_TASK_READ_TOOLS = ['source_task_options', 'source_task_catalog'] as const
+// An automatic investigation's tool for opening the issue's task, where the user allows it.
+export const SOURCE_TASK_CREATE_TOOL = 'source_task_create'
 
 export const MAX_WRITEBACK_COMMENT = 20_000
 export const MAX_SOURCE_REPORT = 8_000
@@ -135,21 +137,12 @@ export const SourceTaskProposal = z.object({
 }).strict()
 export type SourceTaskProposal = z.infer<typeof SourceTaskProposal>
 
-export const SourceFixProposal = z.object({
-  decision: z.enum(['repair', 'needs_input', 'no_fix']),
-  evidence: z.string().trim().min(1).max(2000),
-  plan: z.string().trim().min(1).max(4000),
-  task: SourceTaskProposal.optional()
-})
-export type SourceFixProposal = z.infer<typeof SourceFixProposal>
-
 export const SourceReport = z.object({
   text: z.string().max(MAX_SOURCE_REPORT), updatedAt: z.number(),
   outcome: SourceOutcome.optional(),
   verification: z.string().max(SOURCE_REPORT_LIMIT).optional(),
   question: z.string().max(SOURCE_REPORT_LIMIT).optional(),
-  blocker: z.string().max(SOURCE_REPORT_LIMIT).optional(),
-  fix: SourceFixProposal.optional()
+  blocker: z.string().max(SOURCE_REPORT_LIMIT).optional()
 })
 export type SourceReport = z.infer<typeof SourceReport>
 

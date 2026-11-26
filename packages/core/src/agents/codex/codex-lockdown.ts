@@ -1,3 +1,4 @@
+import { refreshActiveAgentProxy, buildActiveAgentChildEnv } from '../../agent-proxy'
 import { execFile } from 'node:child_process'
 import { link, symlink } from 'node:fs/promises'
 import path from 'node:path'
@@ -47,7 +48,10 @@ export function lockedCodexCommand(launch: AgentLaunch, lockdown: NonNullable<Ag
 }
 
 const execute = promisify(execFile)
-const run: CommandRunner = async (command, args) => (await execute(command, [...args], { timeout: 10_000, windowsHide: true })).stdout
+const run: CommandRunner = async (command, args) => {
+  await refreshActiveAgentProxy()
+  return (await execute(command, [...args], { env: buildActiveAgentChildEnv('codex'), timeout: 10_000, windowsHide: true })).stdout
+}
 
 export async function prepareCodexLockdown(stage: AgentStage, launch: AgentLaunch, version: CommandRunner = run): Promise<{ env?: Record<string, string> }> {
   if (!launch.lockdown) return {}

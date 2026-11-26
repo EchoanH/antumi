@@ -41,6 +41,8 @@ describe('unattendedAnswer', () => {
     expect(unattendedAnswer(approval({ tool: 'WebFetch', title: 'https://docs.test' }), 'acceptEdits', 'only')).toEqual({ decision: 'allow' })
     expect(unattendedAnswer(approval({ tool: 'mcp__jira__get_issue', title: 'D-1' }), 'acceptEdits', 'only')).toEqual({ decision: 'allow' })
     expect(unattendedAnswer(approval({ tool: 'mcp__antumi__browser_click', title: 'Submit' }), 'acceptEdits', 'only')).toEqual({ decision: 'deny', message: READ_ONLY_DENIAL })
+    // An investigation the source lets open a task: core checks it, so a planning agent's ask passes.
+    expect(unattendedAnswer(approval({ tool: 'mcp__antumi__source_task_create', title: 'Fix login' }), 'acceptEdits', 'allow')).toEqual({ decision: 'allow' })
     expect(unattendedAnswer(approval({ tool: 'Edit', title: 'src/a.ts' }), 'acceptEdits', 'only')).toEqual({ decision: 'deny', message: READ_ONLY_DENIAL })
     expect(unattendedAnswer(approval({ title: 'npm test' }), 'acceptEdits', undefined, 'npm test')).toEqual({ decision: 'deny', message: UNATTENDED_DENIAL })
   })

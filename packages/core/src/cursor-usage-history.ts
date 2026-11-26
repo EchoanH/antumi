@@ -38,9 +38,7 @@ export function cursorHistoryReader(now: () => number = Date.now) {
     const events: UsageEvent[] = [], seen = new Map<string, number>()
     const end = now(), start = end - 92 * 86400_000
     for (let page = 1; page <= 40; page++) {
-      const result = Page.parse(await fetchUsageJson('https://api2.cursor.sh/aiserver.v1.DashboardService/GetFilteredUsageEvents',
-        { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'Connect-Protocol-Version': '1' },
-        JSON.stringify({ teamId: 0, startDate: String(start), endDate: String(end), page, pageSize: 300 })))
+      const result = Page.parse(await fetchUsageJson('https://api2.cursor.sh/aiserver.v1.DashboardService/GetFilteredUsageEvents', { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'Connect-Protocol-Version': '1' }, JSON.stringify({ teamId: 0, startDate: String(start), endDate: String(end), page, pageSize: 300 }), undefined, 'cursor'))
       for (const row of result.usageEventsDisplay) {
         const key = JSON.stringify(row), count = seen.get(key) ?? 0
         seen.set(key, count + 1)

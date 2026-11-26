@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { agentDescriptor, AutoInvestigationConfig, Conversation, type SourceDescriptor, type SourceInbox, type SourceIssue } from '@antumi/protocol'
+import { agentDescriptor, AutoInvestigationConfig, Conversation, DEFAULT_INVESTIGATION_PROMPT, type SourceDescriptor, type SourceInbox, type SourceIssue } from '@antumi/protocol'
 import { AttachmentStore } from './attachment-store'
 import { CredentialStore } from './credential-store'
 import { fakeConnection, until, type FakeConnection } from './fake-connection'
@@ -804,7 +804,7 @@ describe('SourceService', () => {
       validate: async () => {}, available: () => null, capacity: () => true,
       getConversation: (id) => fixture.rows.get(id) ?? null,
       idle: () => false, receipt: () => null,
-      launch: async (run) => { await service.investigate(run.provider, run.instance, run.key, { agent: 'cursor', projectPaths: ['/code/app'], note: run.config?.note }, run.id) },
+      launch: async (run) => { await service.investigate(run.provider, run.instance, run.key, { agent: 'cursor', projectPaths: ['/code/app'], note: run.config?.note, ...(run.config?.permissionMode ? { permissionMode: run.config.permissionMode, allowBypass: run.config.permissionMode === 'bypass' } : {}) }, run.id) },
       retry: async (run) => { await service.retryInvestigation(run.id, true) },
       changed: () => {}
     }, () => clock)
@@ -815,17 +815,18 @@ describe('SourceService', () => {
     return fixture
   }
 
-  it('keeps an automatic repair coordinator read-only and asks it for a proposal', async () => {
+  it('runs an automatic investigation in its picked mode, told by its prompt and how to open a task', async () => {
     const fixture = await automaticSetup()
-    await service.saveAutoInvestigation('demo', 'default', AutoInvestigationConfig.parse({ enabled: true, agent: 'cursor', projectPaths: ['/code/app'], permissionMode: 'bypass', autoFix: { enabled: true, typeIds: ['bug'], permissionMode: 'bypass', concurrency: 1, maxOpenTasks: 10 } }))
+    await service.saveAutoInvestigation('demo', 'default', AutoInvestigationConfig.parse({ enabled: true, agent: 'cursor', projectPaths: ['/code/app'], permissionMode: 'bypass', autoFix: { enabled: true } }))
     demo.issues.push(issue('D-4'))
     clock += 15 * 60_000
     await service.refresh('demo', 'default')
     await automatic!.tick()
     await until(() => fixture.begun[0])
-    expect(fixture.opened[0]?.start).toMatchObject({ readOnly: true, permissionMode: agentDescriptor('cursor').readOnlyMode })
-    expect(fixture.begun[0]?.note).toContain('source_report')
-    expect(fixture.begun[0]?.note).toContain('不创建或委派任务')
+    expect(fixture.opened[0]?.start).toMatchObject({ permissionMode: 'bypass' })
+    expect(fixture.opened[0]?.start).not.toHaveProperty('readOnly')
+    expect(fixture.begun[0]?.note).toContain(DEFAULT_INVESTIGATION_PROMPT['zh-CN'])
+    expect(fixture.begun[0]?.note).toContain('source_task_create')
     expect(store.list()).toEqual([])
   })
 
@@ -839,7 +840,8 @@ describe('SourceService', () => {
     await until(() => fixture.begun.length > 0 ? true : undefined)
     const record = automatic!.store.runs()[0]!
     expect(fixture.opened).toHaveLength(1)
-    expect(fixture.begun[0]).toMatchObject({ id: record.id, note: '先找相关测试', ref: `auto-investigate:${record.id}` })
+    expect(fixture.begun[0]).toMatchObject({ id: record.id, ref: `auto-investigate:${record.id}` })
+    expect(fixture.begun[0]?.note).toMatch(/^先找相关测试\n\n## 和 Antumi 的配合\n\n这个来源不允许新建任务/)
     expect(service.inbox('demo', 'default').items.find((item) => item.key === 'D-4')).toMatchObject({ conversationId: record.id, autoInvestigation: { id: record.id } })
     expect(service.list()[0]?.instances[0]?.autoInvestigation?.config.enabled).toBe(true)
     clock += 15 * 60_000
@@ -876,7 +878,8 @@ describe('SourceService', () => {
     await service.retryInvestigation(run.id)
     await until(() => fixture.begun.length > 0 ? true : undefined)
     expect(automatic!.pending(run.id)?.status).toBe('handed-over')
-    expect(fixture.begun[0]).toMatchObject({ id: run.id, note: '先找相关测试' })
+    expect(fixture.begun[0]).toMatchObject({ id: run.id })
+    expect(fixture.begun[0]?.note).toMatch(/^先找相关测试\n\n.*不允许新建任务/s)
   })
 
 })

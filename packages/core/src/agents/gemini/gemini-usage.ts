@@ -1,3 +1,4 @@
+import { fetchWithAgentProxy } from '../../agent-proxy'
 import { readFile, readdir, realpath } from 'node:fs/promises'
 import path from 'node:path'
 import { z } from 'zod'
@@ -45,9 +46,9 @@ async function accessToken(credential: z.infer<typeof Credential>): Promise<stri
   if (credential.access_token && (credential.expiry_date ?? 0) > now + 60_000) return credential.access_token
   if (!credential.refresh_token) throw new UsageFetchError('auth-expired', 'Gemini 登录已过期，请在终端重新登录')
   const client = await readGeminiOAuthClient(await requireGemini())
-  let response: Response
+  let response: Awaited<ReturnType<typeof fetchWithAgentProxy>>
   try {
-    response = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: client.id, client_secret: client.secret, refresh_token: credential.refresh_token, grant_type: 'refresh_token' }), signal: AbortSignal.timeout(10_000) })
+    response = await fetchWithAgentProxy('gemini', 'https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: client.id, client_secret: client.secret, refresh_token: credential.refresh_token, grant_type: 'refresh_token' }), signal: AbortSignal.timeout(10_000) })
   } catch (error) { throw new UsageFetchError('request-failed', error instanceof Error ? error.message : String(error)) }
   if (response.status === 400 || response.status === 401) throw new UsageFetchError('auth-expired', 'Gemini 登录已过期，请在终端重新登录')
   if (!response.ok) throw new UsageFetchError('request-failed', `Google token endpoint answered ${response.status}`)
@@ -75,10 +76,10 @@ export async function readGeminiUsage(): Promise<UsageReading> {
   try {
     const headers = { Authorization: `Bearer ${await accessToken(credential)}`, 'Content-Type': 'application/json' }
     const project = process.env.GOOGLE_CLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT_ID
-    const loaded = Loaded.safeParse(await fetchUsageJson(`${ENDPOINT}:loadCodeAssist`, headers, JSON.stringify({ ...(project ? { cloudaicompanionProject: project } : {}), metadata: { ideType: 'IDE_UNSPECIFIED', platform: 'PLATFORM_UNSPECIFIED', pluginType: 'GEMINI' } }))).data
+    const loaded = Loaded.safeParse(await fetchUsageJson(`${ENDPOINT}:loadCodeAssist`, headers, JSON.stringify({ ...(project ? { cloudaicompanionProject: project } : {}), metadata: { ideType: 'IDE_UNSPECIFIED', platform: 'PLATFORM_UNSPECIFIED', pluginType: 'GEMINI' } }), undefined, 'gemini')).data
     const resolved = typeof loaded?.cloudaicompanionProject === 'string' ? loaded.cloudaicompanionProject : loaded?.cloudaicompanionProject?.id
     if (!resolved && !project) throw new UsageFetchError('request-failed', 'Gemini 尚未完成账号初始化，请在终端运行 gemini')
-    const windows = parseGeminiQuota(await fetchUsageJson(`${ENDPOINT}:retrieveUserQuota`, headers, JSON.stringify({ project: resolved || project })))
+    const windows = parseGeminiQuota(await fetchUsageJson(`${ENDPOINT}:retrieveUserQuota`, headers, JSON.stringify({ project: resolved || project }), undefined, 'gemini'))
     return { signedIn: true, windows, plan: loaded?.currentTier?.name ?? null }
   } catch (error) {
     if (error instanceof UsageFetchError && error.code === 'auth-expired' && credential.refresh_token) tokens.delete(credential.refresh_token)

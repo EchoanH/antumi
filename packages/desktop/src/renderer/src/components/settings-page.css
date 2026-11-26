@@ -476,3 +476,37 @@
 @media (prefers-reduced-motion: reduce) {
   .appearance-preview-window::before, .appearance-preview-window::after { transition: none; }
 }
+
+/* 设置 → 代理: global proxy configuration, connection test, and per-CLI policies. */
+.proxy-status-block,
+.proxy-manual-form,
+.proxy-test-block { border-top: 1px solid var(--border); }
+.proxy-status-block { padding: 14px 0; display: flex; flex-direction: column; gap: 8px; }
+.proxy-status-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.proxy-refresh-button { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.proxy-refresh-button svg { width: 14px; height: 14px; }
+.proxy-status-values { display: flex; flex-direction: column; gap: 6px; }
+.proxy-summary-list { margin: 0; padding: 8px 12px; list-style: none; display: flex; flex-direction: column; gap: 4px; border-radius: var(--radius-sm); background: var(--fill); color: var(--text); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; user-select: text; }
+.proxy-manual-form { padding: 14px 0; display: flex; flex-direction: column; gap: 12px; }
+.proxy-manual-form > .settings-row { padding: 8px 0 4px; border-top: 1px solid var(--border); }
+.proxy-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.proxy-field > .input { width: 100%; max-width: 520px; background: var(--surface); border-color: var(--border-2); }
+.proxy-field-error { margin: 0; color: var(--danger); font-size: 12px; line-height: 1.5; }
+.proxy-advanced-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+.proxy-advanced-grid .proxy-field:last-child { grid-column: 1 / -1; }
+.proxy-advanced-grid .proxy-field > .input { max-width: none; }
+.proxy-form-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-top: 4px; }
+.proxy-env-note { margin: 0; padding: 12px 0; border-top: 1px solid var(--border); }
+.proxy-test-block > .settings-row { border-top: 0; }
+.proxy-test-result { display: flex; align-items: flex-start; gap: 12px; padding: 10px 12px; margin: 0 0 14px; border-radius: var(--radius); background: var(--fill); }
+.proxy-test-result-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.proxy-test-result-copy > p { margin: 0; }
+.proxy-cli-row { align-items: center; }
+.proxy-cli-row .settings-row-description[data-warning] { color: var(--warning); }
+.proxy-cli-row .segmented { flex-shrink: 0; }
+.proxy-missing-clis { margin-top: 0; }
+.proxy-missing-clis > summary { font-size: 12px; color: var(--text-muted); padding: 12px 0; }
+.proxy-missing-clis > .proxy-cli-row:first-of-type { border-top: 1px solid var(--border); }
+@media (max-width: 760px) {
+  .proxy-advanced-grid { grid-template-columns: minmax(0, 1fr); }
+}

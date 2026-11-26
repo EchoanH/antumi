@@ -1,3 +1,4 @@
+import { applyActiveAgentProxy, buildActiveAgentChildEnv, refreshActiveAgentProxy } from './agent-proxy'
 import { agentCliAccess } from './agent-cli-access'
 import { execFile } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
@@ -8,7 +9,7 @@ import {
   AGENT_KINDS, AgentAccountId, AgentKind, DEFAULT_ACCOUNT, accountsSupported, activeAccount, agentDescriptor, pickAccount, quotaVerdict, accountUsage,
   type AccountKey, type AgentAccount, type AgentAccounts, type AgentUsage, type Terminal
 } from '@antumi/protocol'
-import { planLaunch, readJsonIfExists, withoutEnv, writePrivateJson } from '@antumi/protocol/node'
+import { planLaunch, readJsonIfExists, writePrivateJson } from '@antumi/protocol/node'
 import { adapterOf } from './agents'
 import type { AccountSupport } from './agents/agent-adapter'
 import type { CredentialStore } from './credential-store'
@@ -244,7 +245,12 @@ export class AgentAccountStore {
       if (this.find(agent, id)?.edition) await this.deps.credentials?.delete(KEY_CREDENTIAL, keyInstance(agent, id))
       else await agentCliAccess.use(agent, async () => {
         const command = await accounts.authCommand?.('logout', home) ?? { command: agentDescriptor(agent).cli, args: [...accounts.logout] }
-        await (this.deps.signOut ?? runQuietly)(command.command, command.args, { ...accounts.env(home), ...command.env }, command.unsetEnv)
+        const env = { ...accounts.env(home), ...command.env }
+        if (this.deps.signOut) {
+          await refreshActiveAgentProxy()
+          const proxy = applyActiveAgentProxy(agent, env, command.unsetEnv)
+          await this.deps.signOut(command.command, command.args, proxy.env, proxy.unsetEnv)
+        } else await runQuietly(agent, command.command, command.args, env, command.unsetEnv)
       })
       await accounts.beforeRemove?.(home)
       const active = { ...this.active }
@@ -326,7 +332,9 @@ export class AgentAccountStore {
       const { terminal, loginBackend } = await agentCliAccess.use(agent, async () => {
         const command = await accounts.authCommand?.('login', home) ?? { command: agentDescriptor(agent).cli, args: [...accounts.login] }
         const loginBackend = 'backend' in command ? command.backend : undefined
-        const terminal = await this.deps.signIn(command, { ...(home ? accounts.env(home) : {}), ...command.env }, title, agent, folder, command.unsetEnv)
+        await refreshActiveAgentProxy()
+        const proxy = applyActiveAgentProxy(agent, { ...(home ? accounts.env(home) : {}), ...command.env }, command.unsetEnv)
+        const terminal = await this.deps.signIn(command, proxy.env, title, agent, folder, proxy.unsetEnv)
         return { terminal, loginBackend }
       })
       void this.deps.waitForExit(terminal.id).then(async (exitCode) => {
@@ -408,10 +416,11 @@ function key(agent: AgentKind, id: string): string {
 }
 
 // The CLI's sign-out, which may find nothing to sign out of: whatever it says, the folder goes.
-function runQuietly(command: string, args: readonly string[], env: Record<string, string>, unsetEnv?: readonly string[]): Promise<void> {
+async function runQuietly(agent: AgentKind, command: string, args: readonly string[], env: Record<string, string>, unsetEnv?: readonly string[]): Promise<void> {
+  await refreshActiveAgentProxy()
   return new Promise((resolve) => {
     try {
-      const launch = planLaunch(command, [...args], process.cwd(), { ...withoutEnv(process.env, unsetEnv), ...env })
+      const launch = planLaunch(command, [...args], process.cwd(), buildActiveAgentChildEnv(agent, env, unsetEnv))
       execFile(launch.file, launch.args, { env: launch.env, timeout: LOGOUT_TIMEOUT_MS, windowsHide: true }, () => resolve())
     } catch {
       resolve()

@@ -1,3 +1,4 @@
+import { refreshActiveAgentProxy, buildActiveAgentChildEnv } from './agent-proxy'
 import { agentCliAccess } from './agent-cli-access'
 import { spawn } from 'node:child_process'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
@@ -87,9 +88,10 @@ export class QuickRequests {
       const account = await this.deps.account?.(agent)
       const startedAt = Date.now()
       const env = account?.env ?? await this.deps.accountEnv?.(agent)
-      const command = { ...await quick.command(prompt, model, outputFile), ...(env ? { env } : {}) }
+      const base = await quick.command(prompt, model, outputFile)
+      const command = { ...base, env: { ...base.env, ...env } }
       if (tracking && accounting) job = accounting.begin({ kind: tracking.kind, agent, model, conversationId: tracking.conversationId, baseline: tracking.baseline() })
-      const output = await agentCliAccess.use(agent, () => (this.deps.run ?? runQuick)(command, dir))
+      const output = await agentCliAccess.use(agent, () => this.deps.run ? this.deps.run(command, dir) : runQuick(agent, command, dir))
       const printed = typeof output === 'string' ? output : output.stdout
       const answer = quick.parse(printed, model)
       if (answer.metering) this.deps.observe?.({ id: job, agent, account: account?.id ?? null, identity: account?.identity ?? null, startedAt, metering: answer.metering, unpriced: false })
@@ -120,11 +122,12 @@ export class QuickRequests {
   }
 }
 
-function runQuick(command: QuickCommand, cwd: string): Promise<QuickOutput> {
+async function runQuick(agent: AgentKind, command: QuickCommand, cwd: string): Promise<QuickOutput> {
+  await refreshActiveAgentProxy()
   return new Promise((resolve, reject) => {
     let launch
     try {
-      launch = planLaunch(command.command, command.args, cwd, { ...process.env, ...command.env })
+      launch = planLaunch(command.command, command.args, cwd, buildActiveAgentChildEnv(agent, command.env, command.unsetEnv))
     } catch (error) {
       return reject(new Rejection('quick-failed', error instanceof Error ? error.message : String(error)))
     }

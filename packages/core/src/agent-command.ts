@@ -1,4 +1,4 @@
-import { AGENT_CALL_TOOLS, BROWSER_BOOKMARKS_TOOL, browserToolName, HISTORY_TOOLS, historyToolName, MANAGEMENT_READ_TOOLS, SHOW_PREVIEW_TOOL, SOURCE_REPORT_TOOL, SOURCE_TASK_READ_TOOLS, SQUAD_TOOL_NAMES, SQUAD_CALL_TOOLS, terminalToolName, TODO_TOOLS, todoToolName } from '@antumi/protocol'
+import { AGENT_CALL_TOOLS, BROWSER_BOOKMARKS_TOOL, browserToolName, HISTORY_TOOLS, historyToolName, MANAGEMENT_READ_TOOLS, SHOW_PREVIEW_TOOL, SOURCE_REPORT_TOOL, SOURCE_TASK_CREATE_TOOL, SOURCE_TASK_READ_TOOLS, SQUAD_TOOL_NAMES, SQUAD_CALL_TOOLS, terminalToolName, TODO_TOOLS, todoToolName } from '@antumi/protocol'
 
 // env is added to what the agent runs with, for an agent configured through its environment.
 export type AgentCommand = { command: string; args: string[]; env?: Record<string, string>; unsetEnv?: readonly string[] }
@@ -17,9 +17,10 @@ export const BROWSER_READ_TOOLS: readonly string[] = [...(['snapshot', 'screensh
 
 // Antumi's tools that ask nothing of the user: showing a file the agent wrote, reading the
 // browser's page, reading or stopping a terminal the conversation opened itself, the user's
-// history (there only where the user allows it), the to-dos where they come along, and the
-// issue summary a task's agent drafts for Antumi to post. Running a
+// history (there only where the user allows it), the to-dos where they come along, the issue
+// summary a task's agent drafts for Antumi to post, and the issue's task an investigation opens
+// where the user allows it (core refuses it anywhere else). Running a
 // command in a terminal, or acting on a page, is left out.
 export function antumiReadTools(todos: boolean): string[] {
-  return [...Object.values(AGENT_CALL_TOOLS), ...Object.values(SQUAD_TOOL_NAMES), ...Object.values(SQUAD_CALL_TOOLS), ...MANAGEMENT_READ_TOOLS, SHOW_PREVIEW_TOOL, ...BROWSER_READ_TOOLS, terminalToolName('read'), terminalToolName('stop'), ...HISTORY_TOOLS.map(historyToolName), ...(todos ? TODO_TOOLS.map(todoToolName) : []), SOURCE_REPORT_TOOL, ...SOURCE_TASK_READ_TOOLS]
+  return [...Object.values(AGENT_CALL_TOOLS), ...Object.values(SQUAD_TOOL_NAMES), ...Object.values(SQUAD_CALL_TOOLS), ...MANAGEMENT_READ_TOOLS, SHOW_PREVIEW_TOOL, ...BROWSER_READ_TOOLS, terminalToolName('read'), terminalToolName('stop'), ...HISTORY_TOOLS.map(historyToolName), ...(todos ? TODO_TOOLS.map(todoToolName) : []), SOURCE_REPORT_TOOL, ...SOURCE_TASK_READ_TOOLS, SOURCE_TASK_CREATE_TOOL]
 }

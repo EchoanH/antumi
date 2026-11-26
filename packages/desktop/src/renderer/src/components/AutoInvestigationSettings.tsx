@@ -1,6 +1,6 @@
 import { SupportActions } from './ContactAuthor'
 import { useEffect, useId, useRef, useState } from 'react'
-import { AgentKind, AutoInvestigationConfig, ChatPermissionMode, agentDescriptor, type AutoInvestigationInfo, type AutoInvestigationRun, type ChatCatalog } from '@antumi/protocol'
+import { AgentKind, AutoInvestigationConfig, ChatPermissionMode, DEFAULT_INVESTIGATION_PROMPT, agentDescriptor, type AutoInvestigationInfo, type AutoInvestigationRun, type ChatCatalog } from '@antumi/protocol'
 import { t, getLocale } from '../i18n'
 import { perform, selectConversation, useCore } from '../core-store'
 import { useInstalledAgents } from '../installed-agents'
@@ -131,13 +131,15 @@ export function AutoInvestigationSettings({ provider, instance, info, connected 
   }, [rpc, draft.agent, draft.modelProvider])
   if (!rpc?.features.includes('source-auto-investigation')) return null
   // Unpicked, it only reads, as it did before the mode could be picked.
-  const autoFix = draft.autoFix ?? { enabled: false, typeIds: [], permissionMode: 'acceptEdits' as const, concurrency: 1, maxOpenTasks: 10 }
-  const fixSupported = rpc.features.includes('source-auto-fix')
+  const autoFix = draft.autoFix ?? { enabled: false }
+  const tasksSupported = rpc.features.includes('source-hub-tasks')
   const activeBackend = useAgentBackend(draft.agent ?? null)
   const mode = draft.agent ? draft.permissionMode ?? agentDescriptor(draft.agent).discussionMode : null
   const modes = draft.agent ? startModes(draft.agent, resolveModel(catalog, { model: draft.model }).model, activeBackend) : []
   const permissionOptions = draft.agent && mode ? modeOptions(draft.agent, modes.includes(mode) ? modes : [mode, ...modes], modes) : []
-  const customized = !!(draft.model || draft.modelProvider || draft.effort || draft.note || (autoFix.enabled && draft.projectPaths.length))
+  const customized = !!(draft.model || draft.modelProvider || draft.effort)
+  // An empty note is the default prompt, shown so it can be edited from.
+  const prompt = draft.note || DEFAULT_INVESTIGATION_PROMPT[getLocale()]
   const save = async () => {
     setBusy(true)
     const result = await perform((client) => client.call('sources.saveAutoInvestigation', { provider, instance, config: draft }))
@@ -161,23 +163,20 @@ export function AutoInvestigationSettings({ provider, instance, info, connected 
           const next = AgentKind.safeParse(value)
           if (next.success) setDraft((known) => ({ ...known, agent: next.data, model: undefined, effort: undefined, modelProvider: undefined, permissionMode: undefined }))
         }} />} />
-        {fixSupported && <SettingsRow label={t('SourceFix.enable')} description={t('SourceFix.enableHint')} control={(labelId) => <Toggle labelId={labelId} checked={autoFix.enabled} disabled={busy} onChange={(enabled) => setDraft((known) => ({ ...known, autoFix: { ...autoFix, enabled } }))} />} />}
-        {autoFix.enabled && <SettingsRow label={t('SourceFix.permissions')} description={t('SourceAutomation.permissionsHint')} control={() => <ChatPicker size="field" placement="below" label={t('SourceFix.permissions')} placeholder={t('SourceFix.acceptEdits')} disabled={busy} value={autoFix.permissionMode} tone={modeTone(autoFix.permissionMode)} options={[
-          { value: 'acceptEdits', label: t('SourceFix.acceptEdits') },
-          { value: 'bypass', label: t('SourceFix.bypass') }
-        ]} onChange={(value) => { const permissionMode = value === 'bypass' ? 'bypass' : 'acceptEdits'; setDraft((known) => ({ ...known, autoFix: { ...autoFix, permissionMode } })) }} />} />}
-        {draft.agent && mode && !autoFix.enabled && <SettingsRow label={t('ChatHandoff.permissionMode')} description={t('AutoInvestigation.modeHint')} control={() => <ChatPicker size="field" placement="below" label={t('ChatHandoff.permissionMode')} placeholder={t('ChatHandoff.permissionMode')} value={mode} options={permissionOptions} tone={modeTone(mode)} disabled={busy} onChange={(value) => {
+        {draft.agent && mode && <SettingsRow label={t('ChatHandoff.permissionMode')} description={t('AutoInvestigation.modeHint')} control={() => <ChatPicker size="field" placement="below" label={t('ChatHandoff.permissionMode')} placeholder={t('ChatHandoff.permissionMode')} value={mode} options={permissionOptions} tone={modeTone(mode)} disabled={busy} onChange={(value) => {
           const next = ChatPermissionMode.safeParse(value)
           if (next.success) setDraft((known) => ({ ...known, permissionMode: next.data }))
         }} />} />}
+        {tasksSupported && <SettingsRow label={t('SourceFix.enable')} description={t('SourceFix.enableHint')} control={(labelId) => <Toggle labelId={labelId} checked={autoFix.enabled} disabled={busy} onChange={(enabled) => setDraft((known) => ({ ...known, autoFix: { enabled } }))} />} />}
       </div>
-      {!autoFix.enabled && <div className="settings-field"><span className="settings-field-label">{t('AutoInvestigation.projects')}</span><ProjectPicker projects={draft.projectPaths.map((path) => ({ path, worktreePath: null }))} onChange={(projectPaths) => setDraft((known) => ({ ...known, projectPaths }))} locked={busy} /></div>}
+      <div className="settings-field"><span className="settings-field-label">{t(autoFix.enabled ? 'SourceFix.projects' : 'AutoInvestigation.projects')}</span>{autoFix.enabled && <p className="settings-field-hint">{t('SourceAutomation.projectsHint')}</p>}<ProjectPicker projects={draft.projectPaths.map((path) => ({ path, worktreePath: null }))} onChange={(projectPaths) => setDraft((known) => ({ ...known, projectPaths }))} locked={busy} /></div>
+      <div className="settings-field">
+        <div className="source-automation-prompt-head"><label className="settings-field-label" htmlFor={`${id}-note`}>{t('AutoInvestigation.note')}</label>{draft.note && <button type="button" className="link-button" disabled={busy} onClick={() => setDraft((known) => ({ ...known, note: '' }))}>{t('AutoInvestigation.noteReset')}</button>}</div>
+        <p className="settings-field-hint">{t('AutoInvestigation.noteHint')}</p>
+        <textarea id={`${id}-note`} className="input settings-textarea" rows={6} maxLength={100000} value={prompt} disabled={busy} onChange={(event) => setDraft((known) => ({ ...known, note: event.target.value === DEFAULT_INVESTIGATION_PROMPT[getLocale()] ? '' : event.target.value }))} />
+      </div>
       <div className="source-automation-limits" role="group" aria-label={t('SourceAutomation.limits')}>
         <label className="source-automation-limit"><span className="settings-field-label">{t('AutoInvestigation.limit')}</span><span className="source-automation-number"><input className="input" type="number" inputMode="numeric" aria-label={t('AutoInvestigation.limit')} min={1} max={100} value={draft.dailyLimit} disabled={busy} onChange={(event) => { const dailyLimit = Number(event.target.value); setDraft((known) => ({ ...known, dailyLimit })) }} /><span>{t('SourceAutomation.perDay')}</span></span></label>
-        {autoFix.enabled && <>
-          <label className="source-automation-limit"><span className="settings-field-label">{t('SourceFix.concurrency')}</span><span className="source-automation-number"><input className="input" type="number" inputMode="numeric" aria-label={t('SourceFix.concurrency')} min={1} max={4} value={autoFix.concurrency} disabled={busy} onChange={(event) => { const concurrency = Number(event.target.value); setDraft((known) => ({ ...known, autoFix: { ...autoFix, concurrency } })) }} /><span>{t('SourceAutomation.tasks')}</span></span></label>
-          <label className="source-automation-limit"><span className="settings-field-label">{t('SourceFix.maxOpenTasks')}</span><span className="source-automation-number"><input className="input" type="number" inputMode="numeric" aria-label={t('SourceFix.maxOpenTasks')} min={1} max={100} value={autoFix.maxOpenTasks} disabled={busy} onChange={(event) => { const maxOpenTasks = Number(event.target.value); setDraft((known) => ({ ...known, autoFix: { ...autoFix, maxOpenTasks } })) }} /><span>{t('SourceAutomation.tasks')}</span></span></label>
-        </>}
       </div>
       <details className="source-automation-advanced">
         <summary><ChevronRightIcon /><span>{t('SourceAutomation.advanced')}</span><span className="source-automation-advanced-hint">{t(customized ? 'SourceAutomation.customized' : 'SourceAutomation.advancedHint')}</span></summary>
@@ -186,14 +185,12 @@ export function AutoInvestigationSettings({ provider, instance, info, connected 
             {draft.agent && agentDescriptor(draft.agent).capabilities.modelProviders.length > 0 && <div className="settings-field"><span className="settings-field-label">{t('ProviderPicker.provider')}</span><ProviderPicker size="field" placement="below" agent={draft.agent} value={draft.modelProvider ?? null} disabled={busy} onChange={(value) => setDraft((known) => ({ ...known, modelProvider: value ?? undefined, model: undefined, effort: undefined }))} /></div>}
             <div className="settings-field"><span className="settings-field-label">{t('AgentModelPicker.model')}</span><AgentModelPicker size="field" catalog={catalog} choice={{ model: draft.model, effort: draft.effort }} disabled={busy} onChange={(choice) => setDraft((known) => ({ ...known, model: choice.model, effort: choice.effort }))} /></div>
           </div>
-          {autoFix.enabled && <div className="settings-field"><span className="settings-field-label">{t('SourceFix.projects')}</span><p className="settings-field-hint">{t('SourceAutomation.projectsHint')}</p><ProjectPicker projects={draft.projectPaths.map((path) => ({ path, worktreePath: null }))} onChange={(projectPaths) => setDraft((known) => ({ ...known, projectPaths }))} locked={busy} /></div>}
-          <div className="settings-field"><label className="settings-field-label" htmlFor={`${id}-note`}>{t('AutoInvestigation.note')}</label><textarea id={`${id}-note`} className="input settings-textarea" rows={2} maxLength={100000} value={draft.note} disabled={busy} placeholder={t('SourceAutomation.notePlaceholder')} onChange={(event) => setDraft((known) => ({ ...known, note: event.target.value }))} /></div>
         </div>
       </details>
       {!connected && <p className="settings-field-hint">{t('AutoInvestigation.connectionHint')}</p>}
     </>}
     {info && <AutoInvestigationSummary info={info} />}
-    <div className="settings-form-footer source-automation-footer">{dirty && <span className="settings-field-hint" role="status">{t('SourceAutomation.unsaved')}</span>}<button type="button" className="button primary" disabled={busy || !dirty || (autoFix.enabled && (!Number.isInteger(autoFix.concurrency) || autoFix.concurrency < 1 || autoFix.concurrency > 4 || !Number.isInteger(autoFix.maxOpenTasks) || autoFix.maxOpenTasks < 1 || autoFix.maxOpenTasks > 100)) || !Number.isInteger(draft.dailyLimit) || draft.dailyLimit < 1 || draft.dailyLimit > 100 || (draft.enabled && (!draft.agent || (!autoFix.enabled && !draft.projectPaths.length)))} onClick={() => void save()}>{busy ? t('AutoInvestigation.saving') : t('AutoInvestigation.save')}</button></div>
+    <div className="settings-form-footer source-automation-footer">{dirty && <span className="settings-field-hint" role="status">{t('SourceAutomation.unsaved')}</span>}<button type="button" className="button primary" disabled={busy || !dirty || !Number.isInteger(draft.dailyLimit) || draft.dailyLimit < 1 || draft.dailyLimit > 100 || (draft.enabled && (!draft.agent || (!autoFix.enabled && !draft.projectPaths.length)))} onClick={() => void save()}>{busy ? t('AutoInvestigation.saving') : t('AutoInvestigation.save')}</button></div>
     {history && <AutoInvestigationHistory provider={provider} instance={instance} onClose={() => setHistory(false)} />}
   </section>
 }

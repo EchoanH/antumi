@@ -1,3 +1,4 @@
+import { refreshActiveAgentProxy, buildActiveAgentChildEnv } from '../../agent-proxy'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import semver from 'semver'
@@ -20,7 +21,8 @@ export function piCompatible(version: string | null, minimum = PI_MIN_VERSION): 
 }
 
 async function piVersion(command: string, env: NodeJS.ProcessEnv = process.env): Promise<string | null> {
-  const launch = launchFile(command, ['--version'], { ...env, ...PI_ENV, PI_OFFLINE: '1' })
+  await refreshActiveAgentProxy()
+  const launch = launchFile(command, ['--version'], buildActiveAgentChildEnv('pi', { ...PI_ENV, PI_OFFLINE: '1' }, [], env))
   const result = await execute(launch.file, launch.args, { env: launch.env, timeout: 10_000, maxBuffer: 1024 * 1024, windowsHide: true }).catch(() => null)
   return result ? parseVersion(`${result.stdout}\n${result.stderr}`) : null
 }
@@ -50,7 +52,7 @@ export async function requirePi(options: { env?: NodeJS.ProcessEnv; minVersion?:
 // Its models as a session lists them, from a process that keeps no session file.
 export async function piCatalog(cwd: string): Promise<ChatCatalog | null> {
   const command = await requirePi()
-  return probeChatCatalog(new PiRpc('catalog', { cwd, extraDirs: [], resume: null }, true), { command, args: ['--mode', 'rpc', '--no-session'], env: PI_ENV }, cwd)
+  return probeChatCatalog(new PiRpc('catalog', { cwd, extraDirs: [], resume: null }, true), { command, args: ['--mode', 'rpc', '--no-session'], env: PI_ENV }, cwd, undefined, 'pi')
 }
 
 export function piInstallation(platform: NodeJS.Platform): AgentCliInstallation | null {

@@ -1,6 +1,6 @@
 # 来源事项自动化闭环（设计）
 
-> 状态：回写地基及「中枢选择任务参数 → 独立任务修复 → 检查 → GitHub PR → 待验收」已实现；平台问答、自动改派与多周期返工仍为设计。具体流程见 SOURCE-AUTO-INVESTIGATION.md。
+> 状态：回写地基及「中枢新建任务 → 独立任务完成 → 检查 → PR（GitHub）→ 待验收」已实现；平台问答、自动改派与多周期返工仍为设计。具体流程见 SOURCE-AUTO-INVESTIGATION.md。
 
 事项进入范围后，Antumi 自己接单、处理、在平台上提问并等回复、交付并交接给下游，被打回时自己返工；用户只在需要决策时出现。硬约束：**平台上不属于用户本人的操作一律不做**——缺陷只走到「提测 / 已解决」，验证和关闭留给 QA。
 
@@ -88,7 +88,7 @@
       model?, effort?, modelProvider?, dependsOn? } } }
 ```
 
-`fix.task` 用于自动修复，先保存完整提案，再由 core 校验和创建任务；任务权限只取用户策略。`verification` 作为单独一段带进交接评论。`needs_input` 和 `blocked` 的平台提问和上报仍待第三期。归属不由 Agent 判断，所以没有「不归我」这种结果。
+中枢不再通过 `source_report` 提交任务提案，改用 `source_task_create` 当场新建（见 SOURCE-AUTO-INVESTIGATION.md）；任务权限只取用户策略。`verification` 作为单独一段带进交接评论。`needs_input` 和 `blocked` 的平台提问和上报仍待第三期。归属不由 Agent 判断，所以没有「不归我」这种结果。
 
 发往平台的评论，凡是来自总结或最后一条回复的，先过 `channel-output.ts` 的 `redact` 和 `withoutMachinePaths`（密钥、主目录路径）；用户亲手写的不动。
 

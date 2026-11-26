@@ -82,6 +82,13 @@ describe('TerminalService', () => {
     expect(service.list()).toHaveLength(1)
   })
 
+  it('blanks proxy variables on a daemon that cannot unset them, rather than refusing', async () => {
+    daemon.features.splice(daemon.features.indexOf('unset-env'), 1)
+    await service.signIn({ command: 'claude', args: ['login'] }, { HTTPS_PROXY: 'http://proxy:7897' }, 'Claude login', 'claude', root, ['HTTPS_PROXY', 'http_proxy'])
+    expect(daemon.spawns[0]?.unsetEnv).toBeUndefined()
+    expect(daemon.spawns[0]?.env).toMatchObject({ HTTPS_PROXY: 'http://proxy:7897', ...(process.platform === 'win32' ? { HTTP_PROXY: '' } : { http_proxy: '' }) })
+  })
+
   it('opens the user\'s shell in the folder asked for, or home when that is not a folder', async () => {
     const opened = await service.open(root)
     expect(opened).toMatchObject({ cwd: root, title: path.basename(root), sessionId: 'session-1' })

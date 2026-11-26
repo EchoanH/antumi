@@ -21,7 +21,7 @@ export async function zcodeSignedIn(home?: string, env: NodeJS.ProcessEnv = proc
 
 // Its models, from a session it opens and never keeps: one with no message is not saved.
 export function zcodeCatalog(cwd: string): Promise<ChatCatalog | null> {
-  return probeChatCatalog(new ZCodeAppServer('catalog', { cwd, extraDirs: [], resume: null }, true), zcodeCommand({ providerSessionId: null, resume: false, handoffPath: null, extraProjects: [] }), cwd)
+  return probeChatCatalog(new ZCodeAppServer('catalog', { cwd, extraDirs: [], resume: null }, true), zcodeCommand({ providerSessionId: null, resume: false, handoffPath: null, extraProjects: [] }), cwd, undefined, 'zcode')
 }
 
 // Z.ai ships ZCode as a desktop app, which puts zcode on PATH; on its own the CLI comes only from

@@ -1,3 +1,5 @@
+import { AgentProxySettings, DEFAULT_AGENT_PROXY_SETTINGS, validateAgentProxySettings } from '@antumi/protocol'
+import { Rejection } from './rejection'
 import { z } from 'zod'
 import { AGENT_KINDS, ChatSettings, DEFAULT_WORKTREE_CLEAN_DAYS, KnowledgeBase, TitleNaming, UnattendedMode, freshBackends } from '@antumi/protocol'
 import { readJsonIfExists, writePrivateJson } from '@antumi/protocol/node'
@@ -12,6 +14,7 @@ import { readJsonIfExists, writePrivateJson } from '@antumi/protocol/node'
 // otherwise. Each field falls back on its own, so one bad value resets nothing else.
 export const DEFAULT_AGENT_CONCURRENCY = 6
 const DEFAULTS = {
+  agentProxy: DEFAULT_AGENT_PROXY_SETTINGS,
   promptSuggestions: true,
   titleNaming: 'first',
   titleModels: {},
@@ -34,6 +37,7 @@ const DEFAULTS = {
 // it is what that install keeps; one from before keeps what it had, even with no file yet.
 const FRESH_INSTALL = { unattendedMode: 'bypass', agentBackends: freshBackends() } satisfies Partial<ChatSettings>
 const Saved = z.object({
+  agentProxy: AgentProxySettings.refine((settings) => validateAgentProxySettings(settings).ok).catch(DEFAULTS.agentProxy),
   promptSuggestions: z.boolean().catch(DEFAULTS.promptSuggestions),
   titleNaming: TitleNaming.catch(DEFAULTS.titleNaming),
   titleModels: ChatSettings.shape.titleModels.unwrap().catch(DEFAULTS.titleModels),
@@ -85,12 +89,17 @@ export class ChatSettingsStore {
   }
 
   async update(patch: Partial<ChatSettings>): Promise<Required<ChatSettings>> {
+    if (patch.agentProxy !== undefined) {
+      const check = validateAgentProxySettings(patch.agentProxy)
+      if (!check.ok) throw new Rejection(check.error, check.field + ': ' + check.error)
+    }
     let knowledgeBase = patch.knowledgeBase === undefined ? this.settings.knowledgeBase : patch.knowledgeBase
     // Older clients send only path and write when changing the write toggle.
     if (knowledgeBase && knowledgeBase.kind === undefined && knowledgeBase.path === this.settings.knowledgeBase?.path && this.settings.knowledgeBase.kind !== undefined) {
       knowledgeBase = { ...knowledgeBase, kind: this.settings.knowledgeBase.kind }
     }
     const next: Required<ChatSettings> = {
+      agentProxy: patch.agentProxy === undefined ? this.settings.agentProxy : AgentProxySettings.parse(patch.agentProxy),
       promptSuggestions: patch.promptSuggestions ?? this.settings.promptSuggestions,
       titleNaming: patch.titleNaming ?? this.settings.titleNaming,
       titleModels: patch.titleModels ?? this.settings.titleModels,

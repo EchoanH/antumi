@@ -128,6 +128,6 @@ export async function readZCodeUsage(home?: string, env: NodeJS.ProcessEnv = pro
   ])
   const key = zcodePlanKey(providers, legacy)
   if (!key) return { signedIn: false }
-  const quota = await fetchUsageJson(`${key.origin}/api/monitor/usage/quota/limit`, { Authorization: key.apiKey, 'Accept-Language': 'en-US,en' })
+  const quota = await fetchUsageJson(`${key.origin}/api/monitor/usage/quota/limit`, { Authorization: key.apiKey, 'Accept-Language': 'en-US,en' }, undefined, undefined, 'zcode')
   return { signedIn: true, ...parseZCodeQuota(quota) }
 }

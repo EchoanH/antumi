@@ -1,8 +1,9 @@
+import { AgentProxySettings, AgentProxyStatus, AgentProxyTestResult } from './agent-proxy'
 import { ProviderImportPreview, ProviderImportResult } from './provider-import'
 import { z } from 'zod'
 import { AutoInvestigationConfig, AutoInvestigationInfo, AutoInvestigationPage, AutoInvestigationRun, SourceFixInfo } from './source'
 import { SourceCommentOptions, SourceCommentPage, SourceDeliveryInfo, SourceUpdateTarget, SourceUpdateSummary, SourceUpdates } from './source-comments'
-import { MAX_SOURCE_REPORT, MAX_WRITEBACK_COMMENT, SOURCE_REPORT_LIMIT, SourceFixProposal, SourceOutcome, SourceTransitions, SourceWrite, SourceWriteback, SourceWritePlan } from './source-writeback'
+import { MAX_SOURCE_REPORT, MAX_WRITEBACK_COMMENT, SOURCE_REPORT_LIMIT, SourceOutcome, SourceTaskProposal, SourceTransitions, SourceWrite, SourceWriteback, SourceWritePlan } from './source-writeback'
 import { SourceWritebackConfig, WritebackLane, WritebackOptions } from './source-writeback-rules'
 import { BrowserDownload, BrowserDownloadAction, BrowserUploadOptions } from './browser'
 import { ChatReference } from './chat-reference'
@@ -92,6 +93,8 @@ const UsageParams = z.object({ windowKinds: z.array(z.string()).optional() })
 // source-investigate-images: sources.investigate attaches uploaded images to the first instruction.
 // source-issue-preview: reads an issue and its comments without importing or investigating it.
 // source-auto-investigation: durable discovery, bounded automatic investigations in a picked permission mode, and history.
+// source-hub-tasks: an automatic investigation is an ordinary conversation in the picked mode, told by
+// its note (DEFAULT_INVESTIGATION_PROMPT when empty), and opens its issue's task with sources.createTask.
 // conversation-projects: a conversation's additional projects can change (conversations.setAdditionalProjects).
 // browser: core hosts a browser for chat agents (the browser.* methods).
 // usage-limit: core continues a chat whose turn hit a usage limit once it lifts (usageLimit items).
@@ -141,7 +144,7 @@ const UsageParams = z.object({ windowKinds: z.array(z.string()).optional() })
 // pull-request-base-branches: lists the remote branches a task's PR can target.
 // plugin-update-check: inspect installed plugin releases without installing them (plugins.checkUpdates).
 // plugin-pages: a plugin may ship pages the desktop frames (PluginInfo.pages, plugins.pageFiles, plugins.pageCall; docs/PLUGINS.md).
-export const CORE_FEATURES = ['squad-calls', 'mobile', 'source-auto-investigation', 'chat-references', 'conversation-references', 'agent-profiles', 'pets', 'plugins', 'plugin-recommendations', 'plugin-packages', 'chat-options', 'chat-images', 'task-start', 'worktrees', 'conversation-branches', 'conversation-commit-push', 'find-file', 'conversation-projects', 'browser', 'browser-collaboration', 'browser-file-transfers', 'keep-awake', 'terminal-commands', 'bookmarks', 'browser-history', 'usage-limit', 'agent-stats', 'conversation-stats', 'prompt-suggestions', 'environment', 'conversation-pin', 'schedules', 'chat-commands', 'file-mentions', 'plan-modes', 'agent-terminals', 'schedule-images', 'dashboard', 'task-conversation-summaries', 'routines', 'ports', 'conversation-fork', 'conversation-configuration', 'conversation-commit-steps', 'conversation-worktrees', 'conversation-start-branch', 'wire-log', 'file-preview', 'deferred-conversation-start', 'agent-cli-installation', 'agent-cli-maintenance', 'task-launch-options', 'git-management', 'git-commit-branches', 'task-handoff', 'handoff-model', 'handoff-mode', 'task-launch', 'discussions', 'discussion-members', 'discussion-projects', 'discussion-topics', 'discussion-requirements', 'discussion-model-providers', 'task-cancel', 'task-redo-in-place', 'conversation-archive', 'discussion-archive', 'translate', 'commit-message', 'squads', 'squad-leader-planning', 'conversation-todos', 'knowledge-base', 'knowledge-base-kind', 'skills-library', 'skills-search', 'skills-activation', 'mcp-servers', 'source-investigate', 'source-investigate-images', 'source-issue-preview', 'todo-overview', 'conversation-helper', 'small-model-stats', 'terminal-color-prompt', 'git-commit-actions', 'file-editor', 'project-config', 'project-config-edit', 'model-providers', 'git-update', 'git-push-target', 'git-cherry-pick', 'git-amend', 'git-force-push', 'task-auto-run', 'session-import', 'agent-accounts', 'usage-analytics', 'task-references', 'release-idle-chats', 'project-star', 'git-favorites', 'project-files', 'git-projects', 'git-branch-browser', 'git-rebase', 'direct-agent-calls', 'discussion-formats', 'discussion-format-suggest', 'agent-call-resume', 'delegation-worktree', 'pasted-text', 'task-conversation-rows', 'inline-visualizations', 'archived-worktrees', 'model-provider-models', 'skills-local', 'model-provider-headers', 'provider-model-images', 'source-comments-v1', 'pull-requests', 'pull-request-base-branches', 'browser-sites', 'chat-command-pins', 'agent-profile-delegation-mode', 'attachment-sweep', 'mobile-handoff', 'channels', 'chat-catalog-problem', 'chat-catalog-refresh', 'channel-readiness', 'channel-tasks', 'plugin-pages', 'plugin-browser-sessions', 'account-keys', 'conversation-accounts', 'handoff-images', 'handoff-provider', 'source-writeback', 'cc-switch-import', 'plugin-update-check', 'source-writeback-lanes', 'source-writeback-per-type', 'source-auto-fix', 'source-agent-task-proposals', 'project-choices', 'project-suggestions'] as const
+export const CORE_FEATURES = ['agent-proxy', 'squad-calls', 'mobile', 'source-auto-investigation', 'chat-references', 'conversation-references', 'agent-profiles', 'pets', 'plugins', 'plugin-recommendations', 'plugin-packages', 'chat-options', 'chat-images', 'task-start', 'worktrees', 'conversation-branches', 'conversation-commit-push', 'find-file', 'conversation-projects', 'browser', 'browser-collaboration', 'browser-file-transfers', 'keep-awake', 'terminal-commands', 'bookmarks', 'browser-history', 'usage-limit', 'agent-stats', 'conversation-stats', 'prompt-suggestions', 'environment', 'conversation-pin', 'schedules', 'chat-commands', 'file-mentions', 'plan-modes', 'agent-terminals', 'schedule-images', 'dashboard', 'task-conversation-summaries', 'routines', 'ports', 'conversation-fork', 'conversation-configuration', 'conversation-commit-steps', 'conversation-worktrees', 'conversation-start-branch', 'wire-log', 'file-preview', 'deferred-conversation-start', 'agent-cli-installation', 'agent-cli-maintenance', 'task-launch-options', 'git-management', 'git-commit-branches', 'task-handoff', 'handoff-model', 'handoff-mode', 'task-launch', 'discussions', 'discussion-members', 'discussion-projects', 'discussion-topics', 'discussion-requirements', 'discussion-model-providers', 'task-cancel', 'task-redo-in-place', 'conversation-archive', 'discussion-archive', 'translate', 'commit-message', 'squads', 'squad-leader-planning', 'conversation-todos', 'knowledge-base', 'knowledge-base-kind', 'skills-library', 'skills-search', 'skills-activation', 'mcp-servers', 'source-investigate', 'source-investigate-images', 'source-issue-preview', 'todo-overview', 'conversation-helper', 'small-model-stats', 'terminal-color-prompt', 'git-commit-actions', 'file-editor', 'project-config', 'project-config-edit', 'model-providers', 'git-update', 'git-push-target', 'git-cherry-pick', 'git-amend', 'git-force-push', 'task-auto-run', 'session-import', 'agent-accounts', 'usage-analytics', 'task-references', 'release-idle-chats', 'project-star', 'git-favorites', 'project-files', 'git-projects', 'git-branch-browser', 'git-rebase', 'direct-agent-calls', 'discussion-formats', 'discussion-format-suggest', 'agent-call-resume', 'delegation-worktree', 'pasted-text', 'task-conversation-rows', 'inline-visualizations', 'archived-worktrees', 'model-provider-models', 'skills-local', 'model-provider-headers', 'provider-model-images', 'source-comments-v1', 'pull-requests', 'pull-request-base-branches', 'browser-sites', 'chat-command-pins', 'agent-profile-delegation-mode', 'attachment-sweep', 'mobile-handoff', 'channels', 'chat-catalog-problem', 'chat-catalog-refresh', 'channel-readiness', 'channel-tasks', 'plugin-pages', 'plugin-browser-sessions', 'account-keys', 'conversation-accounts', 'handoff-images', 'handoff-provider', 'source-writeback', 'cc-switch-import', 'plugin-update-check', 'source-writeback-lanes', 'source-writeback-per-type', 'source-auto-fix', 'source-agent-task-proposals', 'project-choices', 'project-suggestions', 'source-hub-tasks'] as const
 // session-import: core lists the sessions agents ran outside Antumi and imports them as conversations (sessionImports.*).
 // agent-accounts: Claude and Codex sign in to several accounts, one active each, and a usage limit
 // moves the agent to the next with quota (accounts.*); usage readings name their account.
@@ -298,6 +301,8 @@ export const rpcMethods = {
     result: FileWrite
   },
   'system.setAwakeMode': { params: z.object({ mode: ComputerAwakeMode }), result: ComputerAwakeStatus },
+  'system.agentProxyStatus': { params: z.object({ refresh: z.boolean().optional() }), result: AgentProxyStatus },
+  'system.testAgentProxy': { params: z.object({ settings: AgentProxySettings.pick({ mode: true, manual: true }).optional(), targetUrl: z.string().trim().url().max(500).optional() }), result: AgentProxyTestResult },
   'system.chatSettings': { params: z.object({}), result: ChatSettings },
   'system.setChatSettings': { params: ChatSettings.partial(), result: ChatSettings },
   // The vaults Obsidian's registry lists on this machine, the open one first; none headless.
@@ -918,6 +923,9 @@ export const rpcMethods = {
   'sources.list': { params: z.object({}), result: z.array(SourceDescriptor) },
   'sources.saveAutoInvestigation': { params: InstanceRef.extend({ config: AutoInvestigationConfig }), result: SourceDescriptor },
   'sources.fix': { params: ConversationRef, result: SourceFixInfo.nullable() },
+  // An automatic investigation opening its issue's task, by its source_task_create tool: checked,
+  // created and queued to start at once, or refused with why. Needs source-hub-tasks.
+  'sources.createTask': { params: ConversationRef.extend({ task: SourceTaskProposal }), result: Task },
   'sources.autoInvestigations': { params: InstanceRef.extend({ cursor: z.string().optional(), limit: z.number().int().min(1).max(100).default(30) }), result: AutoInvestigationPage },
   'sources.retryAutoInvestigation': { params: ConversationRef, result: AutoInvestigationRun },
   'sources.cancelAutoInvestigation': { params: ConversationRef, result: AutoInvestigationRun },
@@ -990,7 +998,7 @@ export const rpcMethods = {
     params: z.object({
       conversationId: z.string().min(1), text: z.string().min(1).max(MAX_SOURCE_REPORT),
       outcome: SourceOutcome.optional(),
-      verification: z.string().max(SOURCE_REPORT_LIMIT).optional(), question: z.string().max(SOURCE_REPORT_LIMIT).optional(), blocker: z.string().max(SOURCE_REPORT_LIMIT).optional(), fix: SourceFixProposal.optional()
+      verification: z.string().max(SOURCE_REPORT_LIMIT).optional(), question: z.string().max(SOURCE_REPORT_LIMIT).optional(), blocker: z.string().max(SOURCE_REPORT_LIMIT).optional()
     }),
     result: SourceWriteback
   },

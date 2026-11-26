@@ -1,4 +1,5 @@
-import { SourceFixService, fixSnapshot } from './source-fix-service'
+import { AgentProxyService, setActiveAgentProxy } from './agent-proxy'
+import { SourceFixService } from './source-fix-service'
 import { SourceFixStore } from './source-fix-store'
 import { git as readGit, gitOrNull } from './git-changes'
 import { githubRemote } from './github-remote'
@@ -656,6 +657,11 @@ function chooseBackends(settings: ChatSettings): void {
   void usage.refresh()
 }
 const chatSettings = new ChatSettingsStore(paths.chatSettings, (settings) => {
+  if (JSON.stringify(settings.agentProxy) !== agentProxySettingsKey) {
+    agentProxySettingsKey = JSON.stringify(settings.agentProxy)
+    void agentProxy.updateSettings(settings.agentProxy).then(() => { for (const agent of AGENT_KINDS) conversations.invalidateCli(agent) })
+    for (const agent of AGENT_KINDS) conversations.invalidateCli(agent)
+  }
   chooseBackends(settings)
   conversations.setPromptSuggestions(settings.promptSuggestions)
   conversations.setTitleNaming(settings.titleNaming ?? 'off')
@@ -670,6 +676,10 @@ const chatSettings = new ChatSettingsStore(paths.chatSettings, (settings) => {
   server?.broadcast('system.chatSettingsChanged', { settings })
 })
 const initialChatSettings = await chatSettings.load(freshInstall)
+const agentProxy = new AgentProxyService(initialChatSettings.agentProxy)
+let agentProxySettingsKey = JSON.stringify(initialChatSettings.agentProxy)
+await agentProxy.start()
+setActiveAgentProxy(agentProxy)
 chooseBackends(initialChatSettings)
 await accounts.load()
 conversations.setAccounts(accounts)
@@ -804,7 +814,7 @@ sourceInvestigations = new SourceInvestigationService(new SourceInvestigationSto
     for (const project of config.projectPaths) {
       if (!(await stat(project).catch(() => null))?.isDirectory()) throw new Error(`项目不存在：${project}`)
     }
-    await conversations.validateStartOptions(config.agent, { permissionMode: config.autoFix?.enabled ? agentDescriptor(config.agent).readOnlyMode : investigationPermission(config.agent, config.permissionMode), model: config.model, effort: config.effort }, config.modelProvider)
+    await conversations.validateStartOptions(config.agent, { permissionMode: investigationPermission(config.agent, config.permissionMode), model: config.model, effort: config.effort }, config.modelProvider)
   },
   available: (config) => {
     if (!config.agent) return 'agent-unavailable'
@@ -835,9 +845,8 @@ sourceInvestigations = new SourceInvestigationService(new SourceInvestigationSto
     const config = run.config
     const conversation = conversations.get(run.id)
     if (!config?.agent || !conversation.source) throw new Error('排查配置或来源已丢失')
-    await conversations.openInvestigation(config.agent, config.projectPaths, !config.autoFix?.enabled && config.permissionMode === 'bypass', {
-      permissionMode: config.autoFix?.enabled ? agentDescriptor(config.agent).readOnlyMode : investigationPermission(config.agent, config.permissionMode),
-      ...(config.autoFix?.enabled ? { readOnly: true } : {}),
+    await conversations.openInvestigation(config.agent, config.projectPaths, config.permissionMode === 'bypass', {
+      permissionMode: investigationPermission(config.agent, config.permissionMode),
       model: config.model, effort: config.effort, modelProvider: config.modelProvider
     }, { source: conversation.source, title: run.title, automaticId: run.id })
     if (!conversation.preparing) {
@@ -846,7 +855,7 @@ sourceInvestigations = new SourceInvestigationService(new SourceInvestigationSto
     }
     await sources.retryInvestigation(run.id, true)
   },
-  validateTask: validateSourceTaskProposal,
+  createTask: (proposal, run) => { if (!sourceFixes) throw new Rejection('invalid-configuration', '新建任务尚未就绪'); return sourceFixes.create(run, proposal) },
   takeoverFix: (id) => sourceFixes?.takeover(id),
   resumeImages: (run) => sources.resumeInvestigationImages(run.id),
   changed: (provider, instance, info, run) => {
@@ -869,8 +878,6 @@ const sourceFixRevision = async (task: Task): Promise<string> => JSON.stringify(
 })))
 
 async function validateSourceTaskProposal(proposal: SourceTaskProposal, run: InvestigationRun): Promise<void> {
-  const config = run.config?.autoFix
-  if (!config?.enabled) throw new Rejection('invalid-configuration')
   const check = environment.current()?.checks.find((entry) => entry.tool === proposal.agent)
   if (!check || check.status !== 'ok' || check.problem || chatSettings.current().disabledAgents?.includes(proposal.agent)) throw new Rejection('agent-unavailable', '中枢选择的执行 Agent 当前不可用')
   if (proposal.modelProvider) {
@@ -881,51 +888,46 @@ async function validateSourceTaskProposal(proposal: SourceTaskProposal, run: Inv
   const known = new Set(await Promise.all([...projects.recent(), ...(run.config?.projectPaths ?? [])].map((folder) => realpath(folder).catch(() => folder))))
   const picked = new Set<string>()
   for (const [index, repo] of proposal.repos.entries()) {
-    const canonical = await realpath(repo.path)
+    const canonical = await realpath(repo.path).catch(() => { throw new Rejection('missing-repo', `项目不存在：${repo.path}`) })
     if (!known.has(canonical)) throw new Rejection('source-project-unknown', '中枢选择的项目尚未登记，不能自动执行')
     if (picked.has(canonical)) throw new Rejection('invalid-params', '任务项目重复')
     picked.add(canonical)
     if (index === 0 && repo.reference) throw new Rejection('invalid-params', '任务的第一个项目必须可写')
-    if (repo.startRef && !isStartRef(repo.startRef)) throw new Rejection('invalid-params', '无效的任务分支起点')
+    if (repo.startRef && !isStartRef(repo.startRef)) throw new Rejection('invalid-params', `无效的任务分支起点 ${repo.startRef}：只能是 HEAD、refs/heads/<分支> 或 refs/remotes/origin/<分支>，不填用远端默认分支`)
     if (!(await stat(canonical)).isDirectory()) throw new Rejection('missing-repo')
-    if (!repo.reference && !await githubRemote(canonical)) throw new Rejection('pull-request-not-github', '自动提 PR 当前需要 GitHub 开发仓库')
   }
   for (const id of proposal.dependsOn ?? []) service.get(id)
   const writable = proposal.repos.filter((repo) => !repo.reference).map((repo) => repo.path)
   const setups = await worktreeSetup.requireTrusted(writable)
   for (const folder of writable) if (!setups.find((setup) => setup.repoPath === folder)?.config.check) throw new Rejection('project-check-missing', '所选开发仓库尚未配置并信任交付检查')
-  const permissionMode = await conversations.unattendedStartMode(proposal.agent, config.permissionMode, proposal.model, proposal.modelProvider ?? undefined)
+  const permissionMode = await conversations.unattendedStartMode(proposal.agent, chatSettings.current().unattendedMode, proposal.model, proposal.modelProvider ?? undefined)
   await conversations.validateStartOptions(proposal.agent, { permissionMode, model: proposal.model, effort: proposal.effort }, proposal.modelProvider ?? undefined)
 }
 
 sourceFixes = new SourceFixService(new SourceFixStore(paths.database), {
   candidates: () => sourceInvestigations?.fixCandidates() ?? [],
-  hubAvailable: (run) => { try { return conversations.get(run.id).archivedAt == null } catch { return false } },
   allowed: (run) => !!sourceInvestigations?.fixAllowed(run),
-  report: (id) => writeback.view({ kind: 'conversation', id }).report,
   taskReport: (task) => writeback.view({ kind: 'task', id: task.id }).report,
   task: (id) => { try { return service.get(id) } catch { return null } },
   conversation: (task) => { try { return task.conversationId ? conversations.get(task.conversationId) : null } catch { return null } },
   capacity: (proposal) => conversations.capacityAvailable(proposal.agent),
   validate: validateSourceTaskProposal,
   prepare: (run) => sources.fixContext({ provider: run.provider, instance: run.instance, key: run.key, url: run.url, name: sources.list().find((source) => source.provider === run.provider)?.name ?? run.provider }),
-  create: async (_run, context, proposal, report, link) => {
-    const snapshot = fixSnapshot(context.snapshot, report)
+  create: async (_run, context, proposal, link) => {
     return service.createLinkedTask({
       title: proposal.title, agent: proposal.agent, squadId: null,
       details: proposal.details,
       dependsOn: proposal.dependsOn,
       launch: { model: proposal.model ?? null, effort: proposal.effort ?? null, modelProvider: proposal.modelProvider ?? null },
       repos: proposal.repos.map((repo) => ({ path: repo.path, worktreePath: null, branch: null, startRef: repo.startRef ?? null, start: null, reference: repo.reference ?? false })),
-      source: context.source, sourceSnapshot: snapshot
+      source: context.source, sourceSnapshot: context.snapshot
     }, link)
   },
-  start: async (task, run) => {
+  start: async (task) => {
     const blocker = service.scheduleBlocker(task.id)
     if (blocker) throw new Rejection(blocker)
-    const config = run.config
-    if (!config?.autoFix?.enabled) throw new Rejection('invalid-configuration')
-    await service.start(task.id, config.autoFix.permissionMode === 'bypass', config.autoFix.permissionMode, task.launch)
+    const mode = chatSettings.current().unattendedMode
+    await service.start(task.id, mode === 'bypass', mode, task.launch)
   },
   receipt: (task) => {
     if (!task.conversationId) return null
@@ -949,24 +951,33 @@ sourceFixes = new SourceFixService(new SourceFixStore(paths.database), {
     }
     await verify()
     const urls: string[] = []
+    const local: string[] = []
     // Validate every repository before the first external write.
-    for (const check of checks) if (check.blocker && !['existing-pr', 'no-commits'].includes(check.blocker)) throw new Error(`无法自动创建 PR：${check.blocker}`)
+    for (const check of checks) if (check.blocker && !['existing-pr', 'no-commits', 'not-github'].includes(check.blocker)) throw new Error(`无法自动创建 PR：${check.blocker}`)
     for (const check of checks) {
       if (check.existing) { urls.push(check.existing.url); continue }
       if (check.blocker === 'no-commits') continue
+      // No pull request where it is not on GitHub: the commits stay on the task's branch for the user.
+      if (check.blocker === 'not-github') {
+        const repo = task.repos.find((each) => each.path === check.repoPath)
+        const since = repo?.worktreePath && repo.start?.commit ? await gitOrNull(repo.worktreePath, ['rev-list', '--count', `${repo.start.commit}..HEAD`]) : null
+        if (repo?.branch && (since === null || Number(since) > 0)) local.push(`${path.basename(repo.path)} 的 ${repo.branch}`)
+        continue
+      }
       if (!check.base || !check.headBranch) throw new Error('PR 的目标分支或任务分支缺失')
       const link = await prs.create({ taskId: task.id, repoPath: check.repoPath, base: check.base, from: check.headBranch, title: task.title.slice(0, 256), body, draft: check.draftDefault ?? false }, { verify })
       urls.push(link.url)
     }
-    if (!urls.length) throw new Error('任务没有可交付的修复提交')
-    return urls
+    if (!urls.length && !local.length) throw new Error('任务没有可交付的提交')
+    return { urls, local }
   },
-  finish: (task, urls) => {
+  finish: (task, { urls, local }) => {
     const report = writeback.view({ kind: 'task', id: task.id }).report
     const summary = (report?.text ?? task.title).slice(0, 300)
     const lines = [summary]
     for (const url of urls) if ([...lines, url].join('\n').length <= SOURCE_REPORT_LIMIT) lines.push(url)
-    writeback.saveReport({ kind: 'task', id: task.id }, lines.join('\n'), { outcome: 'delivered', ...(report?.verification ? { verification: report.verification } : {}) })
+    const verification = [report?.verification, local.length ? `改动在任务分支（${local.join('、')}），没有推送。` : ''].filter(Boolean).join('\n').slice(0, SOURCE_REPORT_LIMIT)
+    writeback.saveReport({ kind: 'task', id: task.id }, lines.join('\n'), { outcome: 'delivered', ...(verification ? { verification } : {}) })
     service.submit(task.id)
   },
   transferred: (run, task) => {
@@ -985,7 +996,7 @@ server = await startRpcServer({
     uploads: new AttachmentUploads(attachments),
     sweeper: attachmentSweeper
   }, terminals, worktrees, browser, awake, terminalCommands, limits, runs, turns, chatSettings, environment, schedules, chatCommands, routines, discussions, wire, () => { server?.broadcast('git.changed', {}); profiles.tick() }, squads, todos, plugins, skills, mcpServers, smallModels, projectConfigs, modelProviders, sessionImports, accounts, cliMaintenance, analytics, automation, pets, new ProjectStar(sources), profiles, bookmarks, browserHistory, sourceUpdates,
-    { store: pullRequestStore, changed: (taskId, links) => server?.broadcast('pullRequests.changed', { taskId, links }), ready: (service) => { pullRequests.current = service } }, browserSites, mobile, channels, squadCalls, writeback)
+    { store: pullRequestStore, changed: (taskId, links) => server?.broadcast('pullRequests.changed', { taskId, links }), ready: (service) => { pullRequests.current = service } }, browserSites, mobile, channels, squadCalls, writeback, agentProxy)
 })
 await writeCoreEndpoint({ port: server.port, token, pid: process.pid, protocolVersion: PROTOCOL_VERSION, version: packageJson.version })
 mobile.seed(conversations.list(true, true, true))
@@ -1032,6 +1043,8 @@ async function shutdown(): Promise<void> {
   await schedules.stop()
   await automation.close()
   await usage.stop()
+  setActiveAgentProxy(null)
+  await agentProxy.close()
   await analytics.close()
   routines.stop()
   autoArchive.stop()

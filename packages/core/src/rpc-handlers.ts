@@ -1,3 +1,4 @@
+import type { AgentProxyService } from './agent-proxy'
 import { CcSwitchImport } from './cc-switch-import'
 import type { SquadCallService } from './squad-call-service'
 import { homedir } from 'node:os'
@@ -130,7 +131,8 @@ export function createRpcHandlers(
   mobile?: MobileService,
   channels?: ChannelService,
   squadCalls?: SquadCallService,
-  writeback?: SourceWriteback
+  writeback?: SourceWriteback,
+  agentProxy?: AgentProxyService
 ): RpcHandlers {
   const writer = (): SourceWriteback => {
     if (!writeback) throw new Rejection('source-writeback-unavailable')
@@ -140,7 +142,7 @@ export function createRpcHandlers(
     if (!mobile) throw new Rejection('mobile-unavailable')
     return mobile
   }
-  const hello = () => ({ protocolVersion: PROTOCOL_VERSION, serverVersion: packageJson.version, home: { path: homedir(), windows: process.platform === 'win32' }, features: CORE_FEATURES.filter((feature) => (feature !== 'agent-profiles' || Boolean(profiles)) && (feature !== 'project-star' || Boolean(projectStar)) && (feature !== 'bookmarks' || Boolean(bookmarks)) && (feature !== 'browser-history' || Boolean(browserHistory)) && (feature !== 'browser-sites' || Boolean(browserSites)) && (feature !== 'pets' || Boolean(pets)) && (feature !== 'squads' || Boolean(squads)) && (feature !== 'squad-calls' || Boolean(squadCalls)) && (!['plugins', 'plugin-recommendations', 'plugin-packages', 'plugin-pages'].includes(feature) || Boolean(plugins)) && (!['skills-library', 'skills-search', 'skills-activation'].includes(feature) || Boolean(skills)) && (feature !== 'mcp-servers' || Boolean(mcpServers)) && (feature !== 'small-model-stats' || Boolean(smallModels)) && (!['model-providers', 'model-provider-models', 'cc-switch-import'].includes(feature) || Boolean(modelProviders)) && (feature !== 'agent-accounts' || Boolean(accounts)) && (feature !== 'pull-requests' || Boolean(pullRequests)) && (feature !== 'mobile' || Boolean(mobile)) && (!['channels', 'channel-readiness', 'channel-tasks'].includes(feature) || Boolean(channels)) && (feature !== 'attachment-sweep' || Boolean(attachments.sweeper)) && (!['source-writeback', 'source-writeback-lanes', 'source-writeback-per-type'].includes(feature) || Boolean(writeback))) })
+  const hello = () => ({ protocolVersion: PROTOCOL_VERSION, serverVersion: packageJson.version, home: { path: homedir(), windows: process.platform === 'win32' }, features: CORE_FEATURES.filter((feature) => (feature !== 'agent-proxy' || Boolean(agentProxy)) && (feature !== 'agent-profiles' || Boolean(profiles)) && (feature !== 'project-star' || Boolean(projectStar)) && (feature !== 'bookmarks' || Boolean(bookmarks)) && (feature !== 'browser-history' || Boolean(browserHistory)) && (feature !== 'browser-sites' || Boolean(browserSites)) && (feature !== 'pets' || Boolean(pets)) && (feature !== 'squads' || Boolean(squads)) && (feature !== 'squad-calls' || Boolean(squadCalls)) && (!['plugins', 'plugin-recommendations', 'plugin-packages', 'plugin-pages'].includes(feature) || Boolean(plugins)) && (!['skills-library', 'skills-search', 'skills-activation'].includes(feature) || Boolean(skills)) && (feature !== 'mcp-servers' || Boolean(mcpServers)) && (feature !== 'small-model-stats' || Boolean(smallModels)) && (!['model-providers', 'model-provider-models', 'cc-switch-import'].includes(feature) || Boolean(modelProviders)) && (feature !== 'agent-accounts' || Boolean(accounts)) && (feature !== 'pull-requests' || Boolean(pullRequests)) && (feature !== 'mobile' || Boolean(mobile)) && (!['channels', 'channel-readiness', 'channel-tasks'].includes(feature) || Boolean(channels)) && (feature !== 'attachment-sweep' || Boolean(attachments.sweeper)) && (!['source-writeback', 'source-writeback-lanes', 'source-writeback-per-type'].includes(feature) || Boolean(writeback))) })
   const channelService = (): ChannelService => {
     if (!channels) throw new Rejection('channels-unavailable')
     return channels
@@ -465,6 +467,8 @@ export function createRpcHandlers(
     'files.write': ({ conversationId, roots, path, text, expectedMtimeMs }) => files.write(fileScope(conversationId, roots), path, text, expectedMtimeMs),
     'system.awakeStatus': () => awake.status(),
     'system.setAwakeMode': ({ mode }) => awake.setMode(mode),
+    'system.agentProxyStatus': ({ refresh }) => { if (!agentProxy) throw new Rejection('agent-proxy-unavailable'); return agentProxy.status(refresh) },
+    'system.testAgentProxy': (params) => { if (!agentProxy) throw new Rejection('agent-proxy-unavailable'); return agentProxy.test(params) },
     'system.chatSettings': () => chatSettings.current(),
     'system.setChatSettings': (patch) => chatSettings.update(patch),
     'knowledge.vaults': () => readObsidianVaults(),
@@ -967,13 +971,13 @@ export function createRpcHandlers(
     'sources.saveWriteback': ({ provider, instance, config, lanes, options }) => sources.saveWriteback(provider, instance, config, lanes, options),
     'sources.writebackPlan': ({ target, trigger }) => writer().plan(target, trigger),
     // A task's chat writes for the task, an investigation for itself.
-    'sources.saveReport': async ({ conversationId, text, ...result }) => {
+    'sources.saveReport': ({ conversationId, text, ...result }) => {
       const conversation = conversations.get(conversationId)
-      if (conversation.autoInvestigationId && result.fix?.decision === 'repair' && sources.automatic?.pending(conversation.id)?.config?.autoFix?.enabled) {
-        if (!result.fix.task) throw new Rejection('invalid-params', '请在 fix.task 中提交完整任务参数：标题、详情、执行 Agent 和项目')
-        await sources.automatic.validateTask(conversation.id, result.fix.task)
-      }
       return writer().saveReport(conversation.taskId ? { kind: 'task', id: conversation.taskId } : { kind: 'conversation', id: conversation.id }, text, result)
+    },
+    'sources.createTask': ({ id, task }) => {
+      if (!sources.automatic) throw new Rejection('invalid-configuration', '自动排查尚未就绪')
+      return sources.automatic.createTask(id, task)
     }
   }
 }
