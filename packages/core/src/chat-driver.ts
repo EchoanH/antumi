@@ -63,6 +63,8 @@ export type ChatAnswer = { decision: ChatDecision; choice?: string; mode?: ChatP
 export const WHOLE_SESSION_FORK = 'whole-session'
 
 export type ChatStageOptions = {
+  // The runtime backend selected for this stage.
+  backend?: string | null
   // An external asker's conversation: only the channel tools, with no local environment access.
   lockdown?: boolean
   instructions?: string

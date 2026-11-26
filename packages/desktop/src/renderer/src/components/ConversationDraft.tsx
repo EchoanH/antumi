@@ -22,7 +22,7 @@ import { useChatCommandMenu } from './ChatCommandMenu'
 import { useChatMentionMenu } from './ChatMentionMenu'
 import { MentionField, useMentionedText } from './ChatMentionField'
 import { messageReferences, writeMentionedText } from '../chat-mentions'
-import { defaultStartMode, effortLabel, modeOptions, modeTone, startModes } from './ChatOptionsBar'
+import { defaultStartMode, effortLabel, modeOptions, modeTone, startModes, useAgentBackend } from './ChatOptionsBar'
 import { ChatModelPicker, ChatPicker, modelMeta } from './ChatPicker'
 import { AgentIcon, CloseIcon, EnterIcon, ExternalIcon, SourceIcon } from './icons'
 import { ProjectPicker } from './ProjectPicker'
@@ -155,7 +155,8 @@ export function ConversationDraft() {
   const model = catalog?.models.find((each) => each.id === modelId)
   const efforts = model?.efforts ?? []
   // A mode the model or settings no longer allow falls back to that agent's available default.
-  const offeredModes = agent ? startModes(agent, model) : []
+  const activeBackend = useAgentBackend(agent)
+  const offeredModes = agent ? startModes(agent, model, activeBackend) : []
   const chosenMode = agent ? modes[agent] ?? (issue ? undefined : remembered?.mode) : undefined
   const investigationModes = usePreferences((s) => s.investigationModes)
   const reading = agent && issue ? investigationMode(agent, offeredModes, investigationModes[agent]) : null

@@ -9,7 +9,7 @@ import { agentLabel, reasonText } from '../labels'
 import { useOccludesBrowser } from '../browser-occlusion'
 import { AgentQuotaHint, confirmQuota, modelText, useRecommendation } from './AgentQuota'
 import { AgentModelPicker } from './AgentModelPicker'
-import { modeOptions, startModes } from './ChatOptionsBar'
+import { modeOptions, startModes, useAgentBackend } from './ChatOptionsBar'
 import { ChatPicker } from './ChatPicker'
 import { AgentIcon, CloseIcon } from './icons'
 import { SquadLaunchDialog } from './SquadLaunchDialog'
@@ -75,9 +75,10 @@ function LaunchForm({ task, onSquad }: { task: Task; onSquad(): void }) {
     return () => element?.close()
   }, [])
 
+  const activeBackend = useAgentBackend(agent)
   const choice = agent ? choices[agent] ?? {} : {}
   const { model, modelId, effort } = resolveModel(catalog, choice)
-  const offered = agent ? startModes(agent, model) : []
+  const offered = agent ? startModes(agent, model, activeBackend) : []
   const requestedMode = (agent ? modes[agent] : undefined) ?? 'plan'
   const mode = supported && offered.includes(requestedMode) && !checkStartMode(dependencies, requestedMode) ? requestedMode : 'plan'
   const options = agent ? modeOptions(agent, ['plan', ...offered.filter((each) => each !== 'plan')]) : []

@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import os from 'node:os'
 import path from 'node:path'
-import { cleanEnv, envValue, planLaunch, type DaemonParsedParams } from '@antumi/protocol/node'
+import { cleanEnv, envValue, planLaunch, withoutEnv, type DaemonParsedParams } from '@antumi/protocol/node'
 import type { HostedProcess, ProcessEvents } from './session-host'
 
 const ignore = () => {}
@@ -24,9 +24,10 @@ function killWindowsTree(child: ReturnType<typeof spawn>, pid: number): void {
 }
 
 // clean: the daemon's own environment is cut down to what any process needs (cleanEnv).
-export function startPipe({ command, args, cwd, env }: DaemonParsedParams<'spawnPipe'>, events: ProcessEvents, clean = false): HostedProcess {
+export function startPipe({ command, args, cwd, env, unsetEnv }: DaemonParsedParams<'spawnPipe'>, events: ProcessEvents, clean = false): HostedProcess {
   // Agent argv never goes through a shell: a Windows .cmd shim is read for what it runs.
-  const launch = planLaunch(command, args, cwd, { ...(clean ? cleanEnv(process.env) : process.env), ...env })
+  const inherited = withoutEnv(clean ? cleanEnv(process.env) : process.env, unsetEnv)
+  const launch = planLaunch(command, args, cwd, { ...inherited, ...env })
   // Its own process group on POSIX, so a kill also reaches what the agent started (a background shell).
   const group = process.platform !== 'win32'
   const child = spawn(launch.file, launch.args, { cwd, env: launch.env, stdio: 'pipe', detached: group, windowsHide: true })

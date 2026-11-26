@@ -8,7 +8,7 @@ import { useOccludesBrowser } from '../browser-occlusion'
 import { agentLabel } from '../labels'
 import { resolveModel } from '../agent-models'
 import { AgentModelPicker } from './AgentModelPicker'
-import { modeOptions, modeTone, startModes } from './ChatOptionsBar'
+import { modeOptions, modeTone, startModes, useAgentBackend } from './ChatOptionsBar'
 import { ChatPicker } from './ChatPicker'
 import { ProjectPicker } from './ProjectPicker'
 import { ProviderPicker } from './ProviderPicker'
@@ -133,8 +133,9 @@ export function AutoInvestigationSettings({ provider, instance, info, connected 
   // Unpicked, it only reads, as it did before the mode could be picked.
   const autoFix = draft.autoFix ?? { enabled: false, typeIds: [], permissionMode: 'acceptEdits' as const, concurrency: 1, maxOpenTasks: 10 }
   const fixSupported = rpc.features.includes('source-auto-fix')
+  const activeBackend = useAgentBackend(draft.agent ?? null)
   const mode = draft.agent ? draft.permissionMode ?? agentDescriptor(draft.agent).discussionMode : null
-  const modes = draft.agent ? startModes(draft.agent, resolveModel(catalog, { model: draft.model }).model) : []
+  const modes = draft.agent ? startModes(draft.agent, resolveModel(catalog, { model: draft.model }).model, activeBackend) : []
   const permissionOptions = draft.agent && mode ? modeOptions(draft.agent, modes.includes(mode) ? modes : [mode, ...modes], modes) : []
   const customized = !!(draft.model || draft.modelProvider || draft.effort || draft.note || (autoFix.enabled && draft.projectPaths.length))
   const save = async () => {

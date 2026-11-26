@@ -21,6 +21,8 @@ export type TranscriptSummary = {
   file: string
   // undefined keeps the historical id-as-resume-id contract; null requires a handoff.
   nativeSessionId?: string | null
+  backend?: string | null
+  account?: string | null
   source?: 'cli' | 'desktop'
   clockless?: boolean
 }

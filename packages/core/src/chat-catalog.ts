@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { z } from 'zod'
 import type { ChatCatalog, ChatItem } from '@antumi/protocol'
-import { createLineDecoder, planLaunch } from '@antumi/protocol/node'
+import { createLineDecoder, planLaunch, withoutEnv } from '@antumi/protocol/node'
 import type { AgentCommand } from './agent-command'
 import type { ChatDriver } from './chat-driver'
 
@@ -33,7 +33,7 @@ export function probeChatCatalog(driver: ChatDriver, command: AgentCommand, cwd:
   return new Promise((resolve) => {
     let launch
     try {
-      launch = planLaunch(command.command, command.args, cwd, { ...process.env, ...command.env })
+      launch = planLaunch(command.command, command.args, cwd, { ...withoutEnv(process.env, command.unsetEnv), ...command.env })
     } catch {
       return resolve(null)
     }

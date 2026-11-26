@@ -3,12 +3,14 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentAccounts, AgentUsage, Terminal } from '@antumi/protocol'
-import { AgentAccountStore } from './agent-accounts'
+import { AgentAccountStore, type AccountDeps } from './agent-accounts'
+import * as adapters from './agents'
 import type { CredentialRecord } from './credential-store'
 import { UsageService } from './usage-service'
 import type { UsageReading } from './usage-source'
 import { writeTestNodeCommand } from './test-node-command'
 
+const originalAdapterOf = adapters.adapterOf
 const NOW = 1_790_000_000_000
 
 const usage = (account: string, usedPercent: number): AgentUsage => ({
@@ -27,7 +29,7 @@ describe('AgentAccountStore', () => {
   let bin: string
   const saved = { claude: process.env.CLAUDE_CONFIG_DIR, codex: process.env.CODEX_HOME }
 
-  const store = () => new AgentAccountStore(path.join(root, 'agent-accounts.json'), path.join(root, 'agent-accounts'), {
+  const store = (deps: Partial<AccountDeps> = {}) => new AgentAccountStore(path.join(root, 'agent-accounts.json'), path.join(root, 'agent-accounts'), {
     signIn: async (argv, env) => {
       signIns.push({ ...argv, env })
       return { id: `t${signIns.length}` } as unknown as Terminal
@@ -36,7 +38,8 @@ describe('AgentAccountStore', () => {
     accountChanged: (agent, id, removed) => touched.push([agent, id, removed]),
     changed: (accounts) => changes.push(accounts),
     newId: () => ids.shift() ?? 'extra',
-    signOut: async () => {}
+    signOut: async () => {},
+    ...deps
   })
 
   beforeEach(() => {
@@ -62,6 +65,7 @@ describe('AgentAccountStore', () => {
       if (value === undefined) delete process.env[name]
       else process.env[name] = value
     }
+    vi.restoreAllMocks()
     vi.unstubAllEnvs()
     rmSync(root, { recursive: true, force: true })
   })
@@ -147,6 +151,8 @@ describe('AgentAccountStore', () => {
     ]))
     expect(accounts.list().accounts.some((account) => account.agent === 'cursor')).toBe(false)
 
+    exits.shift()?.()
+    await vi.waitFor(() => expect(touched).toEqual([['claude', 'work', false]]))
     await accounts.remove('claude', 'work')
     now += 30_000
     await service.refresh()
@@ -167,6 +173,98 @@ describe('AgentAccountStore', () => {
     exits.shift()?.()
     await vi.waitFor(() => expect(touched).toEqual([['claude', 'work', false]]))
     expect(accounts.list().accounts.find((each) => each.id === 'work')).toMatchObject({ signedIn: true, email: 'me@work.com' })
+  })
+
+  it('rejects overlapping logins until the terminal exits and post-login sync completes', async () => {
+    const adapter = adapters.adapterOf('claude')
+    const accountSupport = adapter.accounts!
+    let finishSync!: () => void
+    const sync = new Promise<void>((resolve) => { finishSync = resolve })
+    const afterLogin = vi.fn(() => sync)
+    vi.spyOn(adapters, 'adapterOf').mockImplementation((agent) => agent === 'claude' ? { ...adapter, accounts: { ...accountSupport, afterLogin } } : originalAdapterOf(agent))
+    const accounts = store()
+    await accounts.load()
+    await accounts.add('claude', 'Work')
+    await expect(accounts.login('claude', 'work')).rejects.toMatchObject({ reason: 'account-login-running' })
+    await expect(accounts.remove('claude', 'work')).rejects.toMatchObject({ reason: 'account-login-running' })
+    expect(signIns).toHaveLength(1)
+    exits.shift()?.()
+    await vi.waitFor(() => expect(afterLogin).toHaveBeenCalledOnce())
+    await expect(accounts.login('claude', 'work')).rejects.toMatchObject({ reason: 'account-login-running' })
+    finishSync()
+    await vi.waitFor(() => expect(touched).toEqual([['claude', 'work', false]]))
+    await accounts.login('claude', 'work')
+    expect(signIns).toHaveLength(2)
+    exits.shift()?.()
+    await vi.waitFor(() => expect(touched).toHaveLength(2))
+  })
+
+  it('rejects removal while in use and keeps the account and home when archival fails', async () => {
+    const adapter = adapters.adapterOf('claude')
+    const beforeRemove = vi.fn(async () => { throw new Error('archive failed') })
+    vi.spyOn(adapters, 'adapterOf').mockImplementation((agent) => agent === 'claude' ? { ...adapter, accounts: { ...adapter.accounts!, beforeRemove } } : originalAdapterOf(agent))
+    let inUse = true
+    const accounts = store({ inUse: (agent, id) => inUse && agent === 'claude' && id === 'work' })
+    await accounts.load()
+    await accounts.add('claude', 'Work')
+    exits.shift()?.()
+    await vi.waitFor(() => expect(touched).toEqual([['claude', 'work', false]]))
+    await accounts.activate('claude', 'work')
+    const file = path.join(root, 'agent-accounts.json')
+    const home = path.join(root, 'agent-accounts', 'claude', 'work')
+    const saved = readFileSync(file, 'utf8')
+    await expect(accounts.remove('claude', 'work')).rejects.toMatchObject({ reason: 'account-in-use' })
+    expect(beforeRemove).not.toHaveBeenCalled()
+    expect(readFileSync(file, 'utf8')).toBe(saved)
+    inUse = false
+    await expect(accounts.remove('claude', 'work')).rejects.toThrow('archive failed')
+    expect(beforeRemove).toHaveBeenCalledExactlyOnceWith(home)
+    expect(readFileSync(file, 'utf8')).toBe(saved)
+    expect(accounts.exists('claude', 'work')).toBe(true)
+    expect(accounts.activeOf('claude')).toBe('work')
+    expect(existsSync(home)).toBe(true)
+    expect(realpathSync(path.join(home, 'projects'))).toBe(realpathSync(path.join(own, 'projects')))
+    expect(touched).toEqual([['claude', 'work', false]])
+  })
+
+  it('releases idle sessions before archiving and deleting an account', async () => {
+    const order: string[] = []
+    const adapter = adapters.adapterOf('claude')
+    const beforeRemove = vi.fn(async () => { order.push('archive') })
+    vi.spyOn(adapters, 'adapterOf').mockImplementation((agent) => agent === 'claude' ? { ...adapter, accounts: { ...adapter.accounts!, beforeRemove } } : originalAdapterOf(agent))
+    let busy = false
+    const releaseIdle = vi.fn(async () => { order.push('releaseIdle') })
+    const accounts = store({
+      inUse: (agent, id) => busy && agent === 'claude' && id === 'work',
+      releaseIdle
+    })
+    await accounts.load()
+    await accounts.add('claude', 'Work')
+    exits.shift()?.()
+    await vi.waitFor(() => expect(touched).toEqual([['claude', 'work', false]]))
+    await accounts.remove('claude', 'work')
+    expect(releaseIdle).toHaveBeenCalledExactlyOnceWith('claude', 'work')
+    expect(order).toEqual(['releaseIdle', 'archive'])
+    expect(accounts.exists('claude', 'work')).toBe(false)
+
+    // Still refuses when a turn starts concurrently while idle sessions are stopping.
+    await accounts.add('claude', 'Work2')
+    exits.shift()?.()
+    await vi.waitFor(() => expect(touched).toHaveLength(3))
+    const raced = store({
+      inUse: (agent, id) => busy && agent === 'claude' && id === 'work',
+      releaseIdle: async () => { busy = true }
+    })
+    await raced.load()
+    const created = raced.list().accounts.find((each) => each.agent === 'claude' && each.id !== 'default')!
+    busy = false
+    const raced2 = store({
+      inUse: (agent, id) => busy && agent === 'claude' && id === created.id,
+      releaseIdle: async () => { busy = true }
+    })
+    await raced2.load()
+    await expect(raced2.remove('claude', created.id)).rejects.toMatchObject({ reason: 'account-in-use' })
+    expect(raced2.exists('claude', created.id)).toBe(true)
   })
 
   it('keeps a sign-in it cannot check, and drops one Claude Code says is gone', async () => {
@@ -223,6 +321,8 @@ describe('AgentAccountStore', () => {
     await accounts.add('claude', null)
     await accounts.activate('claude', 'work')
     writeFileSync(path.join(own, 'projects', 'kept.jsonl'), '{}')
+    exits.shift()?.()
+    await vi.waitFor(() => expect(touched).toEqual([['claude', 'work', false]]))
     await accounts.remove('claude', 'work')
     expect(existsSync(path.join(root, 'agent-accounts', 'claude', 'work'))).toBe(false)
     expect(existsSync(path.join(own, 'projects', 'kept.jsonl'))).toBe(true)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { defaultStartMode, modeLabel, startModes } from './components/ChatOptionsBar'
+import { defaultStartMode, modeLabel, nextStartModes, startModes } from './components/ChatOptionsBar'
 import { handoffMode } from './components/ChatHandoff'
 
 const model = (autoMode?: boolean) => ({ id: 'opus', label: 'Opus', description: null, efforts: [], isDefault: true, ...(autoMode === undefined ? {} : { autoMode }) })
@@ -23,6 +23,23 @@ describe('startModes', () => {
     expect(defaultStartMode('claude', startModes('claude', model(true)))).toBe('auto')
     expect(defaultStartMode('claude', startModes('claude', model()))).toBe('ask')
     expect(defaultStartMode('codex', startModes('codex', model()))).toBe('acceptEdits')
+  })
+
+  it('offers backend-specific native modes for Antigravity without cross-backend leakage', () => {
+    const agyModes = startModes('antigravity', model(), 'agy-cli')
+    expect(agyModes).toEqual(['ask', 'acceptEdits', 'auto', 'plan', 'bypass'])
+    expect(agyModes.map((mode) => modeLabel('antigravity', mode))).toEqual(['逐项确认', '自动接受编辑', '自动判断', '规划', '全部放行'])
+
+    const managedModes = startModes('antigravity', model(), 'managed-acp')
+    expect(managedModes).toEqual(['ask', 'acceptEdits', 'bypass'])
+    expect(managedModes.map((mode) => modeLabel('antigravity', mode))).toEqual(['逐项确认', '自动接受编辑', '全部放行'])
+
+    // Stopped existing conversations keep their last stage's modes even if global runtime changed.
+    expect(nextStartModes('antigravity', ['ask', 'acceptEdits', 'auto', 'plan', 'bypass'], model(), 'managed-acp', false)).toEqual(['ask', 'acceptEdits', 'auto', 'plan', 'bypass'])
+    expect(nextStartModes('antigravity', ['ask', 'acceptEdits', 'bypass'], model(), 'agy-cli', false)).toEqual(['ask', 'acceptEdits', 'bypass'])
+    // New/unstarted conversations (no state yet) follow the globally active backend.
+    expect(nextStartModes('antigravity', [], model(), 'agy-cli', false)).toEqual(['ask', 'acceptEdits', 'auto', 'plan', 'bypass'])
+    expect(nextStartModes('antigravity', [], model(), 'managed-acp', false)).toEqual(['ask', 'acceptEdits', 'bypass'])
   })
 })
 

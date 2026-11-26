@@ -3,7 +3,7 @@ import { checkStartMode, type ChatCatalog, type ChatPermissionMode, type Task, t
 import { resolveModel, useAgentCatalog, type ResolvedModel } from '../agent-models'
 import { updateTask, useCore, useTaskLaunchSupported } from '../core-store'
 import { ChatModelPicker } from './ChatPicker'
-import { effortLabel, startModes } from './ChatOptionsBar'
+import { effortLabel, startModes, useAgentBackend } from './ChatOptionsBar'
 
 export type TaskLaunch = ResolvedModel & {
   // undefined while core is asked, null when the agent lists none.
@@ -19,10 +19,11 @@ export type TaskLaunch = ResolvedModel & {
 // now. null when not `enabled`, when core does not keep a launch, or when there is no agent to start.
 export function useTaskLaunch(task: Task, dependencies: readonly Task[], enabled = true): TaskLaunch | null {
   const supported = useTaskLaunchSupported() && enabled
+  const activeBackend = useAgentBackend(task.agent ?? null)
   const catalog = useAgentCatalog(task.agent, supported && task.status === 'pending')
   if (!supported || !task.agent) return null
   const resolved = resolveModel(catalog, { model: task.launch.model ?? undefined, effort: task.launch.effort ?? undefined })
-  const offered = startModes(task.agent, resolved.model)
+  const offered = startModes(task.agent, resolved.model, activeBackend)
   const wanted = task.launch.permissionMode ?? 'plan'
   // Auto depends on the model, so the task's mode stands until the catalog says otherwise.
   const takes = offered.includes(wanted) || catalog === undefined

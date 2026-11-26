@@ -121,6 +121,8 @@ export class AcpDriver implements ChatDriver {
   private setup = false
   private auth = false
   private load = false
+  private canLoad = false
+  private loadFallback = false
   private resumeMethod = 'session/load'
   private images = false
   private directories = false
@@ -168,6 +170,12 @@ export class AcpDriver implements ChatDriver {
   private hasMode(mode: string): boolean {
     const known = ChatPermissionMode.safeParse(mode)
     return known.success && this.dialect.modes[known.data] !== undefined
+  }
+  private allowProcessBypass(): boolean {
+    return Boolean(this.dialect.processBypass && this.options.allowBypass && !this.options.planOnly && !this.options.readOnly && !this.options.lockdown)
+  }
+  private inProcessBypass(): boolean {
+    return this.allowProcessBypass() && this.options.preferred?.permissionMode === 'bypass'
   }
   private toolName(update: Pick<z.infer<typeof Update>, 'kind' | 'rawInput' | 'name' | 'title' | 'toolCallId'>, old: string | undefined): string {
     return this.dialect.toolName?.(update.rawInput, update.name, update.title, update.toolCallId) ?? (update.kind === 'execute' ? 'commandExecution' : update.kind === 'edit' ? 'fileChange' : old ?? update.kind ?? 'tool')
@@ -221,7 +229,8 @@ export class AcpDriver implements ChatDriver {
       if (forking && !this.forks) { this.startError = `此 ${this.name} CLI 不支持分叉会话，请升级`; return frames }
       if (this.options.resume && !forking && !this.load) { this.startError = `此 ${this.name} CLI 不支持恢复会话，请升级`; return frames }
       const mcp = this.options.mcp
-      return [...frames, rpc(this.id('session'), forking ? 'session/fork' : this.options.resume ? this.resumeMethod : 'session/new', {
+      const openId = this.loadFallback ? this.id('session-load') : this.id('session')
+      return [...frames, rpc(openId, forking ? 'session/fork' : this.options.resume ? this.resumeMethod : 'session/new', {
         cwd: this.options.cwd,
         ...(this.options.resume ? { sessionId: this.options.resume } : {}),
         // Only where the agent says it takes them; one that does not is given them otherwise, as
@@ -309,6 +318,9 @@ export class AcpDriver implements ChatDriver {
   private change(option: ChatOption, value: string, id: string): unknown {
     if (option === 'permissionMode' && this.options.planOnly && value !== 'plan') throw new Rejection('plan-only', '此阶段只能规划')
     if (option === 'permissionMode' && this.options.readOnly && value !== 'readOnly') throw new Rejection('plan-only', '只读成员不能换模式')
+    if (option === 'permissionMode' && this.dialect.processBypass && (this.inProcessBypass() || value === 'bypass')) {
+      throw new Rejection('chat-option-invalid', `${this.name} 切换全部放行模式需要重启会话进程`)
+    }
     if (option === 'effort') return this.changeEffort(value, id)
     const category = option === 'permissionMode' ? 'mode' : 'model'
     const config = this.config.find((entry) => entry.category === category)
@@ -390,8 +402,11 @@ export class AcpDriver implements ChatDriver {
     if (!parsed.success) return null
     const id = parsed.data.id
     // Of a subagent's session, only what its card shows: its words, its calls, its own subagents.
-    const subagent = parsed.data.method === 'session/update' ? z.looseObject({ sessionId: z.string(), update: Update }).safeParse(parsed.data.params).data : undefined
-    if (subagent && subagent.sessionId !== this.session && this.subagents.has(subagent.sessionId) && !['agent_message_chunk', 'tool_call', 'subagent_spawned'].includes(subagent.update.sessionUpdate)) return null
+    const update = parsed.data.method === 'session/update' ? z.looseObject({ sessionId: z.string(), update: Update }).safeParse(parsed.data.params).data : undefined
+    // Drop replayed turn history during session/load (before session setup completes) so logs and replays never duplicate messages or tools,
+    // while keeping post-setup idle control chunks such as Gemini's [MODE_UPDATE].
+    if (update && !this.setup && ['user_message_chunk', 'agent_message_chunk', 'agent_thought_chunk', 'tool_call', 'tool_call_update'].includes(update.update.sessionUpdate)) return null
+    if (update && update.sessionId !== this.session && this.subagents.has(update.sessionId) && !['agent_message_chunk', 'tool_call', 'subagent_spawned'].includes(update.update.sessionUpdate)) return null
     const kept = id === undefined ? this.kept.get(JSON.stringify(frame)) : undefined
     this.kept.delete(JSON.stringify(frame))
     // ACP has no final full-text message: every delta is needed for recovery.
@@ -505,9 +520,17 @@ export class AcpDriver implements ChatDriver {
       if (request.method === 'session/prompt') this.finish(this.stopping ? 'interrupted' : 'failed', frame.error.message, at)
       else if (!this.setup || String(frame.id).startsWith(this.id('initial-')) || OPENING.has(request.method)) {
         const detail = errorDetail(frame.error.data)
+        const errorText = detail ?? frame.error.message
+        // When session/resume fails with a loadable error on a valid session ID, fall back once to session/load.
+        if (request.method === 'session/resume' && this.canLoad && !this.loadFallback && /session\/load|failed to read session/i.test(errorText)) {
+          this.loadFallback = true
+          this.resumeMethod = 'session/load'
+          this.sessionSent = false
+          return
+        }
         // ACP's auth_required on opening a session: signed out, which a retry alone will not change.
-        this.startError = frame.error.code === AUTH_REQUIRED && OPENING.has(request.method) ? `${this.name} 未登录，请先在终端里登录后重试` : `${request.method}: ${detail ?? frame.error.message}`
-        this.lost = RESTORING.has(request.method) && /not found|not resumable|unknown sessionid/i.test(detail ?? frame.error.message)
+        this.startError = frame.error.code === AUTH_REQUIRED && OPENING.has(request.method) ? `${this.name} 未登录，请先在终端里登录后重试` : `${request.method}: ${errorText}`
+        this.lost = RESTORING.has(request.method) && (/not found|not resumable|unknown sessionid/i.test(errorText) || Boolean(this.dialect.isSessionLostError?.(errorText)))
       }
       else this.items.notice('error', frame.error.message, at)
       return
@@ -519,8 +542,9 @@ export class AcpDriver implements ChatDriver {
       if (extensionError) { this.startError = extensionError; return }
       this.initialized = true
       const resume = Boolean(init.data.agentCapabilities?.sessionCapabilities?.resume)
-      this.load = resume || (init.data.agentCapabilities?.loadSession ?? false)
-      this.resumeMethod = init.data.agentCapabilities?.loadSession ? 'session/load' : 'session/resume'
+      this.canLoad = init.data.agentCapabilities?.loadSession ?? false
+      this.load = resume || this.canLoad
+      this.resumeMethod = this.dialect.preferResume && resume ? 'session/resume' : this.canLoad ? 'session/load' : 'session/resume'
       this.images = init.data.agentCapabilities?.promptCapabilities?.image ?? false
       // Early agents said true; the protocol now names the capability with an object.
       this.directories = Boolean(init.data.agentCapabilities?.sessionCapabilities?.additionalDirectories)
@@ -595,6 +619,8 @@ export class AcpDriver implements ChatDriver {
       const choice = this.initialChoices.shift()
       if (!choice) return
       const { option, value } = choice
+      // Process-level bypass is already enabled by a CLI flag, not session/set_config_option.
+      if (option === 'permissionMode' && value === 'bypass' && this.inProcessBypass()) continue
       // A resumed session keeps what it last ran with; setting it again costs a round trip.
       if (this.current(option) === (option === 'permissionMode' ? this.nativeMode(value) : value)) continue
       try {
@@ -677,9 +703,11 @@ export class AcpDriver implements ChatDriver {
     const mode = this.config.find((entry) => entry.category === 'mode')
     const model = this.config.find((entry) => entry.category === 'model')
     const effort = this.config.find((entry) => entry.category === 'thought_level')
+    const mappedModes = mode ? valuesOf(mode).flatMap((entry) => { const mapped = this.antumiMode(entry.value); return mapped && (!this.options.planOnly || mapped === 'plan') && (!this.options.readOnly || mapped === 'readOnly') ? [mapped] : [] }) : []
+    const permissionModes = this.allowProcessBypass() && !mappedModes.includes('bypass') ? [...mappedModes, 'bypass'] : mappedModes
     this.state.set({
-      permissionMode: mode ? this.antumiMode(mode.currentValue) : null,
-      permissionModes: mode ? valuesOf(mode).flatMap((entry) => { const mapped = this.antumiMode(entry.value); return mapped && (!this.options.planOnly || mapped === 'plan') && (!this.options.readOnly || mapped === 'readOnly') ? [mapped] : [] }) : [],
+      permissionMode: this.inProcessBypass() ? 'bypass' : (mode ? this.antumiMode(mode.currentValue) : null),
+      permissionModes,
       model: model?.currentValue ?? null,
       models: model ? this.offered(valuesOf(model)).map((entry) => ({ id: entry.value, label: entry.name, description: entry.description ?? null, ...(entry.contextWindow != null ? { contextWindow: entry.contextWindow } : {}), ...(entry.costRate != null ? { costRate: entry.costRate } : {}), efforts: this.models.find((one) => one.id === entry.value)?.efforts ?? (entry.value === model.currentValue ? (effort ? valuesOf(effort).map((one) => one.value) : []) : this.thoughts.get(entry.value)?.values.map((one) => one.value) ?? []), isDefault: entry.value === (this.catalogOnly ? (this.defaultModel ?? model.currentValue) : model.currentValue) })) : [],
       effort: effort?.currentValue ?? null

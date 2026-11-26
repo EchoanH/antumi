@@ -4,8 +4,9 @@ import type { ChatModel, ChatPermissionMode, UnattendedMode } from './chat'
 
 // What a new conversation can start in, with auto where the model takes it (as the agent's catalog
 // says) and bypass where the agent has it, in the order a running chat lists them.
-export function startModes(agent: AgentKind, model: ChatModel | undefined): ChatPermissionMode[] {
-  const { startModes, capabilities } = agentDescriptor(agent)
+export function startModes(agent: AgentKind, model: ChatModel | undefined, backend?: string | null): ChatPermissionMode[] {
+  const { startModes, backendModes, capabilities } = agentDescriptor(agent)
+  if (backend && backendModes?.[backend]) return [...backendModes[backend]]
   return [...startModes, ...(model?.autoMode && capabilities.autoMode && !startModes.includes('auto') ? ['auto' as const] : []), ...(capabilities.bypass ? ['bypass' as const] : [])]
 }
 

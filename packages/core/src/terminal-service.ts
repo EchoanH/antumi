@@ -165,8 +165,8 @@ export class TerminalService {
   }
 
   // An agent's CLI signing in to an account: its own argv, no shell, pointed at the account's folder.
-  signIn(argv: { command: string; args: readonly string[] }, env: Record<string, string>, title: string, agent?: AgentKind, cwd?: string): Promise<Terminal> {
-    return this.runFinite({ command: argv.command, args: [...argv.args] }, title, [argv.command, ...argv.args].join(' '), env, agent, cwd)
+  signIn(argv: { command: string; args: readonly string[] }, env: Record<string, string>, title: string, agent?: AgentKind, cwd?: string, unsetEnv?: readonly string[]): Promise<Terminal> {
+    return this.runFinite({ command: argv.command, args: [...argv.args] }, title, [argv.command, ...argv.args].join(' '), env, agent, cwd, unsetEnv)
   }
 
   async upgradeCli(agent: AgentKind, upgradeId: string, argv: { command: string; args: string[] }): Promise<Terminal> {
@@ -187,9 +187,12 @@ export class TerminalService {
   }
 
   // A finite command the user started and follows in a tab; command: how the tab names it.
-  private async runFinite(argv: { command: string; args: string[] }, title: string, command: string, env: Record<string, string> = {}, agent?: AgentKind, cwd = os.homedir()): Promise<Terminal> {
+  private async runFinite(argv: { command: string; args: string[] }, title: string, command: string, env: Record<string, string> = {}, agent?: AgentKind, cwd = os.homedir(), unsetEnv?: readonly string[]): Promise<Terminal> {
     const id = randomUUID()
-    const { sessionId } = await this.daemon.request('spawn', { ...argv, agent, cwd, env: { ...terminalEnv(), ...env, ...ownedBy({ kind: 'terminal', id }) }, cols: 120, rows: 32 })
+    if (unsetEnv?.length && !(await this.daemon.request('info', {})).features?.includes('unset-env')) {
+      throw new Rejection('daemon-outdated', '当前运行的 Antumi 后台版本过旧，无法安全隔离环境变量，请重启后台后重试')
+    }
+    const { sessionId } = await this.daemon.request('spawn', { ...argv, agent, cwd, env: { ...terminalEnv(), ...env, ...ownedBy({ kind: 'terminal', id }) }, ...(unsetEnv?.length ? { unsetEnv: [...unsetEnv] } : {}), cols: 120, rows: 32 })
     const terminal = { id, sessionId, cwd, title, createdAt: this.now(), command }
     this.db.prepare('INSERT INTO terminals (id, session_id, cwd, title, created_at, command) VALUES (?, ?, ?, ?, ?, ?)')
       .run(terminal.id, sessionId, cwd, terminal.title, terminal.createdAt, terminal.command)

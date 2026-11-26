@@ -18,6 +18,8 @@ export type AgentDescriptor = {
   // What a new conversation can start in, before the catalog adds auto and the settings bypass.
   // The first is the fallback when defaultStartMode is unavailable.
   startModes: readonly ChatPermissionMode[]
+  // Per-backend start modes when an agent supports multiple backends with different native modes.
+  backendModes?: Readonly<Record<string, readonly ChatPermissionMode[]>>
   defaultStartMode: ChatPermissionMode
   // What it runs in as a member of a group chat: it reads the projects and answers in words, and
   // changes nothing. A conversation opened to look into an inbox issue starts in it too.

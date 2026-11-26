@@ -9,6 +9,8 @@ import type { TranscriptSource } from '../agent-transcripts'
 // What a chat stage's agent starts with, which its adapter turns into its own command line. The
 // stream carries every message, the handoff prompt included: none goes in argv.
 export type AgentLaunch = {
+  // The runtime backend selected for this stage.
+  backend?: string | null
   instructions?: string
   providerSessionId: string | null
   resume: boolean
@@ -64,7 +66,11 @@ export type AccountSupport = {
   login: readonly string[]
   logout: readonly string[]
   // Managed runtimes may authenticate over their protocol instead of a CLI subcommand.
-  authCommand?(action: 'login' | 'logout'): Promise<AgentCommand>
+  authCommand?(action: 'login' | 'logout', home?: string): Promise<AgentCommand & { backend?: string }>
+  // Synchronizes credentials after a login terminal exits successfully.
+  afterLogin?(home: string | undefined, backend?: string): Promise<void>
+  // Preserves account data before its private folder is deleted.
+  beforeRemove?(home: string): Promise<void>
   // Its sign-in is an interactive session that asks to trust the folder it starts in, warning of
   // the home folder: it starts in an empty folder of Antumi's instead.
   signInFolder?: boolean
@@ -100,10 +106,20 @@ export interface AgentAdapter {
     native?: { roots: Partial<Record<NodeJS.Platform, readonly string[]>>; args: readonly string[]; latestUrl?: string; tagPrefix?: string }
   }
   readonly kind: AgentKind
+  // The historical backend assumed for stages with no backend recorded.
+  readonly defaultBackend?: string
+  // Resolves the active backend for a new stage.
+  resolveBackend?(): Promise<string | null>
   createDriver(stageId: string, options: ChatStageOptions): ChatDriver
   command(launch: AgentLaunch): AgentCommand
   // Antumi's modes it can start in; a start asking another is refused before anything runs.
   readonly permissionModes: readonly string[]
+  // Backend-specific modes; without this hook, permissionModes applies.
+  permissionModesFor?(backend?: string | null): readonly string[]
+  // Permission modes that require restarting the process (with session resume) to enter or leave.
+  restartForModes?(backend?: string | null): readonly ChatPermissionMode[]
+  // True when each account keeps isolated provider session storage so another account cannot resume its sessionId.
+  accountScopedSessions?(backend?: string | null): boolean
   // The mode a stage starts in when the chosen one is not among its modes; without one, the CLI's
   // own default stands.
   readonly fallbackMode?: ChatPermissionMode
@@ -131,7 +147,7 @@ export interface AgentAdapter {
   readonly usageTranscripts?: { format: 'claude' | 'codex'; home(home?: string): string }
   readonly warmup?: { probe: QuickCommand; args(printed: string): string[] }
   // Its models without a chat to read them from; without it, a probe of its chat protocol.
-  catalog?(cwd: string): Promise<ChatCatalog | null>
+  catalog?(cwd: string, account?: { id: string; home?: string; env?: Record<string, string> }): Promise<ChatCatalog | null>
   // A chat stage lists reasoning levels only for the model it currently runs, not the whole catalog.
   readonly partialStageCatalog?: boolean
   // How the environment check finds it; without it, its kind on PATH, asked for --version.
@@ -163,7 +179,7 @@ export interface AgentAdapter {
     // arguments naming files the step wrote, and variables pointing at them. A file that must not
     // outlive the process goes in the stage's own private folder (stage-launch.ts), which core
     // removes once the process is gone.
-    prepare(stage: AgentStage, mcp: McpServer | undefined, launch: AgentLaunch): Promise<{ command?: string; args?: readonly string[]; env?: Record<string, string> }>
+    prepare(stage: AgentStage, mcp: McpServer | undefined, launch: AgentLaunch): Promise<{ command?: string; args?: readonly string[]; env?: Record<string, string>; unsetEnv?: readonly string[] }>
     // After its handshake, before its first message.
     ready(stage: AgentStage): Promise<void>
   }

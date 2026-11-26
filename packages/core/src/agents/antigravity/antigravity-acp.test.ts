@@ -3,13 +3,21 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import type { ChatItem } from '@antumi/protocol'
+import { agentDescriptor, type ChatItem } from '@antumi/protocol'
+import type { AgentLaunch } from '../agent-adapter'
+import { antigravityAccounts } from './antigravity-account'
 import type { ChatRecord, ChatStageOptions } from '../../chat-driver'
 import { AcpDriver } from '../acp/acp-driver'
-import { antigravityDialect } from './antigravity-dialect'
+import { antigravityDialect, antigravityAgyCliDialect, dialectForBackend } from './antigravity-dialect'
 import { antigravity } from './antigravity-adapter'
 import * as antigravityRuntime from './antigravity-runtime'
 import * as chatCatalog from '../../chat-catalog'
+import { DatabaseSync } from 'node:sqlite'
+import { pathToFileURL } from 'node:url'
+import * as backendRuntime from './antigravity-backend'
+import { backendDataDir, agyCliTokenFile, setAntigravityRuntimeMode } from './antigravity-backend'
+import { writePrivateJson } from './antigravity-credentials'
+import { antigravitySessionRoots, discoverAntigravitySessionRoots, antigravityTranscripts } from './antigravity-transcripts'
 
 // As Antigravity ACP 1.4.1 answered on darwin-arm64 (2026-10-22), trimmed to what Antumi reads.
 const initialized = {
@@ -69,6 +77,7 @@ describe('Antigravity ACP', () => {
     // Exercise the adapter and real driver without launching the installed server.
     const probe = vi.spyOn(chatCatalog, 'probeChatCatalog').mockImplementation(async (driver, command, cwd, timeoutMs) => {
       expect(command.command).toBe(process.execPath)
+      expect(command.unsetEnv).toEqual(expect.arrayContaining(['GEMINI_API_KEY', 'GOOGLE_CLOUD_PROJECT']))
       expect(cwd).toBe(root)
       expect(timeoutMs).toBe(60_000)
       const answer = (result: unknown) => {
@@ -96,7 +105,7 @@ describe('Antigravity ACP', () => {
       expect(probe).not.toHaveBeenCalled()
 
       await mkdir(sessions, { recursive: true })
-      await writeFile(path.join(root, 'antigravity-acp', 'acp_token.json'), '{}')
+      await writeFile(path.join(root, 'antigravity-acp', 'acp_token.json'), JSON.stringify({ client_id: 'client', client_secret: 'secret', refresh_token: 'refresh' }))
       await writeFile(path.join(sessions, keepSessionId + '.db'), 'existing session')
       expect((await catalog(root))?.models.map((model) => [model.id, model.efforts, model.isDefault])).toEqual([
         ['gemini-3.8-flash', three, true], ['gemini-3.1-pro', four, false]
@@ -236,4 +245,310 @@ describe('Antigravity ACP', () => {
     expect(tool).toMatchObject({ name: 'commandExecution', title: 'ls -la', status: 'done', execution: { status: 'completed', exitCode: 0 } })
     expect(JSON.stringify(tool?.input)).toContain('ls -la')
   })
+})
+
+
+describe('agy CLI backend', () => {
+  it('maps agy 1.5.17 native modes + process-flag bypass, preserves managed-acp YOLO and keeps unattended disabled', () => {
+    expect(antigravityAgyCliDialect.modes).toEqual({ ask: 'default', acceptEdits: 'accept-edits', auto: 'auto', plan: 'plan' })
+    expect(antigravityAgyCliDialect.processBypass).toBe(true)
+    expect(antigravity.permissionModesFor?.('agy-cli')).toEqual(['ask', 'acceptEdits', 'auto', 'plan', 'bypass'])
+    expect(antigravity.restartForModes?.('agy-cli')).toEqual(['bypass'])
+    expect(antigravity.permissionModesFor?.('managed-acp')).toEqual(['ask', 'acceptEdits', 'bypass'])
+    expect(antigravity.restartForModes?.('managed-acp')).toEqual([])
+    expect(agentDescriptor('antigravity').capabilities).toMatchObject({ unattended: false, readOnly: false, bypass: true, autoMode: true })
+    expect(dialectForBackend()).toBe(antigravityDialect)
+    expect(dialectForBackend('agy-cli')).toBe(antigravityAgyCliDialect)
+    expect(antigravityAgyCliDialect.preferResume).toBe(true)
+    for (const message of ['conversation not found', 'invalid session', 'session abc not found', 'conversation does not exist']) expect(antigravityAgyCliDialect.isSessionLostError?.(message)).toBe(true)
+    expect(antigravityAgyCliDialect.isSessionLostError?.('permission denied')).toBe(false)
+
+    // Full agy 1.5.17 configOptions with allowBypass: exposes all 5 modes, switches 4 in-process,
+    // and refuses in-place bypass switch (must restart process).
+    const driver = new AcpDriver(antigravityAgyCliDialect, 'stage', { cwd: '/project', extraDirs: [], resume: 'saved', allowBypass: true, preferred: { permissionMode: 'auto' } })
+    const answer = (result: unknown) => {
+      const frame = Request.parse(driver.due()[0])
+      driver.apply({ dir: 'out', at: 0, frame })
+      driver.apply({ dir: 'in', at: 0, frame: { id: frame.id, result } })
+      return frame
+    }
+    answer(initialized)
+    answer({})
+    const agyModeOptions = [
+      { value: 'default', name: 'Default' },
+      { value: 'accept-edits', name: 'Accept edits' },
+      { value: 'auto', name: 'Auto' },
+      { value: 'plan', name: 'Plan' }
+    ]
+    expect(answer({ sessionId: 'saved', configOptions: [{ id: 'mode', name: 'Mode', category: 'mode', currentValue: 'default', options: agyModeOptions }] }).method).toBe('session/resume')
+    const toAuto = answer({ configOptions: [{ id: 'mode', name: 'Mode', category: 'mode', currentValue: 'auto', options: agyModeOptions }] })
+    expect(toAuto.method).toBe('session/set_config_option')
+    expect(toAuto.params).toMatchObject({ configId: 'mode', value: 'auto' })
+    expect(items(driver, 'state').at(-1)).toMatchObject({ permissionMode: 'auto', permissionModes: ['ask', 'acceptEdits', 'auto', 'plan', 'bypass'] })
+    const toPlan = Request.parse(driver.setOption('permissionMode', 'plan')[0])
+    expect(toPlan.params).toMatchObject({ configId: 'mode', value: 'plan' })
+    driver.apply({ dir: 'out', at: 1, frame: toPlan })
+    driver.apply({ dir: 'in', at: 2, frame: { id: toPlan.id, result: { configOptions: [{ id: 'mode', name: 'Mode', category: 'mode', currentValue: 'plan', options: agyModeOptions }] } } })
+    expect(items(driver, 'state').at(-1)?.permissionMode).toBe('plan')
+    expect(() => driver.setOption('permissionMode', 'bypass')).toThrow(/重启/)
+
+    // Process-flag bypass stage: reports bypass even though wire reports default, skips set_config_option(mode),
+    // and refuses in-place exit back to ask (must restart process without --dangerously-skip-permissions).
+    const bypassDriver = new AcpDriver(antigravityAgyCliDialect, 'stage', { cwd: '/project', extraDirs: [], resume: 'saved', allowBypass: true, preferred: { permissionMode: 'bypass' } })
+    const answerBypass = (result: unknown) => {
+      const frame = Request.parse(bypassDriver.due()[0])
+      bypassDriver.apply({ dir: 'out', at: 0, frame })
+      bypassDriver.apply({ dir: 'in', at: 0, frame: { id: frame.id, result } })
+      return frame
+    }
+    answerBypass(initialized)
+    answerBypass({})
+    expect(answerBypass({ sessionId: 'saved', configOptions: [{ id: 'mode', name: 'Mode', category: 'mode', currentValue: 'default', options: agyModeOptions }] }).method).toBe('session/resume')
+    expect(bypassDriver.due()).toEqual([])
+    expect(bypassDriver.ready()).toBe(true)
+    expect(items(bypassDriver, 'state').at(-1)).toMatchObject({ permissionMode: 'bypass', permissionModes: ['ask', 'acceptEdits', 'auto', 'plan', 'bypass'] })
+    expect(() => bypassDriver.setOption('permissionMode', 'ask')).toThrow(/重启/)
+
+    // Without allowBypass, bypass is never offered even on agy 1.5.17.
+    const restricted = new AcpDriver(antigravityAgyCliDialect, 'stage', { cwd: '/project', extraDirs: [], resume: null, allowBypass: false })
+    const answerRestricted = (result: unknown) => {
+      const frame = Request.parse(restricted.due()[0])
+      restricted.apply({ dir: 'out', at: 0, frame })
+      restricted.apply({ dir: 'in', at: 0, frame: { id: frame.id, result } })
+      return frame
+    }
+    answerRestricted(initialized)
+    answerRestricted({})
+    answerRestricted({ sessionId: 'no-bypass', configOptions: [{ id: 'mode', name: 'Mode', category: 'mode', currentValue: 'default', options: agyModeOptions }] })
+    expect(items(restricted, 'state').at(-1)).toMatchObject({ permissionMode: 'ask', permissionModes: ['ask', 'acceptEdits', 'auto', 'plan'] })
+
+    // Older agy returning only 2 modes without allowBypass: dynamically lists only those 2.
+    const older = new AcpDriver(antigravityAgyCliDialect, 'stage', { cwd: '/project', extraDirs: [], resume: null })
+    const answerOlder = (result: unknown) => {
+      const frame = Request.parse(older.due()[0])
+      older.apply({ dir: 'out', at: 0, frame })
+      older.apply({ dir: 'in', at: 0, frame: { id: frame.id, result } })
+      return frame
+    }
+    answerOlder(initialized)
+    answerOlder({})
+    answerOlder({ sessionId: 'old', configOptions: [{ id: 'mode', name: 'Mode', category: 'mode', currentValue: 'default', options: agyModeOptions.slice(0, 2) }] })
+    expect(items(older, 'state').at(-1)).toMatchObject({ permissionMode: 'ask', permissionModes: ['ask', 'acceptEdits'] })
+    expect(() => older.setOption('permissionMode', 'plan')).toThrow()
+
+    // Standalone managed-acp keeps YOLO (bypass) visible and rejects agy-only modes.
+    const managed = start()
+    expect(items(managed.driver, 'state').at(-1)?.permissionModes).toEqual(['ask', 'acceptEdits', 'bypass'])
+    expect(Request.parse(managed.driver.setOption('permissionMode', 'bypass')[0]).params).toMatchObject({ configId: 'mode', value: 'yolo' })
+    expect(() => managed.driver.setOption('permissionMode', 'plan')).toThrow()
+  })
+
+  it('falls back from session/resume to session/load without duplicating replayed history, and marks lost when load also fails', () => {
+    const agyModeOptions = [
+      { value: 'default', name: 'Default' },
+      { value: 'accept-edits', name: 'Accept edits' },
+      { value: 'auto', name: 'Auto' },
+      { value: 'plan', name: 'Plan' }
+    ]
+    const driver = new AcpDriver(antigravityAgyCliDialect, 'stage', { cwd: '/project', extraDirs: [], resume: 'valid-session', allowBypass: true })
+    const sendDue = () => {
+      const frame = Request.parse(driver.due()[0])
+      driver.apply({ dir: 'out', at: 0, frame })
+      return frame
+    }
+    const init = sendDue()
+    driver.apply({ dir: 'in', at: 1, frame: { id: init.id, result: initialized } })
+    const auth = sendDue()
+    driver.apply({ dir: 'in', at: 2, frame: { id: auth.id, result: {} } })
+    const resume = sendDue()
+    expect(resume.method).toBe('session/resume')
+    driver.apply({ dir: 'in', at: 3, frame: { id: resume.id, error: { code: -32603, message: 'Failed to read session; retry, or load it with session/load' } } })
+    expect(driver.failure()).toBeNull()
+    const load = sendDue()
+    expect(load.method).toBe('session/load')
+    expect(load.params).toMatchObject({ sessionId: 'valid-session' })
+    // Replayed history updates during session/load must be dropped from both UI items and logged frames.
+    const replayedMsg = { jsonrpc: '2.0', method: 'session/update', params: { sessionId: 'valid-session', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'old reply' } } } }
+    const replayedTool = { jsonrpc: '2.0', method: 'session/update', params: { sessionId: 'valid-session', update: { sessionUpdate: 'tool_call', toolCallId: 'old-t1', title: 'ls', kind: 'execute', status: 'completed' } } }
+    expect(driver.logged(replayedMsg)).toBeNull()
+    expect(driver.logged(replayedTool)).toBeNull()
+    driver.apply({ dir: 'in', at: 4, frame: replayedMsg })
+    driver.apply({ dir: 'in', at: 5, frame: replayedTool })
+    driver.apply({ dir: 'in', at: 6, frame: { id: load.id, result: { sessionId: 'valid-session', configOptions: [{ id: 'mode', name: 'Mode', category: 'mode', currentValue: 'default', options: agyModeOptions }] } } })
+    expect(driver.ready()).toBe(true)
+    expect(driver.providerSessionId()).toBe('valid-session')
+    expect(items(driver, 'assistant')).toEqual([])
+    expect(items(driver, 'tool')).toEqual([])
+
+    // When session/load ALSO fails with Failed to read session, driver marks sessionLost for clean Handoff recovery.
+    const broken = new AcpDriver(antigravityAgyCliDialect, 'stage', { cwd: '/project', extraDirs: [], resume: 'missing-session' })
+    const sendBroken = () => {
+      const frame = Request.parse(broken.due()[0])
+      broken.apply({ dir: 'out', at: 0, frame })
+      return frame
+    }
+    broken.apply({ dir: 'in', at: 1, frame: { id: sendBroken().id, result: initialized } })
+    broken.apply({ dir: 'in', at: 2, frame: { id: sendBroken().id, result: {} } })
+    broken.apply({ dir: 'in', at: 3, frame: { id: sendBroken().id, error: { code: -32603, message: 'Failed to read session; retry, or load it with session/load' } } })
+    const brokenLoad = sendBroken()
+    expect(brokenLoad.method).toBe('session/load')
+    broken.apply({ dir: 'in', at: 4, frame: { id: brokenLoad.id, error: { code: -32603, message: 'Failed to read session' } } })
+    expect(broken.failure()).toContain('session/load')
+    expect(broken.sessionLost()).toBe(true)
+  })
+
+  it('probes and cleans only the selected backend and selected account, including failure paths', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'antumi-agy-catalog-'))
+    const home = path.join(root, 'account')
+    const data = backendDataDir('agy-cli', home)
+    const id = 'cli-probe'
+    vi.stubEnv('GEMINI_HOME', root)
+    setAntigravityRuntimeMode('agy-cli')
+    const requireCli = vi.spyOn(backendRuntime, 'requireAgyCli').mockResolvedValue('/bin/agy')
+    const probe = vi.spyOn(chatCatalog, 'probeChatCatalog').mockImplementation(async (driver, command) => {
+      expect(command).toMatchObject({ command: '/bin/agy', args: ['acp', '--stdio', '--gemini-dir', home, '--app-data-dir', 'antigravity-cli-acp'], env: { GEMINI_HOME: home, AGY_CLI_FORCE_FILE_TOKEN_STORAGE: '1' } })
+      expect(command.unsetEnv).toEqual(expect.arrayContaining(['GEMINI_API_KEY', 'GOOGLE_CLOUD_PROJECT']))
+      expect(command.env).not.toHaveProperty('SSH_CONNECTION')
+      for (const result of [initialized, {}, { ...opened, sessionId: id }]) {
+        const frame = Request.parse(driver.due()[0])
+        driver.apply({ dir: 'out', at: 0, frame })
+        driver.apply({ dir: 'in', at: 0, frame: { id: frame.id, result } })
+      }
+      await mkdir(path.join(data, 'conversations'), { recursive: true })
+      for (const suffix of ['.db', '.db-wal', '.db-shm', '.meta']) await writeFile(path.join(data, 'conversations', id + suffix), 'probe')
+      await mkdir(path.join(data, 'brain', id), { recursive: true })
+      await mkdir(path.join(data, 'annotations'), { recursive: true })
+      await writeFile(path.join(data, 'annotations', id + '.pbtxt'), 'probe')
+      throw new Error('probe failed')
+    })
+    try {
+      await writePrivateJson(agyCliTokenFile(home), { token: { access_token: 'access', refresh_token: 'cli-token', expiry: '2099-01-01T00:00:00Z' } })
+      const keep = path.join(backendDataDir('managed-acp', home), 'conversations')
+      await mkdir(keep, { recursive: true })
+      await writeFile(path.join(keep, id + '.db'), 'keep')
+      await expect(antigravity.catalog?.(root, { id: 'account', home })).rejects.toThrow('probe failed')
+      expect(await readdir(path.join(data, 'conversations'))).toEqual([])
+      expect(await readdir(path.join(data, 'brain'))).toEqual([])
+      expect(await readdir(path.join(data, 'annotations'))).toEqual([])
+      expect(await readFile(path.join(keep, id + '.db'), 'utf8')).toBe('keep')
+    } finally {
+      requireCli.mockRestore()
+      probe.mockRestore()
+      vi.unstubAllEnvs()
+      setAntigravityRuntimeMode('managed-acp')
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('scans both backends read-only and finds cwd in SQLite metadata without a .meta file', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'antumi-agy-transcripts-'))
+    const directories = antigravitySessionRoots({ GEMINI_HOME: root })
+    const cwd = path.join(root, 'project with spaces')
+    const bytes = (field: number, value: string | Uint8Array): Buffer => {
+      const body = typeof value === 'string' ? Buffer.from(value) : Buffer.from(value)
+      const varint = (value: number): number[] => {
+        const result: number[] = []
+        do { result.push((value & 127) | (value > 127 ? 128 : 0)); value >>>= 7 } while (value)
+        return result
+      }
+      return Buffer.concat([Buffer.from([...varint((field << 3) | 2), ...varint(body.length)]), body])
+    }
+    try {
+      for (const [index, directory] of directories.entries()) {
+        await mkdir(directory, { recursive: true })
+        const db = new DatabaseSync(path.join(directory, 'session-' + index + '.db'))
+        try {
+          db.exec('CREATE TABLE steps (idx INTEGER, step_payload BLOB); CREATE TABLE trajectory_metadata_blob (id TEXT, data BLOB)')
+          db.prepare('INSERT INTO steps VALUES (?, ?)').run(0, bytes(19, bytes(1, 'hello from history')))
+          db.prepare('INSERT INTO trajectory_metadata_blob VALUES (?, ?)').run('main', bytes(1, bytes(2, pathToFileURL(cwd).href)))
+        } finally { db.close() }
+        if (index === 0) await writeFile(path.join(directory, 'session-0.meta'), JSON.stringify({ cwd }))
+      }
+      const source = antigravityTranscripts(() => directories)
+      expect((await source.scan()).map(summary => [summary.sessionId, summary.cwd]).sort()).toEqual([['session-0', cwd], ['session-1', cwd]])
+      expect(source.diagnostics?.()).toEqual([])
+      expect(await readdir(directories[1]!)).toEqual(['session-1.db'])
+    } finally { await rm(root, { recursive: true, force: true }) }
+  })
+})
+
+
+it('composes agy command and prepare with a single complete argument list and gates bypass flag on explicit allowBypass', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'antumi-agy-launch-'))
+  const requireCli = vi.spyOn(backendRuntime, 'requireAgyCli').mockResolvedValue('/fake/agy')
+  const requireInfo = vi.spyOn(backendRuntime, 'requireAgyCliInfo').mockResolvedValue({ path: '/fake/agy', version: '1.5.17', supportsAcp: true, supportsBypass: true })
+  try {
+    const launch: AgentLaunch = { backend: 'agy-cli', providerSessionId: null, resume: false, handoffPath: null, extraProjects: [], account: { id: 'test', env: { GEMINI_HOME: root } } }
+    const cmd = antigravity.command(launch)
+    const prepared = await antigravity.launch?.prepare({ sessionsRoot: root, conversationId: 'conversation', stageId: 'stage', planOnly: false }, undefined, launch)
+    expect([...(cmd.args ?? []), ...(prepared?.args ?? [])]).toEqual(['acp', '--stdio', '--gemini-dir', root, '--app-data-dir', 'antigravity-cli-acp'])
+    expect(prepared?.command).toBe('/fake/agy')
+    expect(cmd.unsetEnv).toEqual(expect.arrayContaining(['GEMINI_API_KEY', 'GOOGLE_CLOUD_PROJECT']))
+    expect({ ...cmd.env, ...prepared?.env }).not.toHaveProperty('SSH_CONNECTION')
+
+    // Explicit allowBypass + preferred bypass passes --dangerously-skip-permissions.
+    const bypassLaunch: AgentLaunch = { ...launch, allowBypass: true, preferred: { permissionMode: 'bypass' } }
+    expect(antigravity.command(bypassLaunch).args).toEqual(['acp', '--stdio', '--gemini-dir', root, '--app-data-dir', 'antigravity-cli-acp', '--dangerously-skip-permissions'])
+    expect(await antigravity.launch?.prepare({ sessionsRoot: root, conversationId: 'conversation', stageId: 'stage', planOnly: false }, undefined, bypassLaunch)).toMatchObject({ command: '/fake/agy' })
+    // Never passes --dangerously-skip-permissions without allowBypass, or when planOnly/readOnly/lockdown.
+    expect(antigravity.command({ ...launch, allowBypass: false, preferred: { permissionMode: 'bypass' } }).args).not.toContain('--dangerously-skip-permissions')
+    expect(antigravity.command({ ...bypassLaunch, planOnly: { dirs: [root] } }).args).not.toContain('--dangerously-skip-permissions')
+    expect(antigravity.command({ ...bypassLaunch, readOnly: { dirs: [root] } }).args).not.toContain('--dangerously-skip-permissions')
+    expect(antigravity.command({ ...bypassLaunch, lockdown: { tools: [] } }).args).not.toContain('--dangerously-skip-permissions')
+    // Older agy without --dangerously-skip-permissions fails cleanly in prepare.
+    requireInfo.mockResolvedValueOnce({ path: '/fake/agy', version: '1.4.0', supportsAcp: true, supportsBypass: false })
+    await expect(antigravity.launch?.prepare({ sessionsRoot: root, conversationId: 'conversation', stageId: 'stage', planOnly: false }, undefined, bypassLaunch)).rejects.toThrow(/--dangerously-skip-permissions/)
+
+    const managed = antigravity.command({ ...launch, backend: 'managed-acp' })
+    expect(managed.unsetEnv).toEqual(cmd.unsetEnv)
+  } finally { requireCli.mockRestore(); requireInfo.mockRestore(); await rm(root, { recursive: true, force: true }) }
+})
+
+it('discovers active and archived agy accounts read-only while preserving backend isolation', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'antumi-agy-archives-'))
+  const own = path.join(root, 'own')
+  const antumi = path.join(root, 'antumi')
+  const removed = path.join(antumi, 'agent-accounts', 'antigravity', 'removed')
+  const active = path.join(antumi, 'agent-accounts', 'antigravity', 'active')
+  vi.stubEnv('GEMINI_HOME', own)
+  vi.stubEnv('ANTUMI_HOME', antumi)
+  const bytes = (field: number, value: string | Uint8Array): Buffer => {
+    const body = typeof value === 'string' ? Buffer.from(value) : Buffer.from(value)
+    const tag = (field << 3) | 2
+    return Buffer.concat([Buffer.from(tag < 128 ? [tag, body.length] : [(tag & 127) | 128, tag >>> 7, body.length]), body])
+  }
+  const createSession = async (directory: string, id: string) => {
+    await mkdir(directory, { recursive: true })
+    const db = new DatabaseSync(path.join(directory, id + '.db'))
+    try {
+      db.exec('CREATE TABLE steps (idx INTEGER, step_payload BLOB)')
+      db.prepare('INSERT INTO steps VALUES (?, ?)').run(0, bytes(19, bytes(1, id)))
+    } finally { db.close() }
+    await writeFile(path.join(directory, id + '.meta'), JSON.stringify({ cwd: root }))
+  }
+  try {
+    await createSession(path.join(backendDataDir('managed-acp'), 'conversations'), 'managed')
+    await createSession(path.join(backendDataDir('agy-cli'), 'conversations'), 'default')
+    await createSession(path.join(backendDataDir('agy-cli', active), 'conversations'), 'active')
+    await createSession(path.join(backendDataDir('agy-cli', removed), 'conversations'), 'archived')
+    await createSession(path.join(backendDataDir('managed-acp', active), 'conversations'), 'private-managed')
+    await antigravityAccounts.beforeRemove?.(removed)
+    await rm(removed, { recursive: true })
+    const archive = path.join(backendDataDir('agy-cli'), 'archived-conversations', 'removed')
+    const before = await readFile(path.join(archive, 'archived.db'))
+    const roots = await discoverAntigravitySessionRoots()
+    expect(roots).toContain(archive)
+    expect(roots).toContain(path.join(backendDataDir('agy-cli', active), 'conversations'))
+    const source = antigravityTranscripts()
+    const summaries = await source.scan()
+    expect(summaries.map(summary => summary.sessionId).sort()).toEqual(['active', 'archived', 'default', 'managed'])
+    expect(summaries.find(summary => summary.sessionId === 'managed')).toMatchObject({ backend: 'managed-acp', account: 'default' })
+    expect(summaries.find(summary => summary.sessionId === 'default')).toMatchObject({ backend: 'agy-cli', account: 'default' })
+    expect(summaries.find(summary => summary.sessionId === 'active')).toMatchObject({ backend: 'agy-cli', account: 'active' })
+    expect(summaries.find(summary => summary.sessionId === 'archived')).toMatchObject({ backend: 'agy-cli', nativeSessionId: null })
+    expect(summaries.find(summary => summary.sessionId === 'archived')?.account).toBeUndefined()
+    expect(source.diagnostics?.()).toEqual([])
+    expect(await readFile(path.join(archive, 'archived.db'))).toEqual(before)
+    expect(await readdir(path.join(backendDataDir('managed-acp'), 'conversations'))).toEqual(['managed.db', 'managed.meta'])
+  } finally { vi.unstubAllEnvs(); await rm(root, { recursive: true, force: true }) }
 })

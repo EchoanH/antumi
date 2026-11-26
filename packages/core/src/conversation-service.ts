@@ -94,7 +94,7 @@ export type TaskChatLaunch = TaskLaunchOptions & {
 // What a stage's start takes beyond the agent: see TaskChatLaunch; moved says the agent works
 // somewhere else than its last stage did.
 // brief: a file written for the first stage to read before anything else, sent as a handoff is.
-type StageLaunch = { ref?: string; fresh?: boolean; moved?: boolean; planOnly?: boolean; readable?: readonly string[]; fork?: ForkPoint; opening?: string; brief?: string; references?: ChatReference[]; images?: readonly ChatImage[] }
+type StageLaunch = { ref?: string; fresh?: boolean; moved?: boolean; planOnly?: boolean; backend?: string | null; account?: string | null; readable?: readonly string[]; fork?: ForkPoint; opening?: string; brief?: string; references?: ChatReference[]; images?: readonly ChatImage[] }
 // The provider session another conversation's stage ran, taken over through the turn `at` names;
 // neither null means a session the agent can fork, else the fork starts afresh.
 // latest: the point is the last the agent's session holds, so the session forked whole is the same.
@@ -333,9 +333,9 @@ export class ConversationService {
 
   // The user's model providers, for a conversation started on one; without them none can be.
   private providers: ModelProviderStore | null = null
-  private accounts: Pick<AgentAccountStore, 'launch' | 'activeOf' | 'exists'> | null = null
+  private accounts: Pick<AgentAccountStore, 'launch' | 'activeOf' | 'exists'> & Partial<Pick<AgentAccountStore, 'home'>> | null = null
   setModelProviders(providers: ModelProviderStore): void { this.providers = providers }
-  setAccounts(accounts: Pick<AgentAccountStore, 'launch' | 'activeOf' | 'exists'>): void { this.accounts = accounts }
+  setAccounts(accounts: Pick<AgentAccountStore, 'launch' | 'activeOf' | 'exists'> & Partial<Pick<AgentAccountStore, 'home'>>): void { this.accounts = accounts }
 
   // What the agent's next stage here runs on (see decideRoute).
   private routeFor(conversation: Pick<Conversation, 'id' | 'modelProvider'>, agent: AgentKind): RouteDecision {
@@ -742,7 +742,10 @@ export class ConversationService {
 
   async validateStartOptions(agent: AgentKind, options: { permissionMode?: string; model?: string | null; effort?: string | null }, providerId?: string): Promise<void> {
     const { permissionMode, model, effort } = options
-    if (permissionMode && !adapterOf(agent).permissionModes.includes(permissionMode)) {
+    const adapter = adapterOf(agent)
+    const backend = adapter.resolveBackend ? await adapter.resolveBackend() : undefined
+    const allowedModes = adapter.permissionModesFor?.(backend) ?? adapter.permissionModes
+    if (permissionMode && !allowedModes.includes(permissionMode)) {
       throw new Rejection('chat-option-invalid', `${agent} has no permission mode ${permissionMode}`)
     }
     if (model || effort) {
@@ -989,6 +992,7 @@ export class ConversationService {
     if (choice.model === undefined && choice.effort === undefined) return
     const previous = this.store.chatOptions(id)[agent] ?? {}
     this.store.setChatOptions(id, { [agent]: {
+      ...previous,
       model: choice.model === undefined ? previous.model : choice.model ?? undefined,
       effort: choice.effort === undefined
         ? (choice.model !== undefined && choice.model !== previous.model ? undefined : previous.effort)
@@ -1143,7 +1147,7 @@ export class ConversationService {
     // of the new conversation that has ended, with the messages those turns recorded.
     for (const stage of stages.slice(0, index + 1)) {
       const copyId = randomUUID()
-      this.store.startStage(id, stage.agent, null, 0, copyId, stage.planOnly ?? false, stage.route ?? null, stage.account ?? null)
+      this.store.startStage(id, stage.agent, null, 0, copyId, stage.planOnly ?? false, stage.route ?? null, stage.account ?? null, stage.backend ?? null)
       const { records } = ChatLog.of(this.sessionsRoot, sourceId, stage.id).read()
       const last = stage.id === cutStage.id ? kept.at(-1) : undefined
       const cutAt = stage.id === cutStage.id ? (before ? before.at : last?.at ?? 0) : Infinity
@@ -1167,14 +1171,14 @@ export class ConversationService {
 
   // A session the agent ran outside Antumi, taken in as a stage that has ended, on that session: the
   // next start resumes it, as it would a stage of Antumi's own. title: what the session was called.
-  importStage(id: string, agent: AgentKind, providerSessionId: string | null, transcript: Transcript, title: { text: string; locked: boolean } | null = null, update?: { stageId: string; order: readonly string[] }): Conversation {
+  importStage(id: string, agent: AgentKind, providerSessionId: string | null, transcript: Transcript, title: { text: string; locked: boolean } | null = null, update?: { stageId: string; order: readonly string[] }, origin?: { account?: string | null; backend?: string | null }): Conversation {
     const current = this.get(id)
     if (current.sessionId || this.launching.has(id)) throw new Rejection('conversation-running')
     const existingStageId = update?.stageId
     const stageId = existingStageId ?? randomUUID()
     if (existingStageId && !this.store.stages(id).some((stage) => stage.id === existingStageId && stage.endedAt !== null && stage.sessionId === null)) throw new Rejection('invalid-params', 'not an imported stage')
     const previous = new Map<string, ChatItem>(existingStageId ? this.stageChatItems(id, existingStageId).filter((item) => item.kind !== 'state').map((item) => [item.id, item]) : [])
-    if (!existingStageId) this.store.startStage(id, agent, providerSessionId, this.store.maxSequence(id), stageId)
+    if (!existingStageId) this.store.startStage(id, agent, providerSessionId, this.store.maxSequence(id), stageId, false, null, origin?.account ?? null, origin?.backend ?? null)
     // No exit record: no process ran here, and the driver would read one as a start that failed.
     let items: ChatItem[] = transcript.entries.map((entry) => ({ ...entry.item, stageId, revision: (previous.get(entry.item.id)?.revision ?? 0) + 1, at: previous.get(entry.item.id)?.at ?? entry.at }))
     const log = ChatLog.of(this.sessionsRoot, id, stageId)
@@ -1246,14 +1250,32 @@ export class ConversationService {
     // A session named before launch may never have been saved, one bound to its folder is left
     // behind by a move, and one opened on another route would reach another account: in each case
     // the agent starts afresh from a handoff.
-    const { session } = adapterOf(agent)
-    const resumable = session.nativeResume !== false && !(launch.moved && session.folderBound) && (lost === null || previous?.providerSessionId !== lost) && sameRoute(previous?.route, route)
+    const adapter = adapterOf(agent)
+    const { session } = adapter
+    const prevBackend = previous ? (previous.backend ?? adapter.defaultBackend ?? null) : null
+    // Global runtime preference applies to new conversations (and fresh stages); an existing
+    // conversation stays on its previous stage's backend unless an explicit override is passed.
+    const backend = launch.backend !== undefined
+      ? launch.backend
+      : prevBackend ?? ((await adapter.resolveBackend?.()) ?? null)
+    const nextBackend = backend ?? adapter.defaultBackend ?? null
+    const accountChoice = launch.account !== undefined
+      ? (launch.account && this.accounts?.exists(agent, launch.account) ? launch.account : undefined)
+      : this.keptAccount(current.id, agent)
+    const account = route ? null : await this.accounts?.launch(agent, accountChoice) ?? null
+    const sameBackend = !previous || prevBackend === nextBackend
+    const sameAccount = !previous || !adapter.accountScopedSessions?.(nextBackend) || (previous.account ?? null) === (account?.id ?? null)
+    const resumable = session.nativeResume !== false && !(launch.moved && session.folderBound) && (lost === null || previous?.providerSessionId !== lost) && sameRoute(previous?.route, route) && sameBackend && sameAccount
     const saved = resumable && previous?.providerSessionId && (!session.preassignedId || this.store.hasProviderMessages(id, previous.providerSessionId))
       ? previous.providerSessionId : null
     const providerSessionId = saved ?? (session.preassignedId ? randomUUID() : null)
     const missingNativeSession = previous !== null && saved === null
     const messages = withoutUnanswered(missingNativeSession ? this.store.messages(id) :
       handoff ? this.store.messages(id, previous?.receivedSequence ?? 0) : [], this.store.stages(id), lost)
+    if (previous !== null && !sameBackend && !handoff && messages.length > 0) {
+      const backendNote = '对话已切换运行后端，将通过摘要交接继续。'
+      note = note ? `${backendNote}\n\n${note}` : backendNote
+    }
     const needsHandoff = handoff || (missingNativeSession && messages.length > 0)
     let handoffPath: string | null = null
     this.openedInHandoff.delete(id)
@@ -1268,9 +1290,8 @@ export class ConversationService {
       await writeFile(handoffPath, buildHandoff(current, messages, note, current.agent, agent), { mode: 0o600 })
     }
     if (launch.brief) handoffPath = launch.brief
-    const account = route ? null : await this.accounts?.launch(agent, this.keptAccount(current.id, agent)) ?? null
     const stageId = randomUUID()
-    const stage = this.store.startStage(id, agent, providerSessionId, this.store.maxSequence(id), stageId, launch.planOnly ?? false, route, account?.id ?? null)
+    const stage = this.store.startStage(id, agent, providerSessionId, this.store.maxSequence(id), stageId, launch.planOnly ?? false, route, account?.id ?? null, backend)
     if (saved) await this.importHooks?.before(id, agent, saved)
     const provider = decision.kind === 'provider' ? providerLaunch(decision.route, decision.apiKey) : undefined
     return { ...await this.startChat(current, stage, saved !== null, handoffPath === null ? null : { path: handoffPath, note, references: launch.references, images: launch.images, ref: launch.ref }, launch.readable ?? [], null, provider, account), starting: false }
@@ -1281,7 +1302,9 @@ export class ConversationService {
   // its latest turn and it forks only whole (OpenCode); else a fresh start. The chat it continues
   // is already copied, so no handoff file is written.
   private async startFork(current: Conversation, agent: AgentKind, fork: ForkPoint): Promise<Conversation> {
-    const { session } = adapterOf(agent)
+    const adapter = adapterOf(agent)
+    const { session } = adapter
+    const backend = (await adapter.resolveBackend?.()) ?? null
     const decision = this.routeFor(current, agent)
     if (decision.kind === 'unavailable') throw new Rejection('model-provider-unavailable', decision.message)
     const route = decision.kind === 'provider' ? decision.route : null
@@ -1298,7 +1321,7 @@ export class ConversationService {
       await writeFile(handoffPath, buildHandoff(current, messages, '', agent, agent), { mode: 0o600 })
     }
     const account = route ? null : await this.accounts?.launch(agent, this.keptAccount(current.id, agent)) ?? null
-    const stage = this.store.startStage(current.id, agent, providerSessionId, this.store.maxSequence(current.id), randomUUID(), false, route, account?.id ?? null)
+    const stage = this.store.startStage(current.id, agent, providerSessionId, this.store.maxSequence(current.id), randomUUID(), false, route, account?.id ?? null, backend)
     const provider = decision.kind === 'provider' ? providerLaunch(decision.route, decision.apiKey) : undefined
     return this.startChat(current, stage, native, handoffPath === null ? null : { path: handoffPath, note: '' }, [], whole ? WHOLE_SESSION_FORK : native ? fork.at : null, provider, account)
   }
@@ -1341,6 +1364,7 @@ export class ConversationService {
     const { launch } = adapterOf(agent)
     const agentStage = this.agentStage(id, stage)
     const agentLaunch: AgentLaunch = locked ? {
+      ...(stage.backend ? { backend: stage.backend } : {}),
       instructions: channelPrompt(current.profile),
       providerSessionId: stage.providerSessionId,
       resume,
@@ -1353,6 +1377,7 @@ export class ConversationService {
       ...(provider ? { provider } : {}),
       ...(account?.env ? { account: { id: account.id, env: account.env } } : {})
     } : {
+      ...(stage.backend ? { backend: stage.backend } : {}),
       instructions: this.roleInstructions(current),
       providerSessionId: stage.providerSessionId,
       resume,
@@ -1382,15 +1407,20 @@ export class ConversationService {
     this.preparing.add(stage.id)
     try {
       let env = command.env ?? {}
+      let unsetEnv = [...(command.unsetEnv ?? [])]
       if (launch) {
         const prepared = await launch.prepare(agentStage, options.mcp, agentLaunch)
         if (prepared.command) command.command = prepared.command
         if (prepared.args) command.args = [...command.args, ...prepared.args]
         if (prepared.env) env = { ...env, ...prepared.env }
+        if (prepared.unsetEnv?.length) unsetEnv = [...new Set([...unsetEnv, ...prepared.unsetEnv])]
       }
       this.wire?.record(id, stage.id, [{ dir: 'spawn', text: JSON.stringify({ command: command.command, args: command.args, cwd: current.workspacePath }) }])
+      if (unsetEnv.length && !(await this.daemon.request('info', {})).features?.includes('unset-env')) {
+        throw new Rejection('daemon-outdated', '当前运行的 Antumi 后台版本过旧，无法安全隔离环境变量，请重启后台后重试')
+      }
       // Locked down, it gets none of the daemon's own environment either (the user's keys and tokens).
-      const spawned = await agentCliAccess.use(agent, () => this.daemon.request(locked ? 'spawnPipeClean' : 'spawnPipe', { agent, command: command.command, args: command.args, cwd: current.workspacePath, env: { ...env, [PROCESS_OWNER_ENV]: processOwner({ kind: 'conversation', id }) } }))
+      const spawned = await agentCliAccess.use(agent, () => this.daemon.request(locked ? 'spawnPipeClean' : 'spawnPipe', { agent, command: command.command, args: command.args, cwd: current.workspacePath, env: { ...env, [PROCESS_OWNER_ENV]: processOwner({ kind: 'conversation', id }) }, ...(unsetEnv.length ? { unsetEnv } : {}) }))
       sessionId = spawned.sessionId
       this.launches.set(sessionId, { ...launched, at: Date.now() })
       this.preparing.delete(stage.id)
@@ -1478,7 +1508,12 @@ export class ConversationService {
     const chosen = this.store.chatOptions(conversation.id)
     const mcp = conversation.channel ? this.channelTools?.mcp(conversation.id) : this.mcp?.(conversation.id)
     let permissionMode = isHelper(conversation) && chosen.permissionMode && !helperAllowsMode(chosen.permissionMode) ? 'ask' : chosen.permissionMode
-    const { fallbackMode, permissionModes, launch, providerModels } = adapterOf(stage.agent)
+    const adapter = adapterOf(stage.agent)
+    const { fallbackMode, launch, providerModels } = adapter
+    const allowBypass = !stage.planOnly && !conversation.workspaceReadOnly && (chosen.allowBypass ?? false)
+    const permissionModes = adapter.permissionModesFor?.(stage.backend) ?? adapter.permissionModes
+    const restartModes: readonly string[] = adapter.restartForModes?.(stage.backend) ?? []
+    if (!allowBypass && permissionMode === 'bypass' && restartModes.includes('bypass')) permissionMode = fallbackMode ?? 'ask'
     if (fallbackMode && (!permissionMode || !permissionModes.includes(permissionMode))) permissionMode = fallbackMode
     const onProvider = stage.route ? providerModels?.(stage.route) ?? [] : undefined
     const remembered = this.rememberedOnProvider(chosen[stage.agent], onProvider)
@@ -1494,6 +1529,7 @@ export class ConversationService {
       agent: stage.agent,
       ended: stage.endedAt != null,
       options: {
+        ...(stage.backend ? { backend: stage.backend } : {}),
         ...(conversation.channel ? { lockdown: true } : {}),
         instructions: conversation.channel ? channelPrompt(conversation.profile) : this.roleInstructions(conversation),
         cwd: conversation.workspacePath,
@@ -1505,7 +1541,7 @@ export class ConversationService {
         // Both constraints survive a restart; coordination is not task planning.
         planOnly: Boolean(stage.planOnly),
         readOnly: !stage.planOnly && Boolean(conversation.workspaceReadOnly),
-        allowBypass: !stage.planOnly && !conversation.workspaceReadOnly && (chosen.allowBypass ?? false),
+        allowBypass,
         promptSuggestions: this.promptSuggestions,
         preferred: { permissionMode, ...remembered.preferred },
         keepImage: (data) => this.keepImage(data),
@@ -1559,12 +1595,64 @@ export class ConversationService {
       await this.chooseForNextStart(conversation, option, value)
       return
     }
+    if (option === 'permissionMode') {
+      const stage = this.store.activeStage(id)
+      const adapter = adapterOf(agent)
+      const restartModes: readonly string[] = adapter.restartForModes?.(stage?.backend) ?? []
+      if (restartModes.length > 0 && stage) {
+        const state = this.chats.items(this.chatStage(conversation, stage)).findLast((item) => item.kind === 'state')
+        const currentMode = state?.kind === 'state' ? state.permissionMode : this.store.chatOptions(id).permissionMode ?? null
+        if (value === currentMode && restartModes.includes(value)) return
+        const transitions = value !== currentMode && (restartModes.includes(value) || (currentMode !== null && restartModes.includes(currentMode)))
+        if (transitions) {
+          if (this.launching.has(id)) throw new Rejection('conversation-running')
+          if (this.chats.activity(id) !== 'idle') throw new Rejection('chat-busy', '请在回合结束后切换模式或模型')
+          if (conversation.planOnly && value !== 'plan') throw new Rejection('plan-only', '此阶段只能规划')
+          if (value === 'bypass' && !this.allowsBypass(id)) throw new Rejection('chat-option-invalid', '当前会话未开启全部放行授权')
+          const allowed = state?.kind === 'state' && state.permissionModes.length
+            ? state.permissionModes
+            : (adapter.permissionModesFor?.(stage.backend) ?? adapter.permissionModes)
+          if (!allowed.includes(value)) throw new Rejection('chat-option-invalid', `${agent} offers no permission mode ${value}`)
+          const previousOptions = this.store.chatOptions(id)
+          const preservedAgentChoice = state?.kind === 'state'
+            ? {
+                ...previousOptions[agent],
+                ...(state.model ? { model: state.model } : {}),
+                ...(state.effort ? { effort: state.effort } : {})
+              }
+            : previousOptions[agent]
+          const pinnedBackend = stage.backend ?? adapter.defaultBackend ?? null
+          const pinnedAccount = stage.account ?? undefined
+          await this.stop(id, true)
+          this.store.setChatOptions(id, {
+            permissionMode: value,
+            ...(preservedAgentChoice ? { [agent]: preservedAgentChoice } : {})
+          })
+          try {
+            await this.start(id, agent, '', false, {
+              planOnly: conversation.planOnly,
+              backend: pinnedBackend,
+              ...(pinnedAccount !== undefined ? { account: pinnedAccount } : {})
+            })
+          } catch (error) {
+            this.store.setChatOptions(id, {
+              permissionMode: previousOptions.permissionMode,
+              ...(previousOptions[agent] !== undefined ? { [agent]: previousOptions[agent] } : {})
+            })
+            this.changed(this.get(id))
+            throw error
+          }
+          return
+        }
+      }
+    }
     await this.chats.setOption(id, option, value)
     if (option === 'permissionMode') return
     if (adapterOf(agent).optionsFromState) {
       const stage = this.store.activeStage(id)
       const state = stage ? this.chats.items(this.chatStage(conversation, stage)).findLast((item) => item.kind === 'state') : null
-      if (state?.kind === 'state') this.store.setChatOptions(id, { [agent]: { model: state.model ?? undefined, effort: state.effort ?? undefined } })
+      const existing = this.store.chatOptions(id)[agent]
+      if (state?.kind === 'state') this.store.setChatOptions(id, { [agent]: { ...existing, model: state.model ?? undefined, effort: state.effort ?? undefined } })
       return
     }
     const chosen = this.store.chatOptions(id)
@@ -1581,20 +1669,28 @@ export class ConversationService {
     const models = state?.models.length ? state.models : (await this.chatCatalog(agent, this.catalogProvider(conversation, agent)))?.models ?? []
     const latest = this.get(id)
     if (latest.agent !== agent || latest.sessionId !== conversation.sessionId || this.store.stages(id).at(-1)?.id !== stage?.id) return this.setOption(id, option, value)
-    const permissionModes = state?.permissionModes.length ? state.permissionModes : conversation.planOnly ? ['plan'] : startModes(agent, models.find((each) => each.isDefault))
+    const adapter = adapterOf(agent)
+    const backend = stage?.agent === agent
+      ? (stage.backend ?? adapter.defaultBackend ?? null)
+      : ((await adapter.resolveBackend?.()) ?? null)
+    const backendModes: readonly string[] | undefined = backend ? agentDescriptor(agent).backendModes?.[backend] : undefined
+    const permissionModes = !backendModes && state?.permissionModes.length
+      ? state.permissionModes
+      : conversation.planOnly ? ['plan'] : startModes(agent, models.find((each) => each.isDefault), backend)
+    const canBypass = backendModes ? backendModes.includes('bypass') : agentDescriptor(agent).capabilities.bypass
     const chosen = this.store.chatOptions(id)
     const current = chosen[agent] ?? {}
     const model = (name: string | null | undefined) => models.find((each) => each.id === name)
     if (option === 'permissionMode') {
       // Bypass is for the start to allow, which asks the user's setting again.
-      if ((value !== 'bypass' || !agentDescriptor(agent).capabilities.bypass) && !permissionModes.includes(value)) throw new Rejection('chat-option-invalid', `${agent} offers no permission mode ${value}`)
+      if ((value !== 'bypass' || !canBypass) && !permissionModes.includes(value)) throw new Rejection('chat-option-invalid', `${agent} offers no permission mode ${value}`)
       this.store.setChatOptions(id, { permissionMode: value })
     } else if (option === 'model') {
       const picked = model(value)
       if (!picked) throw new Rejection('chat-option-invalid', `${agent} lists no model ${value}`)
       // An effort the new model does not take would stop it from starting.
       const effort = current.effort && picked.efforts.includes(current.effort) ? current.effort : undefined
-      this.store.setChatOptions(id, { [agent]: { model: value, effort } })
+      this.store.setChatOptions(id, { [agent]: { ...current, model: value, effort } })
     } else {
       if (!model(current.model ?? state?.model ?? models.find((each) => each.isDefault)?.id)?.efforts.includes(value)) throw new Rejection('chat-option-invalid', `the model takes no effort ${value}`)
       this.store.setChatOptions(id, { [agent]: { ...current, effort: value } })
@@ -1653,7 +1749,14 @@ export class ConversationService {
     if (known) return known
     const adapter = adapterOf(agent)
     const found = this.freshCatalogs.has(agent) || adapter.partialStageCatalog ? null : this.catalogFromStages(agent)
-    const catalog = found ? Promise.resolve(found) : agentCliAccess.use(agent, () => adapter.catalog ? adapter.catalog(this.sessionsRoot) : this.probeCatalog(agent)).then((result) => {
+    const activeAccountCtx = async () => {
+      if (!this.accounts) return undefined
+      const launched = await this.accounts.launch(agent)
+      if (!launched) return undefined
+      const home = this.accounts.home?.(agent, launched.id) ?? launched.env?.GEMINI_HOME
+      return { id: launched.id, ...(home ? { home } : {}), ...(launched.env ? { env: launched.env } : {}) }
+    }
+    const catalog = found ? Promise.resolve(found) : agentCliAccess.use(agent, async () => adapter.catalog ? adapter.catalog(this.sessionsRoot, await activeAccountCtx()) : this.probeCatalog(agent)).then((result) => {
       if (this.catalogs.get(agent) === catalog) this.catalogProblems.delete(agent)
       return result
     }, (error: unknown) => {
@@ -1680,10 +1783,12 @@ export class ConversationService {
 
   // On the agent's active account: the user's own may not be signed in.
   private async probeCatalog(agent: AgentKind): Promise<ChatCatalog | null> {
-    const account = await this.accounts?.launch(agent).catch(() => null)
+    const account = await this.accounts?.launch(agent)
+    const adapter = adapterOf(agent)
+    const backend = (await adapter.resolveBackend?.()) ?? null
     return probeChatCatalog(
-      adapterOf(agent).createDriver('catalog', { cwd: this.sessionsRoot, extraDirs: [], resume: null }),
-      chatCommand(agent, null, false, null, [], account?.env ? { account: { id: account.id, env: account.env } } : {}),
+      adapter.createDriver('catalog', { cwd: this.sessionsRoot, extraDirs: [], resume: null, ...(backend ? { backend } : {}) }),
+      chatCommand(agent, null, false, null, [], { ...(backend ? { backend } : {}), ...(account?.env ? { account: { id: account.id, env: account.env } } : {}) }),
       this.sessionsRoot
     )
   }
@@ -2172,7 +2277,7 @@ export class ConversationService {
     return { items: cut.items, before: cut.first > 0 ? stages[cut.first]!.id : null, ...(cut.truncated ? { truncated: true } : {}) }
   }
 
-  async stop(id: string): Promise<Conversation> {
+  async stop(id: string, requireExit = false): Promise<Conversation> {
     const pending = this.launching.get(id)
     if (pending) {
       const { opening } = pending
@@ -2187,7 +2292,7 @@ export class ConversationService {
     }
     const current = this.get(id)
     if (!current.sessionId) return current
-    await this.stopAgent(current.sessionId)
+    await this.stopAgent(current.sessionId, requireExit)
     await this.importHooks?.after(id)
     if (this.store.get(id)?.sessionId === null) return this.get(id)
     const stage = this.store.activeStage(id)

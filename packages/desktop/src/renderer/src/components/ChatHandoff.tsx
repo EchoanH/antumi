@@ -9,7 +9,7 @@ import { agentLabel, reasonText } from '../labels'
 import { confirmQuota, modelText } from './AgentQuota'
 import { ChatModelPicker, ChatPicker, modelMeta } from './ChatPicker'
 import { AgentIcon } from './icons'
-import { defaultStartMode, effortLabel, modeOptions, modeTone, startModes } from './ChatOptionsBar'
+import { defaultStartMode, effortLabel, modeOptions, modeTone, startModes, useAgentBackend } from './ChatOptionsBar'
 import { startOptions } from './ConversationActions'
 import { askConfirm } from '../confirm-dialog'
 
@@ -67,8 +67,9 @@ export function useComposerHandoff(conversation: Conversation, images: readonly 
   const found = task ? checkTaskHandoff(task, dependencies, turn) : null
   const blocker = found ? reasonText(found, found) : images.length > 0 && !imagesSupported ? t('ChatHandoff.thisCoreCannotHandOffImagesYet') : null
   const stopsRunning = !task && conversation.sessionId !== null && turn !== 'idle'
+  const targetBackend = useAgentBackend(picked?.agent ?? null)
   // A task still planned goes on planning, whoever takes it.
-  const modes = picked && modesSupported && task?.status !== 'pending' ? startModes(picked.agent, model) : []
+  const modes = picked && modesSupported && task?.status !== 'pending' ? startModes(picked.agent, model, targetBackend) : []
   const mode = picked && modes.length > 0 ? handoffMode(picked.agent, modes, picked.permissionMode, conversation.chatOptions?.permissionMode) : null
   const target = picked && {
     agent: picked.agent,

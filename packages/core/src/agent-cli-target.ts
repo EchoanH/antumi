@@ -83,10 +83,11 @@ export async function resolveCliTarget(agent: AgentKind, environment: Environmen
   const paths = host.platform === 'win32' ? path.win32 : path.posix
   const canonical = await host.canonical(selected).catch(() => selected)
   const maintenance = adapterOf(agent).maintenance
-  const version = maintenance?.managedRuntime ? check.version : cliVersion(await host.run({ command: selected, args: ['--version'] }).catch(() => ''))
+  const managedOnly = Boolean(maintenance?.managedRuntime) && (!check.runtime?.active || check.runtime.active === 'managed-acp')
+  const version = managedOnly ? check.version : cliVersion(await host.run({ command: selected, args: ['--version'] }).catch(() => ''))
   const base = { path: selected, version, ...(maintenance?.checkedVersion ? { checkedVersion: maintenance.checkedVersion } : {}) }
   const target = (channel: CliTarget['channel'], command: CliCommand | null, latestUrl: string | null, tagPrefix?: string): CliTarget => ({ ...base, channel, command, latestUrl, tagPrefix, identity: JSON.stringify({ selected, canonical, channel, command }) })
-  if (maintenance?.managedRuntime || check.requiresStandaloneCli || desktopCli(selected, host.platform) || desktopCli(canonical, host.platform)) return target('desktop', null, null)
+  if (managedOnly || check.requiresStandaloneCli || desktopCli(selected, host.platform) || desktopCli(canonical, host.platform)) return target('desktop', null, null)
   const packageName = maintenance?.packageName
   if (packageName) {
     const proofs: CliTarget[] = []

@@ -6,7 +6,7 @@ type PipeSession = { output: string; exitCode: number | null; stderr: string; io
 // For tests: a daemon whose pipe sessions answer like Claude Code in stream-json mode (its PTY
 // sessions stay silent). Events go to `deliver`, which a test points at whatever handles them.
 // A catalog as Claude Code lists it: the default and two others, one of them without efforts.
-const FAKE_MODELS = [
+const FAKE_MODELS: readonly Record<string, unknown>[] = [
   { value: 'default', resolvedModel: 'claude-sonnet-5', displayName: 'Default', supportedEffortLevels: ['low', 'high'] },
   { value: 'sonnet', resolvedModel: 'claude-sonnet-5', displayName: 'Sonnet', supportedEffortLevels: ['low', 'high'] },
   { value: 'haiku', resolvedModel: 'claude-haiku-4-5', displayName: 'Haiku' }
@@ -23,6 +23,7 @@ export function fakeChatDaemon() {
   const released: string[] = []
 
   const fake = {
+    features: ['agent-cli-maintenance', 'clean-pipe', 'unset-env'],
     assertConnected() {},
     sessions,
     writes,
@@ -34,7 +35,7 @@ export function fakeChatDaemon() {
     deliver: (_event: DaemonEvent) => {},
     // Whether a new session answers the initialize request by itself, and with which models.
     answerInit: true,
-    models: FAKE_MODELS as readonly Record<string, unknown>[],
+    models: FAKE_MODELS,
     // A stubborn process lets stop-sequence tests observe escalation before ending it explicitly.
     exitOnKill: true,
     // What a session prints for each user message; by default a reply and a finished turn.
@@ -70,7 +71,7 @@ export function fakeChatDaemon() {
     portsStop: () => ({ ok: true }),
     awakeSet: () => ({ active: false, supported: true, problem: null }),
     awakeStatus: () => ({ active: false, supported: true, problem: null }),
-    info: () => ({ version: '0.0.0', pid: process.pid }),
+    info: () => ({ version: '0.0.0', pid: process.pid, features: fake.features }),
     retire: () => ({ retired: false, live: 0 }),
     spawn: (params) => {
       ptySpawns.push(params)

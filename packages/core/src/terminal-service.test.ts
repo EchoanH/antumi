@@ -10,7 +10,8 @@ import { commandShell, plainOutput, TerminalService, userShell } from './termina
 
 type Handlers = { [M in DaemonMethod]: (params: DaemonParams<M>) => DaemonResult<M> }
 
-function fakeDaemon(): SessionHost & { spawns: DaemonParams<'spawn'>[]; killed: string[]; released: string[]; buffers: Map<string, string>; exited: Map<string, number> } {
+function fakeDaemon(): SessionHost & { features: string[]; spawns: DaemonParams<'spawn'>[]; killed: string[]; released: string[]; buffers: Map<string, string>; exited: Map<string, number> } {
+  const features = ['agent-cli-maintenance', 'clean-pipe', 'unset-env']
   const spawns: DaemonParams<'spawn'>[] = []
   const killed: string[] = []
   const released: string[] = []
@@ -40,10 +41,10 @@ function fakeDaemon(): SessionHost & { spawns: DaemonParams<'spawn'>[]; killed: 
     },
     awakeSet: () => ({ active: false, supported: true, problem: null }),
     awakeStatus: () => ({ active: false, supported: true, problem: null }),
-    info: () => ({ version: '0.0.0', pid: process.pid }),
+    info: () => ({ version: '0.0.0', pid: process.pid, features }),
     retire: () => ({ retired: false, live: 0 })
   }
-  return { spawns, killed, released, buffers, exited, request: async (method, params) => handlers[method](params), onEvent: () => () => {} }
+  return { features, spawns, killed, released, buffers, exited, request: async (method, params) => handlers[method](params), onEvent: () => () => {} }
 }
 
 describe('TerminalService', () => {
@@ -67,6 +68,18 @@ describe('TerminalService', () => {
     service.close()
     tasks.close()
     rmSync(root, { recursive: true, force: true })
+  })
+
+  it('requires unset-env support before signing in with environment isolation', async () => {
+    const argv = { command: 'agy', args: ['login'] }
+    const terminal = await service.signIn(argv, {}, 'Antigravity login', 'antigravity', root, ['GOOGLE_API_KEY'])
+    expect(terminal.sessionId).toBe('session-1')
+    expect(daemon.spawns).toMatchObject([{ unsetEnv: ['GOOGLE_API_KEY'] }])
+    daemon.features.splice(daemon.features.indexOf('unset-env'), 1)
+    await expect(service.signIn(argv, {}, 'Antigravity login', 'antigravity', root, ['GOOGLE_API_KEY']))
+      .rejects.toMatchObject({ reason: 'daemon-outdated' })
+    expect(daemon.spawns).toHaveLength(1)
+    expect(service.list()).toHaveLength(1)
   })
 
   it('opens the user\'s shell in the folder asked for, or home when that is not a folder', async () => {

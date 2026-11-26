@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { AGENT_KINDS, ChatSettings, DEFAULT_WORKTREE_CLEAN_DAYS, KnowledgeBase, TitleNaming, UnattendedMode } from '@antumi/protocol'
+import { AGENT_KINDS, AntigravityRuntimeMode, ChatSettings, DEFAULT_WORKTREE_CLEAN_DAYS, KnowledgeBase, TitleNaming, UnattendedMode } from '@antumi/protocol'
 import { readJsonIfExists, writePrivateJson } from '@antumi/protocol/node'
 
 // Suggestions on, as in Claude Code itself; a title summed up after the first turn, since the first
@@ -16,6 +16,7 @@ const DEFAULTS = {
   titleNaming: 'first',
   titleModels: {},
   unattendedMode: 'acceptEdits',
+  antigravityRuntime: 'managed-acp',
   maxConcurrentAgents: 20,
   agentConcurrency: Object.fromEntries(AGENT_KINDS.map((kind) => [kind, DEFAULT_AGENT_CONCURRENCY])),
   wireLog: false,
@@ -31,12 +32,13 @@ const DEFAULTS = {
 } satisfies Required<ChatSettings>
 // A run nobody watches is meant to go on without them: a new install lets it. Written at once, so
 // it is what that install keeps; one from before keeps what it had, even with no file yet.
-const FRESH_INSTALL = { unattendedMode: 'bypass' } satisfies Partial<ChatSettings>
+const FRESH_INSTALL = { unattendedMode: 'bypass', antigravityRuntime: 'auto' } satisfies Partial<ChatSettings>
 const Saved = z.object({
   promptSuggestions: z.boolean().catch(DEFAULTS.promptSuggestions),
   titleNaming: TitleNaming.catch(DEFAULTS.titleNaming),
   titleModels: ChatSettings.shape.titleModels.unwrap().catch(DEFAULTS.titleModels),
   unattendedMode: UnattendedMode.catch(DEFAULTS.unattendedMode),
+  antigravityRuntime: AntigravityRuntimeMode.catch(DEFAULTS.antigravityRuntime),
   maxConcurrentAgents: ChatSettings.shape.maxConcurrentAgents.unwrap().catch(DEFAULTS.maxConcurrentAgents),
   agentConcurrency: ChatSettings.shape.agentConcurrency.unwrap().catch(DEFAULTS.agentConcurrency),
   wireLog: z.boolean().catch(DEFAULTS.wireLog),
@@ -93,6 +95,7 @@ export class ChatSettingsStore {
       titleNaming: patch.titleNaming ?? this.settings.titleNaming,
       titleModels: patch.titleModels ?? this.settings.titleModels,
       unattendedMode: patch.unattendedMode ?? this.settings.unattendedMode,
+      antigravityRuntime: patch.antigravityRuntime ?? this.settings.antigravityRuntime,
       maxConcurrentAgents: patch.maxConcurrentAgents ?? this.settings.maxConcurrentAgents,
       agentConcurrency: { ...this.settings.agentConcurrency, ...patch.agentConcurrency },
       wireLog: patch.wireLog ?? this.settings.wireLog,

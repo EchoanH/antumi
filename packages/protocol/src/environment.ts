@@ -22,6 +22,8 @@ export type AgentAuthentication = z.infer<typeof AgentAuthentication>
 
 export const EnvironmentCheck = AgentAuthentication.extend({
   tool: EnvironmentTool,
+  // Active and available backends for an agent with more than one. Older cores omit it.
+  runtime: z.object({ active: z.string(), available: z.array(z.string()) }).optional(),
   status: EnvironmentCheckStatus,
   version: z.string().nullable(),
   // Where it was found, so the user can tell which install Antumi runs.

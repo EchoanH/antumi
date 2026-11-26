@@ -1,12 +1,13 @@
 import * as pty from 'node-pty'
-import { planLaunch, type DaemonParsedParams } from '@antumi/protocol/node'
+import { planLaunch, withoutEnv, type DaemonParsedParams } from '@antumi/protocol/node'
 import type { HostedProcess, ProcessEvents } from './session-host'
 
 type Launch = Omit<DaemonParsedParams<'spawn'>, 'cols' | 'rows'>
 
-export function startPty({ command, args, cwd, env }: Launch, cols: number, rows: number, events: ProcessEvents): HostedProcess {
+export function startPty({ command, args, cwd, env, unsetEnv }: Launch, cols: number, rows: number, events: ProcessEvents): HostedProcess {
   // Looked up first: node-pty on macOS and Linux reports a missing program only as exit code 1.
-  const launch = planLaunch(command, args, cwd, { ...process.env, ...env, TERM: 'xterm-256color' })
+  const inherited = withoutEnv(process.env, unsetEnv)
+  const launch = planLaunch(command, args, cwd, { ...inherited, ...env, TERM: 'xterm-256color' })
   // On Windows the ConPTY node-pty ships, which keeps wide characters in a TUI's rows where an
   // older system one garbles them.
   const proc = pty.spawn(launch.file, launch.args, { name: 'xterm-256color', cwd, cols, rows, env: launch.env, useConptyDll: process.platform === 'win32' })

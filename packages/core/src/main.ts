@@ -25,6 +25,7 @@ import { coreUrl, untrustedSource, SOURCE_REPORT_LIMIT, isStartRef, AGENT_KINDS,
 import packageJson from '../package.json' with { type: 'json' }
 import { removeCoreEndpoint, antumiPaths, writeCoreEndpoint } from '@antumi/protocol/node'
 import { adapterOf } from './agents'
+import { getAntigravityRuntimeMode, setAntigravityRuntimeMode } from './agents/antigravity/antigravity-backend'
 import { EnvironmentService } from './environment-check'
 import { AgentRunStore } from './agent-run-store'
 import { ChatTurnStore } from './chat-turn-store'
@@ -591,9 +592,24 @@ const cliMaintenance = new AgentCliMaintenance(paths.database, {
 terminals.onBeforeCloseUpgrade(() => cliMaintenance.reconcile())
 
 const accounts = new AgentAccountStore(paths.agentAccounts, paths.agentAccountHomes, {
-  signIn: (argv, env, title, agent, cwd) => terminals.signIn(argv, env, title, agent, cwd),
+  signIn: (argv, env, title, agent, cwd, unsetEnv) => terminals.signIn(argv, env, title, agent, cwd, unsetEnv),
   waitForExit: (id) => terminals.waitForExit(id),
+  inUse: (agent, id) => conversations.listAll().some((conversation) => {
+    const stage = conversationsStore.activeStage(conversation.id)
+    if (stage?.agent !== agent || stage.account !== id) return false
+    if (!conversation.sessionId && !conversation.starting) return false
+    return Boolean(conversation.starting) || !conversations.agentIdle(conversation.id)
+  }),
+  releaseIdle: async (agent, id) => {
+    const idle = conversations.listAll().filter((conversation) => {
+      if (!conversation.sessionId || conversation.starting) return false
+      const stage = conversationsStore.activeStage(conversation.id)
+      return stage?.agent === agent && stage.account === id && conversations.agentIdle(conversation.id)
+    })
+    for (const conversation of idle) await conversations.stop(conversation.id, true)
+  },
   accountChanged: (agent, id, removed) => {
+    conversations.invalidateCli(agent)
     if (removed) usage.forget(agent, id)
     else void usage.readAccount(agent, id)
     void environment.check(true).catch(() => {})
@@ -619,6 +635,28 @@ channels = new ChannelService(channelStore, {
 })
 profiles.setChannelGuard((id) => channels?.hasChannels(id) ?? false)
 conversations.setChannelTools({ mcp: (id) => antumiChannelMcpServer(paths.home, id), tools: CHANNEL_TOOL_NAMES })
+const chatSettings = new ChatSettingsStore(paths.chatSettings, (settings) => {
+  if (settings.antigravityRuntime && settings.antigravityRuntime !== getAntigravityRuntimeMode()) {
+    setAntigravityRuntimeMode(settings.antigravityRuntime)
+    conversations.invalidateCli('antigravity')
+    void accounts.refresh('antigravity').catch(() => {})
+    void environment.check(true).catch(() => {})
+    void usage.refresh()
+  }
+  conversations.setPromptSuggestions(settings.promptSuggestions)
+  conversations.setTitleNaming(settings.titleNaming ?? 'off')
+  conversations.setUserBrowser(settings.userBrowser ?? true)
+  conversations.setUserTodos(settings.userTodos ?? true)
+  conversations.setKnowledgeBase(settings.knowledgeBase ?? null)
+  conversations.setCapacity(settings, () => { void schedules.tick(); squads.tick(); profiles.tick(); squadCalls?.tick(); delegationDelivery?.tick(); channels?.tick(); sourceInvestigations?.changed() })
+  wire.setEnabled(settings.wireLog ?? false)
+  void autoArchive.sweep()
+  void worktreeAutoClean.sweep()
+  announcements.settingsChanged()
+  server?.broadcast('system.chatSettingsChanged', { settings })
+})
+const initialChatSettings = await chatSettings.load(freshInstall)
+setAntigravityRuntimeMode(initialChatSettings.antigravityRuntime)
 await accounts.load()
 conversations.setAccounts(accounts)
 const projectConfigs = new ProjectConfigStore(paths.projectTrust)
@@ -659,19 +697,6 @@ const worktrees = new WorktreeService(paths.worktrees, service, () => server?.br
 awake = new ComputerAwakeService(daemon, new AwakeConfigStore(paths.awakeConfig), (status) =>
   server?.broadcast('system.awakeChanged', { status })
 )
-const chatSettings = new ChatSettingsStore(paths.chatSettings, (settings) => {
-  conversations.setPromptSuggestions(settings.promptSuggestions)
-  conversations.setTitleNaming(settings.titleNaming ?? 'off')
-  conversations.setUserBrowser(settings.userBrowser ?? true)
-  conversations.setUserTodos(settings.userTodos ?? true)
-  conversations.setKnowledgeBase(settings.knowledgeBase ?? null)
-  conversations.setCapacity(settings, () => { void schedules.tick(); squads.tick(); profiles.tick(); squadCalls?.tick(); delegationDelivery?.tick(); channels?.tick(); sourceInvestigations?.changed() })
-  wire.setEnabled(settings.wireLog ?? false)
-  void autoArchive.sweep()
-  void worktreeAutoClean.sweep()
-  announcements.settingsChanged()
-  server?.broadcast('system.chatSettingsChanged', { settings })
-})
 const announcements = new ResetAnnouncements(
   () => chatSettings.current().resetAnnouncements,
   (agent, resets) => usage.setGlobalResets(agent, resets)
@@ -703,7 +728,6 @@ conversations.setSkillsProvider(async (agent, selected) => {
   const bundle = await (selected == null ? skills.bundleForAgent(agent) : skills.bundleFor(selected))
   return bundle ? { dir: bundle.dir } : null
 })
-const initialChatSettings = await chatSettings.load(freshInstall)
 conversations.setPromptSuggestions(initialChatSettings.promptSuggestions)
 conversations.setTitleNaming(initialChatSettings.titleNaming)
 conversations.setUserBrowser(initialChatSettings.userBrowser)

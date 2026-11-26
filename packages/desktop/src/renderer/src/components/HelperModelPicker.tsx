@@ -4,7 +4,7 @@ import { helperAllowsMode, type AgentKind, type ChatCatalog, type ChatPermission
 import { perform, useCore } from '../core-store'
 import { helperProvider } from '../helper-conversations'
 import { ChatModelPicker, ChatPicker } from './ChatPicker'
-import { effortLabel, modeOptions, modeTone, startModes } from './ChatOptionsBar'
+import { effortLabel, modeOptions, modeTone, startModes, useAgentBackend } from './ChatOptionsBar'
 
 // providerId: the model provider the helper runs on (helperProvider), whose models it picks from.
 export function useHelperCatalog(agent: AgentKind, providerId?: string): ChatCatalog | null | undefined {
@@ -42,8 +42,8 @@ export function HelperModelPicker({ catalog, model, effort, disabled = false, on
 }
 
 // What a helper can start in with the model picked: a new chat's modes, less planning.
-export function helperModes(agent: AgentKind, catalog: ChatCatalog | null | undefined, model: string | null): ChatPermissionMode[] {
-  return startModes(agent, catalog?.models.find((each) => model ? each.id === model : each.isDefault)).filter(helperAllowsMode)
+export function helperModes(agent: AgentKind, catalog: ChatCatalog | null | undefined, model: string | null, backend?: string | null): ChatPermissionMode[] {
+  return startModes(agent, catalog?.models.find((each) => model ? each.id === model : each.isDefault), backend).filter(helperAllowsMode)
 }
 
 // A mode the model no longer takes reads as asking, as the helper then starts.
@@ -63,9 +63,10 @@ export function HelperModePicker({ agent, offered, mode, disabled = false, onMod
 
 export function HelperStartOptions({ conversation }: { conversation: Conversation }) {
   const catalog = useHelperCatalog(conversation.agent, helperProvider(conversation))
+  const activeBackend = useAgentBackend(conversation.agent)
   const set = (option: 'permissionMode' | 'model' | 'effort', value: string) => void perform((rpc) => rpc.call('conversations.setOption', { id: conversation.id, option, value }))
   const model = conversation.chatOptions?.model ?? null
-  const offered = helperModes(conversation.agent, catalog, model)
+  const offered = helperModes(conversation.agent, catalog, model, activeBackend)
   const disabled = Boolean(conversation.starting)
   return <>
     <HelperModePicker agent={conversation.agent} offered={offered} mode={helperMode(offered, conversation.chatOptions?.permissionMode ?? null)} disabled={disabled} onMode={(value) => set('permissionMode', value)} />
