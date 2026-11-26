@@ -197,13 +197,19 @@ export class SourceInvestigationService {
     if (run && ACTIVE.has(run.status)) this.update(run, { status: 'waiting-user', reason, canRetry: false })
   }
   pending(id: string): InvestigationRun | null { return this.store.run(id) }
-  takeover(id: string): void {
+  // Only the user going on themselves (their own message, or stopping the agent) ends the run.
+  takeover(id: string, reason: 'user-stopped' | null = null): void {
     this.deps.takeoverFix?.(id)
     const run = this.store.run(id)
     if (run?.conversationId && run.status !== 'handed-over') {
-      this.update(run, { status: 'handed-over', canRetry: false, retryAt: null })
+      this.update(run, { status: 'handed-over', reason, message: null, canRetry: false, retryAt: null })
       void this.tick()
     }
+  }
+  // An answer to what the agent asked, or a retry of its turn, goes on with the run rather than taking it over.
+  answered(id: string): void {
+    const run = this.store.run(id)
+    if (run) this.resume(run, true)
   }
   deleted(id: string): void {
     const run = this.store.run(id)
@@ -249,7 +255,8 @@ export class SourceInvestigationService {
     return AutoInvestigationRun.parse(this.update(run, { status: 'cancelled', retryAt: null, canRetry: false }))
   }
   async validateTask(id: string, proposal: SourceTaskProposal): Promise<void> {
-    const run = this.require(id)
+    // The agent submitting proves it went on, even before its answer's items reached a pass.
+    const run = this.resume(this.require(id))
     if (!ACTIVE.has(run.status) || !run.config?.autoFix?.enabled) throw new Rejection('invalid-configuration', '这个会话不在自动任务分流阶段')
     await this.deps.validateTask?.(proposal, run)
   }
@@ -277,6 +284,7 @@ export class SourceInvestigationService {
     return this.ticking
   }
   private async pass(): Promise<void> {
+    for (const run of this.store.waiting()) this.resume(run)
     for (const run of this.store.active()) this.observe(run)
     if (this.store.active().length > 0) return
     if (this.store.uncertain().some((run) => this.deps.getConversation(run.id)?.chat?.turn === 'running')) return
@@ -368,6 +376,15 @@ export class SourceInvestigationService {
         .finally(() => { this.images(run.id, false); this.changed() })
     }
     if (!run.imagesPending && this.deps.idle(run.id)) this.update(run, { status: 'completed', reason: null })
+  }
+  // Back to running once nothing waits on the user: a usage limit only when the user retried it.
+  // The run must still be the source's to automate; a conversation gone or exited is observe's to settle.
+  private resume(run: InvestigationRun, retried = false): InvestigationRun {
+    if (run.status !== 'waiting-user' || (run.reason !== 'user-input' && !(retried && run.reason === 'quota-exhausted'))) return run
+    const chat = this.deps.getConversation(run.id)?.chat
+    const setting = this.store.setting(run.provider, run.instance)
+    if (chat?.turn === 'awaiting' || chat?.request || !setting?.config.enabled || setting.binding !== run.binding || setting.scope !== run.scope) return run
+    return this.update(run, { status: 'running', reason: null, message: null })
   }
   private block(setting: InvestigationSettings, reason: string | null): void {
     if (setting.reason === reason) return

@@ -5,7 +5,7 @@ import { Rejection } from './rejection'
 import { SourceFixInfo, SourceTaskProposal, type TaskSource } from '@antumi/protocol'
 import type { TaskCreationLink } from './task-store'
 
-const Record = SourceFixInfo.extend({ id: z.string().uuid(), attempts: z.number().int().nonnegative(), revision: z.string().nullable(), transferred: z.boolean().optional(), reportAt: z.number().optional(), proposal: SourceTaskProposal.optional() })
+const Record = SourceFixInfo.extend({ id: z.string().uuid(), attempts: z.number().int().nonnegative(), revision: z.string().nullable(), transferred: z.boolean().optional(), reportAt: z.number().optional(), awaitsAnswer: z.boolean().optional(), proposal: SourceTaskProposal.optional() })
 export type FixRecord = z.infer<typeof Record>
 const Row = z.object({ data: z.string() })
 

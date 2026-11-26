@@ -137,6 +137,7 @@ export const MESSAGES = {
   "AutoInvestigation.alreadyHandled": {"zh": "问题已被处理或已移出当前查询", "en": "Already handled or no longer matches the query"},
   "AutoInvestigation.deleted": {"zh": "关联会话已删除，不会自动重建", "en": "Conversation deleted; it will not be recreated automatically"},
   "AutoInvestigation.exited": {"zh": "Agent 已退出，请在会话中检查并继续", "en": "Agent exited. Check and continue in the conversation."},
+  "AutoInvestigation.stopped": {"zh": "你停止了 Agent，自动流程不再推进", "en": "You stopped the Agent. Automation will not continue."},
   "AutoInvestigation.checkSettings": {"zh": "请检查来源和自动化设置", "en": "Check source and automation settings"},
   "AutoInvestigation.refresh": {"zh": "刷新记录", "en": "Refresh history"},
   "AutoInvestigation.history": {"zh": "运行记录", "en": "Run history"},

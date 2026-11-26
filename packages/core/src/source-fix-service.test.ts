@@ -171,6 +171,23 @@ it('does not deliver without project checks or when the agent needs input', asyn
   expect(store.get(id)?.state).toBe('waiting-user'); expect(delivered).toBe(0)
 })
 
+it('goes on once the user answers the repair agent, also after a restart', async () => {
+  await service.tick(); turn = 'awaiting'; await service.tick()
+  expect(store.get(id)).toMatchObject({ state: 'waiting-user', awaitsAnswer: true })
+  await service.tick(); expect(store.get(id)?.state).toBe('waiting-user')
+  turn = 'running'; service = make()
+  await service.tick(); expect(store.get(id)).toMatchObject({ state: 'working', awaitsAnswer: false, message: null })
+  turn = 'idle'; await service.tick()
+  expect(store.get(id)?.state).toBe('ready'); expect(delivered).toBe(1)
+})
+
+it('leaves a wait that is not on an answer for the user to clear', async () => {
+  await service.tick(); report = null; turn = 'idle'; await service.tick()
+  expect(store.get(id)?.state).toBe('waiting-user')
+  report = { text: 'Fixed the redirect.', updatedAt: 4, outcome: 'delivered' }; await service.tick()
+  expect(store.get(id)?.state).toBe('waiting-user'); expect(delivered).toBe(0)
+})
+
 it('returns failed checks to the same task with stable references, then stops after three attempts', async () => {
   await service.tick(); checks = ['test failed']
   for (let i = 0; i < 3; i++) { turn = 'idle'; await service.tick() }

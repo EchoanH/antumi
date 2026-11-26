@@ -265,8 +265,13 @@ export function createRpcHandlers(
     conversations.attend(id)
     const since = limits.mark()
     const result = await act()
-    sources.automatic?.takeover(id)
     limits.cancelFor(id, since)
+    return result
+  }
+  // A message of the user's own takes an automatic run over; answering what its agent asked does not.
+  const userSent = async <T>(id: string, act: () => Promise<T>): Promise<T> => {
+    const result = await userActed(id, act)
+    sources.automatic?.takeover(id)
     return result
   }
   const squadService = () => {
@@ -334,7 +339,7 @@ export function createRpcHandlers(
     'pullRequests.handoff': ({ taskId, repoPath, kind, ids }) => {
       const { conversationId } = service.get(taskId)
       const run = () => requirePullRequests().handoff(taskId, repoPath, kind, ids)
-      return conversationId ? userActed(conversationId, run) : run()
+      return conversationId ? userSent(conversationId, run) : run()
     },
     'plugins.recommended': () => pluginService().recommended(),
     'plugins.installRecommended': ({ id }) => pluginService().installRecommended(id),
@@ -602,17 +607,17 @@ export function createRpcHandlers(
     'conversations.fork': ({ id, stageId, itemId }) => conversations.fork(id, stageId, itemId),
     // A mode the user picks is theirs to answer for: a run nobody watched stops answering for them.
     'conversations.setAccount': ({ id, account }) => { notChannel(id); profiles?.guardUser(id, true); squads?.guardUser(id, true); return conversations.setAccount(id, account) },
-    'conversations.setOption': async ({ id, option, value }) => { notChannel(id); profiles?.guardUser(id, true); squads?.guardUser(id, true); if (option === 'permissionMode') conversations.attend(id); await conversations.setOption(id, option, value); sources.automatic?.takeover(id); return OK },
-    'conversations.send': ({ id, text, images, queue, steer, ref, references }) => { notChannel(id); return userActed(id, async () => { profiles?.guardUser(id, true); squads?.guardUser(id, true); await conversations.send(id, text, images, queue, steer, ref, references); return OK }) },
+    'conversations.setOption': async ({ id, option, value }) => { notChannel(id); profiles?.guardUser(id, true); squads?.guardUser(id, true); if (option === 'permissionMode') conversations.attend(id); await conversations.setOption(id, option, value); return OK },
+    'conversations.send': ({ id, text, images, queue, steer, ref, references }) => { notChannel(id); return userSent(id, async () => { profiles?.guardUser(id, true); squads?.guardUser(id, true); await conversations.send(id, text, images, queue, steer, ref, references); return OK }) },
     'conversations.cancelQueued': ({ id, ref }) => { notChannel(id); conversations.cancelQueued(id, ref); return OK },
-    'conversations.sendQueued': ({ id, ref, now }) => { notChannel(id); return userActed(id, async () => { await conversations.sendQueued(id, ref, now); return OK }) },
+    'conversations.sendQueued': ({ id, ref, now }) => { notChannel(id); return userSent(id, async () => { await conversations.sendQueued(id, ref, now); return OK }) },
     'conversations.setUsageLimitAutoContinue': ({ id, stageId, itemId, autoContinue }) => { notChannel(id);
       if (autoContinue) sources.automatic?.takeover(id)
       limits.setAutoContinue(id, stageId, itemId, autoContinue)
       return OK
     },
-    'conversations.retryUsageLimit': async ({ id, stageId, itemId }) => { notChannel(id); sources.automatic?.takeover(id); await limits.retry(id, stageId, itemId); return OK },
-    'conversations.retryTurn': async ({ id, stageId, itemId }) => { notChannel(id); sources.automatic?.takeover(id); await conversations.retryTurn(id, stageId, itemId); return OK },
+    'conversations.retryUsageLimit': async ({ id, stageId, itemId }) => { notChannel(id); await limits.retry(id, stageId, itemId); sources.automatic?.answered(id); return OK },
+    'conversations.retryTurn': async ({ id, stageId, itemId }) => { notChannel(id); await conversations.retryTurn(id, stageId, itemId); sources.automatic?.answered(id); return OK },
     'conversations.interrupt': async ({ id }) => {
       const child = conversations.get(id)
       if (child.agentCallId && child.parentConversationId) { await profiles?.cancel(child.parentConversationId, child.agentCallId); return OK }
@@ -623,7 +628,7 @@ export function createRpcHandlers(
       return OK
     },
     'conversations.stopBackground': async ({ id, itemId }) => { notChannel(id); await conversations.stopBackground(id, itemId); return OK },
-    'conversations.respond': async ({ id, requestId, ...answer }) => { notChannel(id); squads?.guardUser(id); conversations.userAnswers(id, requestId); await conversations.respond(id, requestId, answer); sources.automatic?.takeover(id); return OK },
+    'conversations.respond': async ({ id, requestId, ...answer }) => { notChannel(id); squads?.guardUser(id); conversations.userAnswers(id, requestId); await conversations.respond(id, requestId, answer); sources.automatic?.answered(id); return OK },
     // Read after subscribing, so an item that changes in between reaches the client either way.
     'conversations.watchChat': ({ id, limit }, connection) => {
       connection.watching.add(id)
@@ -633,14 +638,18 @@ export function createRpcHandlers(
     'conversations.chatItems': ({ id, before, limit }) => page(conversations.chatPage(id, before, limit)),
     // Any idle time will do: Infinity is past every agent's last activity.
     'conversations.releaseIdle': async () => ({ released: await conversations.releaseIdle(Infinity) }),
-    'conversations.stop': ({ id }) => userActed(id, async () => {
-      const child = conversations.get(id)
-      if (child.agentCallId && child.parentConversationId) { await profiles?.cancel(child.parentConversationId, child.agentCallId); return conversations.get(id) }
-      await profiles?.cancelForParent(id)
-      const run = squads?.roster(id)
-      if (run?.leaderConversationId === id && run.state === 'running') await squads?.control(run.id, 'stop')
-      return conversations.stop(id)
-    }),
+    'conversations.stop': async ({ id }) => {
+      const stopped = await userActed(id, async () => {
+        const child = conversations.get(id)
+        if (child.agentCallId && child.parentConversationId) { await profiles?.cancel(child.parentConversationId, child.agentCallId); return conversations.get(id) }
+        await profiles?.cancelForParent(id)
+        const run = squads?.roster(id)
+        if (run?.leaderConversationId === id && run.state === 'running') await squads?.control(run.id, 'stop')
+        return conversations.stop(id)
+      })
+      sources.automatic?.takeover(id, 'user-stopped')
+      return stopped
+    },
     'conversations.delete': async ({ id }) => { profiles?.guardUser(id, true); await profiles?.cancelForParent(id); squads?.guardUser(id, true); await conversations.delete(id); return OK },
     'conversations.messages': ({ id }) => conversations.messages(id),
     'conversations.stages': ({ id }) => conversations.stages(id),
@@ -933,7 +942,7 @@ export function createRpcHandlers(
       if (!sourceUpdates) throw new Rejection('source-comments-unavailable')
       const id = target.kind === 'task' ? service.get(target.id).conversationId : target.id
       if (!id) throw new Rejection('no-chat')
-      return userActed(id, () => { profiles?.guardUser(id, true); squads?.guardUser(id, true); return sourceUpdates.send(target, requestId, through).then((delivery) => SourceDeliveryInfo.parse(delivery)) })
+      return userSent(id, () => { profiles?.guardUser(id, true); squads?.guardUser(id, true); return sourceUpdates.send(target, requestId, through).then((delivery) => SourceDeliveryInfo.parse(delivery)) })
     },
     'sources.inbox': () => sources.inboxes(),
     'sources.refresh': ({ provider, instance }) => sources.refresh(provider, instance),

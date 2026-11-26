@@ -22,7 +22,7 @@ const REASONS = {
   'quota-exhausted': 'AutoInvestigation.quota', 'delivery-uncertain': 'AutoInvestigation.uncertain',
   'storage-failed': 'AutoInvestigation.storageFailed', 'user-input': 'AutoInvestigation.userInput',
   'already-handled': 'AutoInvestigation.alreadyHandled', 'conversation-deleted': 'AutoInvestigation.deleted',
-  'agent-exited': 'AutoInvestigation.exited'
+  'agent-exited': 'AutoInvestigation.exited', 'user-stopped': 'AutoInvestigation.stopped'
 } as const
 export function autoInvestigationReason(reason: string | null, message: string | null = null): string | null {
   if (!reason) return null

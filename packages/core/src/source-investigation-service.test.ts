@@ -170,6 +170,82 @@ describe('automatic source investigations', () => {
     expect(service.owns(first.id)).toBe(false)
   })
 
+  it('goes on after an approval, so the coordinator can still propose a task', async () => {
+    const autoFix = { enabled: true, typeIds: [], permissionMode: 'acceptEdits' as const, concurrency: 1, maxOpenTasks: 10 }
+    await service.save('demo', 'default', { ...enabled, autoFix })
+    await discover('D-1', 'D-2')
+    const id = launched[0]!.id
+    await begin(id)
+    const request = { requestId: 'r1', kind: 'approval' as const, tool: 'Bash', title: 'gh issue view 26', decisions: ['allow' as const, 'deny' as const], open: 1 }
+    edit(id, { chat: { turn: 'awaiting', request } })
+    await service.tick()
+    expect(store.run(id)?.status).toBe('waiting-user')
+    service.answered(id)
+    expect(store.run(id)?.status).toBe('waiting-user')
+    edit(id, { chat: { turn: 'running' } })
+    service.answered(id)
+    expect(store.run(id)).toMatchObject({ status: 'running', reason: null })
+    const proposal: SourceTaskProposal = { title: 'Fix API', details: 'Repair and test.', agent: 'claude', repos: [{ path: '/api' }] }
+    await expect(service.validateTask(id, proposal)).resolves.toBeUndefined()
+    idle.add(id); edit(id, { chat: { turn: 'idle' } })
+    await service.tick()
+    expect(store.run(id)?.status).toBe('completed')
+  })
+
+  it('takes the coordinator report before a pass has seen the answer, and finishes a denied request', async () => {
+    const autoFix = { enabled: true, typeIds: [], permissionMode: 'acceptEdits' as const, concurrency: 1, maxOpenTasks: 10 }
+    await service.save('demo', 'default', { ...enabled, autoFix })
+    await discover('D-1', 'D-2', 'D-3')
+    const [first] = launched
+    await begin(first!.id)
+    edit(first!.id, { chat: { turn: 'awaiting' } })
+    await service.tick()
+    edit(first!.id, { chat: { turn: 'running' } })
+    await expect(service.validateTask(first!.id, { title: 'Fix API', details: 'Repair and test.', agent: 'claude', repos: [{ path: '/api' }] })).resolves.toBeUndefined()
+    expect(store.run(first!.id)?.status).toBe('running')
+    // Denied: the agent ends its turn reporting it is blocked, which completes rather than hands over.
+    edit(first!.id, { chat: { turn: 'awaiting' } })
+    await service.tick()
+    idle.add(first!.id); edit(first!.id, { chat: { turn: 'idle' } })
+    await service.tick()
+    expect(store.run(first!.id)?.status).toBe('completed')
+  })
+
+  it('resumes an answered run after a restart, but not one whose automation was turned off', async () => {
+    await service.save('demo', 'default', enabled)
+    await discover('D-1', 'D-2')
+    const id = launched[0]!.id
+    await begin(id)
+    edit(id, { chat: { turn: 'awaiting' } })
+    await service.tick()
+    edit(id, { chat: { turn: 'running' } })
+    service.suspend(); makeService(); service.reconciled()
+    await service.tick()
+    expect(store.run(id)?.status).toBe('running')
+    edit(id, { chat: { turn: 'awaiting' } })
+    await service.tick()
+    await service.save('demo', 'default', { ...enabled, enabled: false })
+    edit(id, { chat: { turn: 'running' } })
+    await service.tick()
+    expect(store.run(id)?.status).toBe('waiting-user')
+  })
+
+  it('goes on after a retried usage limit, and hands over once the user stops the agent', async () => {
+    await service.save('demo', 'default', enabled)
+    await discover('D-1', 'D-2')
+    const id = launched[0]!.id
+    await begin(id)
+    service.waiting(id, 'quota-exhausted')
+    await service.tick()
+    expect(store.run(id)?.status).toBe('waiting-user')
+    service.answered(id)
+    expect(store.run(id)?.status).toBe('running')
+    service.takeover(id, 'user-stopped')
+    expect(store.run(id)).toMatchObject({ status: 'handed-over', reason: 'user-stopped' })
+    service.answered(id)
+    expect(store.run(id)?.status).toBe('handed-over')
+  })
+
   it('limits new conversations per local calendar day and waits for late images', async () => {
     await service.save('demo', 'default', { ...enabled, dailyLimit: 1 })
     await discover('D-1', 'D-2', 'D-3')
