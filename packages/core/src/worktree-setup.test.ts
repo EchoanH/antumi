@@ -36,9 +36,10 @@ describe('copyListed', () => {
   })
 
   it('copies nothing from outside the project', async () => {
-    writeFileSync(path.join(dir, 'outside'), 'x')
-    symlinkSync(path.join(dir, 'outside'), path.join(source, 'link'))
-    expect(await copyListed(source, worktree, ['../outside', path.join(dir, 'outside'), 'link'])).toEqual([])
+    mkdirSync(path.join(dir, 'outside'))
+    writeFileSync(path.join(dir, 'outside', 'secret'), 'x')
+    symlinkSync(path.join(dir, 'outside'), path.join(source, 'link'), process.platform === 'win32' ? 'junction' : 'dir')
+    expect(await copyListed(source, worktree, ['../outside/secret', path.join(dir, 'outside', 'secret'), 'link'])).toEqual([])
   })
 })
 

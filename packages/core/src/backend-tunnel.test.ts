@@ -56,6 +56,12 @@ function stdio() {
 }
 
 describe('parseTunnelHelperConfig', () => {
+  it('accepts an absolute endpoint path on the helper host', () => {
+    const endpointFile = path.join(dir, 'browser', 'host.json')
+    const config = { listen: { endpointFile, endpoint: { token: 't' } } }
+    expect(parseTunnelHelperConfig(JSON.stringify(config))).toEqual(config)
+  })
+
   it('reads both directions', () => {
     expect(parseTunnelHelperConfig('{"listen":{"endpointFile":"/h/.antumi/browser/host.json","endpoint":{"token":"t","protocolVersion":3}},"dial":{"port":51234}}')).toEqual({
       listen: { endpointFile: '/h/.antumi/browser/host.json', endpoint: { token: 't', protocolVersion: 3 } },
@@ -92,8 +98,11 @@ describe('tunnel helper', () => {
 
     const written: unknown = JSON.parse(await readFile(endpointFile, 'utf8'))
     expect(written).toEqual({ token: 'secret', protocolVersion: 3, port: link.remotePort, pid: 4242 })
-    expect((await stat(endpointFile)).mode & 0o777).toBe(0o600)
-    expect((await stat(path.dirname(endpointFile))).mode & 0o777).toBe(0o700)
+    // Win32 exposes synthesized mode bits, not the requested POSIX permissions.
+    if (process.platform !== 'win32') {
+      expect((await stat(endpointFile)).mode & 0o777).toBe(0o600)
+      expect((await stat(path.dirname(endpointFile))).mode & 0o777).toBe(0o700)
+    }
     expect(link.localPort).toBeGreaterThan(0)
 
     const [toApp, toCore] = await Promise.all([ask(link.remotePort ?? 0, 'from core'), ask(link.localPort ?? 0, 'from the app')])
@@ -165,7 +174,7 @@ describe('tunnel helper', () => {
 
 // As the app will run it, minus wsl.exe: a child on plain Node with the source through tsx.
 describe('tunnel helper process', () => {
-  const loader = fileURLToPath(new URL('../node_modules/tsx/dist/loader.mjs', import.meta.url))
+  const loader = new URL('../node_modules/tsx/dist/loader.mjs', import.meta.url).href
   const entry = fileURLToPath(new URL('./backend-tunnel-main.ts', import.meta.url))
 
   function start(): { child: ChildProcessByStdio<Writable, Readable, Readable>; stderr: () => string; exited: Promise<number | null> } {
@@ -187,7 +196,7 @@ describe('tunnel helper process', () => {
     // The file is written just after the sentinel.
     while (!(await exists(endpointFile))) await new Promise((resolve) => setTimeout(resolve, 10))
     expect(JSON.parse(await readFile(endpointFile, 'utf8'))).toEqual({ token: 'secret', protocolVersion: 3, port: link.remotePort, pid: child.pid })
-    expect((await stat(endpointFile)).mode & 0o777).toBe(0o600)
+    if (process.platform !== 'win32') expect((await stat(endpointFile)).mode & 0o777).toBe(0o600)
 
     expect(await ask(link.remotePort ?? 0, 'from core')).toBe('app got from core')
     expect(await ask(link.localPort ?? 0, 'from the app')).toBe('core got from the app')

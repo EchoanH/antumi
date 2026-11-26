@@ -46,9 +46,9 @@ describe('Git management', () => {
   afterEach(() => { favorites.close(); store.close(); rmSync(root, { recursive: true, force: true }) })
 
   it('opens a project and associates all linked worktrees with tasks and conversations', async () => {
-    const worktree = path.join(root, 'task worktree')
+    const worktree = path.join(root, 'task 工作区')
     git(repo, 'worktree', 'add', '-q', '-b', 'task/topic', worktree)
-    git(repo, 'worktree', 'lock', worktree)
+    git(repo, 'worktree', 'lock', '--reason', 'first\nsecond', worktree)
     tasks.push(Task.parse({ id: 'task', title: 'topic', details: '', status: 'running', repos: [{ path: repo, worktreePath: worktree, branch: 'task/topic' }], dependsOn: [], agent: 'claude', createdAt: 0, updatedAt: 0 }))
     const project = await service.openProject(worktree)
     expect(project.project).toBe(repo)
@@ -58,7 +58,9 @@ describe('Git management', () => {
       expect.objectContaining({ path: worktree, branch: 'task/topic', taskId: 'task', locked: true })
     ]))
     const direct: GitTarget = { kind: 'project', project: worktree }
-    expect((await service.status(direct)).taskId).toBe('task')
+    const status = await service.status(direct)
+    expect(status.taskId).toBe('task')
+    expect(status.branches.find((branch) => branch.ref === 'refs/heads/task/topic')?.worktree).toBe(worktree)
     for (const action of [
       { kind: 'switch', ref: 'refs/heads/main' }, { kind: 'detach', ref: 'HEAD' },
       { kind: 'create', ref: 'HEAD', name: 'other', checkout: true }
@@ -367,20 +369,31 @@ describe('Git management', () => {
     const detail = await service.detail(target, initial)
     expect(detail.parent).toBeNull(); expect(detail.files).toMatchObject([{ kind: 'added', path: 'file.txt', additions: 1 }])
     expect((await service.diff(target, null, initial, 'file.txt')).diff).toContain('+base')
-    git(repo, 'mv', 'file.txt', 'with\tnewline\n.txt')
-    writeFileSync(path.join(repo, 'binary.dat'), Buffer.from([0, 1, 2]))
-    git(repo, 'add', '.'); git(repo, 'commit', '-q', '-m', 'rename and binary')
-    const head = git(repo, 'rev-parse', 'HEAD')
+    // A checkout on Windows cannot create this name, but can still inspect a commit made on Unix.
+    const renamed = 'with\tnewline\n.txt'
+    const original = git(repo, 'rev-parse', `${initial}:file.txt`)
+    const binary = execFileSync('git', ['-C', repo, 'hash-object', '-w', '--stdin'], { input: Buffer.from([0, 1, 2]), encoding: 'utf8' }).trim()
+    const tree = execFileSync('git', ['-C', repo, 'mktree', '-z'], {
+      input: `100644 blob ${original}\t${renamed}\0` + `100644 blob ${binary}\tbinary.dat\0`, encoding: 'utf8'
+    }).trim()
+    const head = git(repo, 'commit-tree', tree, '-p', initial, '-m', 'rename and binary')
     expect(await filesBetween(repo, initial, head)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: 'renamed', path: 'with\tnewline\n.txt', oldPath: 'file.txt' }), expect.objectContaining({ path: 'binary.dat', additions: null, deletions: null })
+      expect.objectContaining({ kind: 'renamed', path: renamed, oldPath: 'file.txt' }), expect.objectContaining({ path: 'binary.dat', additions: null, deletions: null })
     ]))
-    expect((await committedDiff(repo, initial, head, 'with\tnewline\n.txt')).diff).toContain('rename')
+    expect((await committedDiff(repo, initial, head, renamed)).diff).toContain('rename')
     await expect(service.diff(target, initial, head, '../outside')).rejects.toMatchObject({ reason: 'file-not-changed' })
     await expect(service.detail(target, '--all')).rejects.toMatchObject({ reason: 'branch-not-found' })
   })
 
   it('paginates on fixed tips while new commits arrive and searches across pages', async () => {
-    for (let i = 0; i < 110; i++) git(repo, 'commit', '-q', '--allow-empty', '-m', `commit ${i}`)
+    // All 110 entries are real commits; batch their setup to avoid 110 process launches.
+    const tip = git(repo, 'rev-parse', 'HEAD')
+    const records = Array.from({ length: 110 }, (_, index) => {
+      const subject = `commit ${index}`
+      const parent = index === 0 ? tip : `:${index}`
+      return `commit refs/heads/main\nmark :${index + 1}\ncommitter Antumi Test <test@example.com> ${1_700_000_000 + index} +0000\ndata ${subject.length}\n${subject}\nfrom ${parent}\n\n`
+    })
+    execFileSync('git', ['-C', repo, 'fast-import', '--quiet'], { input: records.join('') })
     const first = await service.history(target, 'HEAD', 0, '')
     expect(first.commits).toHaveLength(100); expect(first.next).toBe(100)
     git(repo, 'commit', '-q', '--allow-empty', '-m', 'new tip')
@@ -389,8 +402,7 @@ describe('Git management', () => {
     expect(new Set([...first.commits, ...second.commits].map((commit) => commit.sha)).size).toBe(111)
     expect((await service.history(target, 'HEAD', 0, 'commit 0')).commits).toHaveLength(1)
     expect((await service.history(target, 'HEAD', 0, 'Antumi Test')).commits).toHaveLength(100)
-    // 110 commits, one git process each, take most of the default 5s on a busy machine.
-  }, 20_000)
+  })
 
   it('compares divergence, fast-forwards pull and refuses a divergent pull', async () => {
     const peer = path.join(root, 'peer')

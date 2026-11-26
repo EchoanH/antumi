@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { AgentCliStatus, Environment, Terminal } from '@antumi/protocol'
+import type { AgentCliStatus, AgentKind, Environment, Terminal } from '@antumi/protocol'
 import { daemonSchemas, type SessionInfo } from '@antumi/protocol/node'
 import { AgentCliMaintenance } from './agent-cli-maintenance'
 import { agentCliAccess } from './agent-cli-access'
@@ -38,7 +38,7 @@ function setup() {
   }
   const deps = {
     daemon, environment: { check: vi.fn(async () => environment) }, changed: (status: AgentCliStatus) => changed.push(status), invalidate: vi.fn(), now: () => now,
-    resolve: vi.fn(async () => target), latest: vi.fn(async () => '2.0.0'),
+    resolve: vi.fn(async (_agent?: AgentKind, _environment?: Environment): Promise<CliTarget | null> => target), latest: vi.fn(async (): Promise<string | null> => '2.0.0'),
     terminals: {
       list: () => terminals,
       upgradeCli: vi.fn(async (agent: 'claude' | 'codex' | 'cursor' | 'opencode' | 'pi', id: string) => {
@@ -61,6 +61,18 @@ function setup() {
 }
 
 describe('CLI maintenance lifecycle', () => {
+  it('refreshes a cached missing status when a finished installation is detected', async () => {
+    const { service, deps } = setup()
+    const runtime = '/home/.antumi/runtimes/antigravity-acp/1.4.1/agy_acp_server.par'
+    const installed: Environment = { checks: [{ tool: 'antigravity', status: 'ok', path: runtime, version: '1.4.1', signedIn: false }], searchPath: [], checkedAt: 2 }
+    deps.resolve.mockImplementation(async (_agent, env) => env === installed ? { path: runtime, identity: runtime, version: '1.4.1', channel: 'desktop', command: null, latestUrl: null } : null)
+    deps.latest.mockResolvedValue(null)
+    expect((await service.list('antigravity'))[0]?.availability).toBe('missing')
+    await service.refreshInstalled(installed)
+    expect((await service.list('antigravity'))[0]).toMatchObject({ availability: 'managed', currentVersion: '1.4.1', canUpgrade: false })
+    expect(deps.environment.check).toHaveBeenCalledTimes(1)
+  })
+
   it('coalesces checks, caches successful results, and bypasses cache when asked', async () => {
     const { service, deps, time } = setup()
     await Promise.all([service.list('codex'), service.list('codex')])

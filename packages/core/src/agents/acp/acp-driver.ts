@@ -113,6 +113,9 @@ export class AcpDriver implements ChatDriver {
   private modelsSent = false
   private modelsRead = false
   private models: ChatModel[] = []
+  private defaultModel: string | null = null
+  private probeModels: string[] = []
+  private probes = 0
   // Reasoning is per model and often absent from the session snapshot. The catalog names the option.
   private readonly thoughts = new Map<string, ThoughtLevel>()
   private setup = false
@@ -211,7 +214,7 @@ export class AcpDriver implements ChatDriver {
     if (this.auth && !this.authenticated) return this.authSent ? frames : [...frames, rpc(this.id('auth'), 'authenticate', { methodId: this.dialect.authMethod })]
     const listing = this.dialect.models
     const models = this.modelsSent || !listing ? [] : [rpc(this.id('models'), listing.method, {})]
-    if (this.catalogOnly) return this.modelsRead ? frames : [...frames, ...models]
+    if (this.catalogOnly && listing) return this.modelsRead ? frames : [...frames, ...models]
     if (!this.sessionSent) {
       // A fork takes the session over whole: core asks for one only where that is the fork point.
       const forking = Boolean(this.options.resume && this.options.fork)
@@ -223,8 +226,8 @@ export class AcpDriver implements ChatDriver {
         ...(this.options.resume ? { sessionId: this.options.resume } : {}),
         // Only where the agent says it takes them; one that does not is given them otherwise, as
         // Cursor is on its command line, and reads them by their paths either way.
-        ...(this.roots().length && this.directories ? { additionalDirectories: this.roots() } : {}),
-        mcpServers: [
+        ...(!this.catalogOnly && this.roots().length && this.directories ? { additionalDirectories: this.roots() } : {}),
+        mcpServers: this.catalogOnly ? [] : [
           ...(mcp && !this.dialect.ownMcpOnCommand ? [{ name: RESERVED_MCP_SERVER_NAME, command: mcp.command, args: mcp.args, env: acpEnv(mcp.env) }] : []),
           ...(this.options.userMcp ?? []).map((server) => server.type === 'stdio'
             ? { name: server.name, command: server.command, args: server.args, env: acpEnv(server.env) }
@@ -480,6 +483,7 @@ export class AcpDriver implements ChatDriver {
     if (!request) return
     this.requests.delete(id)
     this.initial.delete(id)
+    const probing = String(frame.id).startsWith(this.id('probe-'))
     if (request.method === this.dialect.models?.method) {
       this.modelsRead = true
       const listed = this.dialect.models.parse(frame.result)
@@ -492,6 +496,11 @@ export class AcpDriver implements ChatDriver {
       return
     }
     if (frame.error) {
+      if (probing) {
+        this.nextProbe()
+        if (!this.probeModels.length && !this.initial.size) this.publishConfig()
+        return
+      }
       if (['session/set_config_option', 'session/set_mode', 'session/set_model'].includes(request.method)) this.optionErrors.set(id, frame.error.message)
       if (request.method === 'session/prompt') this.finish(this.stopping ? 'interrupted' : 'failed', frame.error.message, at)
       else if (!this.setup || String(frame.id).startsWith(this.id('initial-')) || OPENING.has(request.method)) {
@@ -528,6 +537,15 @@ export class AcpDriver implements ChatDriver {
       this.session = opened.data.sessionId ?? (RESTORING.has(request.method) ? this.options.resume : null)
       if (request.method === 'session/new') this.sessionCost = 0
       if (!this.session) { this.startError = `${this.name} 没有返回会话 ID`; return }
+      if (this.catalogOnly) {
+        const modelConfig = opened.data.configOptions?.find((entry) => entry.category === 'model')
+        this.probeModels = modelConfig ? [...new Set(this.offered(valuesOf(modelConfig)).map((entry) => entry.value))].filter((value) => value !== modelConfig.currentValue) : []
+        this.catalog(opened.data)
+        this.setup = true
+        this.nextProbe()
+        if (!this.probeModels.length && !this.initial.size) this.publishConfig()
+        return
+      }
       this.catalog(opened.data)
       this.setup = true
       const preferred = { ...this.options.preferred, ...(this.options.planOnly ? { permissionMode: 'plan' } : this.options.readOnly ? { permissionMode: 'readOnly' } : {}) }
@@ -558,8 +576,18 @@ export class AcpDriver implements ChatDriver {
         const pending = this.pending.get(planId)
         if (pending?.kind === 'plan' && this.state.current.permissionMode === (this.dialect.requests?.plan?.runMode ?? 'ask')) this.owed.set(planId, result(pending.rawId, { outcome: { outcome: 'accepted' } }))
       }
+      if (probing) this.nextProbe()
       if (String(frame.id).startsWith(this.id('initial-'))) this.nextInitial(at)
     }
+  }
+
+  private nextProbe(): void {
+    const modelConfig = this.config.find((entry) => entry.category === 'model')
+    if (!modelConfig || !this.modern.has('model') || !this.session) { this.probeModels = []; return }
+    const next = this.probeModels.shift()
+    if (!next) return
+    const requestId = this.id(`probe-${++this.probes}`)
+    this.initial.set(keyOf(requestId), rpc(requestId, 'session/set_config_option', { sessionId: this.session, configId: modelConfig.id, value: next }))
   }
 
   private nextInitial(at: number): void {
@@ -600,7 +628,7 @@ export class AcpDriver implements ChatDriver {
   // previous model's level must not stay selected. A one-option update is not that answer.
   private catalog(opened: z.infer<typeof Opened>, dropThought = false): void {
     const config = opened.configOptions ?? []
-    if (dropThought && !config.some((entry) => entry.category === 'thought_level')) {
+    if ((dropThought || (!this.dialect.models && config.some((entry) => entry.category === 'model'))) && !config.some((entry) => entry.category === 'thought_level')) {
       this.config = this.config.filter((entry) => entry.category !== 'thought_level')
     }
     this.modern = new Set([...this.modern, ...config.flatMap((entry) => entry.category ? [entry.category] : [])])
@@ -612,6 +640,14 @@ export class AcpDriver implements ChatDriver {
     ]
     const next = [...config, ...legacy.filter((entry) => !config.some((one) => one.category === entry.category))]
     this.config = [...this.config.filter((entry) => !next.some((one) => one.id === entry.id || one.category === entry.category)), ...next]
+    const model = this.config.find((entry) => entry.category === 'model')
+    if (model && this.defaultModel === null) this.defaultModel = model.currentValue
+    if (!this.dialect.models && model) {
+      const effort = this.config.find((entry) => entry.category === 'thought_level')
+      const values = effort ? valuesOf(effort) : []
+      if (effort && values.length) this.thoughts.set(model.currentValue, { id: effort.id, name: effort.name, values })
+      else if (dropThought || config.some((entry) => entry.category === 'model')) this.thoughts.delete(model.currentValue)
+    }
     this.publishConfig()
   }
 
@@ -632,10 +668,12 @@ export class AcpDriver implements ChatDriver {
       }
     }
     this.config = config
+    if (dropping && !this.dialect.models && nextValue) this.thoughts.delete(nextValue)
     this.publishConfig()
   }
 
   private publishConfig(): void {
+    if (this.catalogOnly && (this.probeModels.length > 0 || this.initial.size > 0)) return
     const mode = this.config.find((entry) => entry.category === 'mode')
     const model = this.config.find((entry) => entry.category === 'model')
     const effort = this.config.find((entry) => entry.category === 'thought_level')
@@ -643,7 +681,7 @@ export class AcpDriver implements ChatDriver {
       permissionMode: mode ? this.antumiMode(mode.currentValue) : null,
       permissionModes: mode ? valuesOf(mode).flatMap((entry) => { const mapped = this.antumiMode(entry.value); return mapped && (!this.options.planOnly || mapped === 'plan') && (!this.options.readOnly || mapped === 'readOnly') ? [mapped] : [] }) : [],
       model: model?.currentValue ?? null,
-      models: model ? this.offered(valuesOf(model)).map((entry) => ({ id: entry.value, label: entry.name, description: entry.description ?? null, ...(entry.contextWindow != null ? { contextWindow: entry.contextWindow } : {}), ...(entry.costRate != null ? { costRate: entry.costRate } : {}), efforts: this.models.find((one) => one.id === entry.value)?.efforts ?? (entry.value === model.currentValue && effort ? valuesOf(effort).map((one) => one.value) : []), isDefault: entry.value === model.currentValue })) : [],
+      models: model ? this.offered(valuesOf(model)).map((entry) => ({ id: entry.value, label: entry.name, description: entry.description ?? null, ...(entry.contextWindow != null ? { contextWindow: entry.contextWindow } : {}), ...(entry.costRate != null ? { costRate: entry.costRate } : {}), efforts: this.models.find((one) => one.id === entry.value)?.efforts ?? (entry.value === model.currentValue ? (effort ? valuesOf(effort).map((one) => one.value) : []) : this.thoughts.get(entry.value)?.values.map((one) => one.value) ?? []), isDefault: entry.value === (this.catalogOnly ? (this.defaultModel ?? model.currentValue) : model.currentValue) })) : [],
       effort: effort?.currentValue ?? null
     })
     if (this.options.planOnly && mode && mode.currentValue !== 'plan' && this.setup && !this.initial.size && !this.initialChoices.length) this.startError = `${this.name} 离开了仅规划模式`

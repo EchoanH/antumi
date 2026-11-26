@@ -12,7 +12,7 @@ export function guideImage(src: string): string | undefined {
 
 // The guide's own heading names the page; the rest is its body.
 export function guidePage(text: string): { title: string; body: string } {
-  const match = /^# (.+)\n+/.exec(text)
+  const match = /^# ([^\r\n]+)(?:\r?\n)+/.exec(text)
   const title = match?.[1]
   return match && title ? { title, body: text.slice(match[0].length) } : { title: t('GuideView.guide'), body: text }
 }

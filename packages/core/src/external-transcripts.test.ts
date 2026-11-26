@@ -56,7 +56,7 @@ describe('external transcript sources', () => {
     const user = transcript.entries.find((entry) => entry.item.kind === 'user')?.item
     expect(user).toMatchObject({ images: [expect.objectContaining({ width: 4, height: 3 })] })
     expect(readFileSync(file)).toEqual(before)
-    expect(piSessionsRoot({ PI_CODING_AGENT_DIR: '/custom', PI_CODING_AGENT_SESSION_DIR: '~/history' }, '/home/user')).toBe('/home/user/history')
+    expect(piSessionsRoot({ PI_CODING_AGENT_DIR: path.join(root, 'custom'), PI_CODING_AGENT_SESSION_DIR: '~/history' }, root)).toBe(path.join(root, 'history'))
   })
 
   it('reads Kimi Node history and excludes injected prompts', async () => {

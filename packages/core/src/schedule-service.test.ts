@@ -1,7 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Task, type AgentKind, type AgentUsage, type ChatItem, type Routine, type ScheduledRun, type ScheduleTaskBlocker, type UnattendedMode } from '@antumi/protocol'
 import { CONTINUE_TEXT, SCHEDULED_GO_TEXT, UNATTENDED_NOTE } from './agent-prompt'
@@ -17,6 +16,7 @@ import { UsageLimitResumes } from './usage-limit-resume'
 import { TaskStore } from './task-store'
 import { CredentialStore } from './credential-store'
 import { ModelProviderStore } from './model-providers'
+import { withTestDatabase } from './test-database'
 
 const HOUR = 3_600_000
 
@@ -172,8 +172,8 @@ describe('ScheduleService', () => {
     serve()
   })
 
-  afterEach(() => {
-    schedules.stop()
+  afterEach(async () => {
+    await schedules.stop()
     projects.close()
     store.close()
     tasks.close()
@@ -449,10 +449,8 @@ describe('ScheduleService', () => {
     const scheduled = schedules.create({ kind: 'conversation', conversationId: conversation.id, text: 'go' }, clock + HOUR)
     await conversations.send(conversation.id, 'go', [], false, false, `schedule:${scheduled.id}`)
     await settle()
-    const raw = new DatabaseSync(database)
-    raw.prepare("UPDATE scheduled_runs SET status = 'starting' WHERE id = ?").run(scheduled.id)
-    raw.close()
-    schedules.stop()
+    withTestDatabase(database, (raw) => raw.prepare("UPDATE scheduled_runs SET status = 'starting' WHERE id = ?").run(scheduled.id))
+    await schedules.stop()
     serve()
     schedules.start()
     expect(run(scheduled.id)).toMatchObject({ status: 'started', conversationId: conversation.id })
@@ -653,10 +651,8 @@ describe('ScheduleService', () => {
       const [run] = schedules.list()
       await conversations.send(id, CONTINUE_TEXT, [], false, false, `usage-limit:${run?.id}`)
       await settle()
-      const raw = new DatabaseSync(database)
-      raw.prepare("UPDATE scheduled_runs SET status = 'starting'").run()
-      raw.close()
-      schedules.stop()
+      withTestDatabase(database, (raw) => raw.prepare("UPDATE scheduled_runs SET status = 'starting'").run())
+      await schedules.stop()
       serve()
       schedules.start()
       expect(statusOf(item)?.status).toBe('continued')
@@ -812,7 +808,7 @@ describe('ScheduleService', () => {
         nextRunAt: null, lastFiredAt: null, unread: 0, lastRun: null, createdAt: 0, updatedAt: 0
       }
     }
-    const rows = () => new DatabaseSync(database).prepare('SELECT id, status, conversation_id AS conversationId, routine_id AS routineId, due_at AS dueAt, finished_at AS finishedAt, outcome, seen_at AS seenAt, error FROM scheduled_runs ORDER BY created_at').all()
+    const rows = () => withTestDatabase(database, (raw) => raw.prepare('SELECT id, status, conversation_id AS conversationId, routine_id AS routineId, due_at AS dueAt, finished_at AS finishedAt, outcome, seen_at AS seenAt, error FROM scheduled_runs ORDER BY created_at').all())
 
     it('opens a conversation under its own id, named for the routine, and sends the instruction unattended', async () => {
       routine = daily()
@@ -844,8 +840,8 @@ describe('ScheduleService', () => {
       const made = schedules.insertRoutineRun(routine, clock - 60_000, 'claude')!
       // Core stopped after opening the conversation, before sending: the run was still starting.
       await conversations.create('claude', [], undefined, {}, { id: ROUTINE_ID, title: '日报 · 早' }, made.id)
-      new DatabaseSync(database).prepare("UPDATE scheduled_runs SET status = 'starting', conversation_id = ? WHERE id = ?").run(made.id, made.id)
-      schedules.stop()
+      withTestDatabase(database, (raw) => raw.prepare("UPDATE scheduled_runs SET status = 'starting', conversation_id = ? WHERE id = ?").run(made.id, made.id))
+      await schedules.stop()
       serve()
       schedules.start()
       expect(rows()[0]).toMatchObject({ status: 'waiting', conversationId: made.id })
@@ -928,8 +924,8 @@ describe('ScheduleService', () => {
   })
 
   describe('automatic dependency runs', () => {
-    function arm(): void {
-      schedules.stop()
+    async function arm(): Promise<void> {
+      await schedules.stop()
       serve(true)
       task = { ...pendingTask(), autoRun: true, dependsOn: ['first', 'second'] }
       dependencies.set('first', { ...pendingTask(), id: 'first', status: 'done' })
@@ -941,7 +937,7 @@ describe('ScheduleService', () => {
     }
 
     it('waits for every dependency to be accepted, then starts exactly once across competing ticks', async () => {
-      arm()
+      await arm()
       await due()
       const queued = schedules.list()[0]
       expect(queued).toMatchObject({ target: { kind: 'task', taskId: 'task-1', afterDependencies: true }, status: 'waiting', attempts: 0 })
@@ -961,7 +957,7 @@ describe('ScheduleService', () => {
     })
 
     it('cannot force an automatic run to ignore its unfinished dependencies', async () => {
-      arm()
+      await arm()
       await due()
       const queued = schedules.list()[0]
       await expect(schedules.runNow(queued?.id ?? '')).rejects.toMatchObject({ reason: 'dependencies-unfinished' })
@@ -971,7 +967,7 @@ describe('ScheduleService', () => {
     })
 
     it('cancels when the switch is turned off and permits one fresh run when rearmed', async () => {
-      arm()
+      await arm()
       await due()
       const first = schedules.list()[0]
       task = { ...pendingTask(), autoRun: false, dependsOn: ['first', 'second'] }
@@ -987,7 +983,7 @@ describe('ScheduleService', () => {
     })
 
     it('turns the switch off when the user cancels the queued run', async () => {
-      arm()
+      await arm()
       await due()
       schedules.cancel(schedules.list()[0]?.id ?? '')
       expect(task?.autoRun).toBe(false)
@@ -998,17 +994,17 @@ describe('ScheduleService', () => {
     })
 
     it('restores the same queue row after a restart and recovers a switch disabled before queue cancellation', async () => {
-      arm()
+      await arm()
       await due()
       const queued = schedules.list()[0]
-      schedules.stop()
+      await schedules.stop()
       serve(true)
       schedules.start()
       await due()
       expect(schedules.list()).toHaveLength(1)
       expect(schedules.list()[0]?.id).toBe(queued?.id)
       task = { ...pendingTask(), autoRun: false, dependsOn: ['first', 'second'] }
-      schedules.stop()
+      await schedules.stop()
       serve(true)
       await due()
       expect(run(queued?.id ?? '')?.status).toBe('cancelled')
@@ -1016,9 +1012,9 @@ describe('ScheduleService', () => {
     })
 
     it('finds an armed task without a queue row after a restart and starts once dependencies completed offline', async () => {
-      arm()
+      await arm()
       complete()
-      schedules.stop()
+      await schedules.stop()
       serve(true)
       schedules.start()
       await due()
@@ -1028,7 +1024,7 @@ describe('ScheduleService', () => {
     })
 
     it('keeps waiting for quota after dependencies finish, using the unattended mode', async () => {
-      arm()
+      await arm()
       complete()
       usage = exhausted(clock + HOUR)
       mode = 'bypass'
@@ -1043,7 +1039,7 @@ describe('ScheduleService', () => {
     })
 
     it('leaves a failed start in history and does not create an endless series of retries', async () => {
-      arm()
+      await arm()
       complete()
       startFails = new Rejection('missing-repo')
       await due()
@@ -1056,7 +1052,7 @@ describe('ScheduleService', () => {
     })
 
     it('does not duplicate or cancel a task already scheduled by hand when auto-run is disabled', async () => {
-      arm()
+      await arm()
       complete()
       task = { ...pendingTask(), dependsOn: ['first', 'second'] }
       const manual = schedules.create({ kind: 'task', taskId: task.id }, clock + HOUR)
@@ -1071,7 +1067,7 @@ describe('ScheduleService', () => {
     })
 
     it('does not start if a prerequisite is missing or a task loses all dependencies', async () => {
-      arm()
+      await arm()
       dependencies.delete('second')
       await due()
       expect(starts).toEqual([])

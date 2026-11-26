@@ -224,7 +224,7 @@ describe('PullRequestService', () => {
     expect((await service.check(task.id, worktree))[0]?.repoPath).toBe(repo)
     // The real path, as the agent sees it, of a worktree core knows by another.
     const linked = path.join(root, 'link-to-wt')
-    symlinkSync(worktree, linked)
+    symlinkSync(worktree, linked, process.platform === 'win32' ? 'junction' : 'dir')
     task = Task.parse({ ...task, repos: [{ ...task.repos[0]!, worktreePath: linked }] })
     expect((await service.check(task.id, worktree))[0]?.repoPath).toBe(repo)
     await expect(service.check(task.id, path.join(root, 'elsewhere'))).rejects.toMatchObject({ reason: 'repo-not-found' })

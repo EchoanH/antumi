@@ -723,7 +723,8 @@ daemon.onEvent((event) => {
     attached.forEach((c) => c.notify('sessions.exit', { sessionId, exitCode: event.exitCode }))
     conversations.handleExit(sessionId, event.exitCode)
     terminals.handleExit(sessionId, event.exitCode)
-    if (installation) void environment.check(true).catch((error: unknown) => console.error('[antumi-core] post-install detection failed', error))
+    if (installation) void environment.check(true).then((detected) => cliMaintenance.refreshInstalled(detected))
+      .catch((error: unknown) => console.error('[antumi-core] post-install detection failed', error))
     // An agent that ended is when the numbers most likely moved.
     void usage.refresh()
     refreshAwake()

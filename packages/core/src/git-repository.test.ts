@@ -25,7 +25,7 @@ describe('checkoutKey', () => {
     mkdirSync(broken); writeFileSync(path.join(broken, '.git'), 'gitdir: ./nowhere\n')
     const plain = path.join(root, 'plain')
     for (const dir of [path.join(repo, 'nested', 'deep'), path.join(worktree, 'nested'), plain]) mkdirSync(dir, { recursive: true })
-    symlinkSync(path.join(repo, 'nested'), path.join(root, 'link'))
+    symlinkSync(path.join(repo, 'nested'), path.join(root, 'link'), process.platform === 'win32' ? 'junction' : 'dir')
     const dirs = [repo, path.join(repo, 'nested', 'deep'), path.join(repo, '.git'), path.join(repo, '.git', 'refs'), worktree, path.join(worktree, 'nested'), bare, broken, plain, root, path.join(root, 'link')]
     for (const dir of dirs) expect(await checkoutKey(dir), dir).toBe(gitTop(dir))
     expect(await checkoutKey(path.join(root, 'missing'))).toBeNull()

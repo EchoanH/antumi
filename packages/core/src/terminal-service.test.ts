@@ -82,9 +82,10 @@ describe('TerminalService', () => {
 
   it('says the terminal takes colour, and asks for a prompt in colour only when the client does', async () => {
     const prompt = { env: async () => ({ ZDOTDIR: '/antumi/shell/zsh' }) }
-    const coloured = new TerminalService(database, daemon, () => {}, Date.now, prompt)
-    await coloured.open(root)
-    await coloured.open(root, true)
+    service.close()
+    service = new TerminalService(database, daemon, () => {}, Date.now, prompt)
+    await service.open(root)
+    await service.open(root, true)
     expect(daemon.spawns[0]?.env).toMatchObject({ COLORTERM: 'truecolor', TERM_PROGRAM: 'Antumi' })
     expect(daemon.spawns[0]?.env).not.toHaveProperty('ZDOTDIR')
     expect(daemon.spawns[1]?.env).toMatchObject({ COLORTERM: 'truecolor', ZDOTDIR: '/antumi/shell/zsh' })

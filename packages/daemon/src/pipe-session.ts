@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import os from 'node:os'
-import { cleanEnv, planLaunch, type DaemonParsedParams } from '@antumi/protocol/node'
+import path from 'node:path'
+import { cleanEnv, envValue, planLaunch, type DaemonParsedParams } from '@antumi/protocol/node'
 import type { HostedProcess, ProcessEvents } from './session-host'
 
 const ignore = () => {}
@@ -8,6 +9,18 @@ const ignore = () => {}
 // A shell reports a process killed by a signal as 128 plus the signal's number.
 function signalExitCode(signal: NodeJS.Signals | null): number {
   return signal ? 128 + (os.constants.signals[signal] ?? 0) : -1
+}
+
+function killWindowsTree(child: ReturnType<typeof spawn>, pid: number): void {
+  const root = envValue(process.env, 'SystemRoot', 'win32') ?? 'C:\\Windows'
+  const fallback = () => {
+    // Restrictive hosts may forbid process enumeration, which taskkill /T requires.
+    // At least stop the process we own, without looking up another process by PID.
+    if (!child.killed && child.exitCode === null && child.signalCode === null) child.kill()
+  }
+  const killer = spawn(path.win32.join(root, 'System32', 'taskkill.exe'), ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
+  killer.once('error', fallback)
+  killer.once('close', (code) => { if (code !== 0) fallback() })
 }
 
 // clean: the daemon's own environment is cut down to what any process needs (cleanEnv).
@@ -47,10 +60,10 @@ export function startPipe({ command, args, cwd, env }: DaemonParsedParams<'spawn
     },
     resize() {},
     kill(force) {
-      if (child.pid === undefined) return
+      if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return
       if (process.platform === 'win32') {
         // Windows has no polite signal to send; /T takes the agent's own children with it.
-        spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true }).on('error', ignore)
+        killWindowsTree(child, child.pid)
         return
       }
       try {

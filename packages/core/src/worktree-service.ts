@@ -7,6 +7,7 @@ import { originDefault } from './task-start'
 import { execFileAsync } from './hidden-exec'
 import { worktreeOwner } from './worktree-owner'
 import { keptLeftovers } from './worktree-leftovers'
+import { removeGitWorktree } from './git-workspaces'
 import type { CleanedWorktree } from './conversation-store'
 
 
@@ -183,7 +184,7 @@ export class WorktreeService {
     try {
       if (task) await this.tasks.releaseAgent(task.id)
       // Without force: git refuses, again, a worktree that holds changes after all.
-      await execFileAsync('git', ['-C', worktree.path, 'worktree', 'remove', worktree.path])
+      await removeGitWorktree(worktree.path)
     } catch (error) {
       const reason = error instanceof Rejection ? error.reason : 'worktree-failed'
       return { path: worktree.path, removed: false, reason }
@@ -263,7 +264,7 @@ export class WorktreeService {
       mtime(dir)
     ])
     const count = into ? await gitOrNull(dir, ['rev-list', '--count', `${into}..HEAD`]) : null
-    const repo = commonDir ? (path.basename(commonDir) === '.git' ? path.dirname(commonDir) : commonDir) : null
+    const repo = commonDir ? path.normalize(path.basename(commonDir) === '.git' ? path.dirname(commonDir) : commonDir) : null
     const pull = taskId && branch ? this.pullRequests(taskId).find((link) => link.headBranch === branch && link.status) : undefined
     return {
       path: dir,

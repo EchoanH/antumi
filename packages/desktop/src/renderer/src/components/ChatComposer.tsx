@@ -317,6 +317,8 @@ export function ChatComposer({ conversation, state, compact = false }: { convers
   const betweenTurns = running && Boolean(conversation.chat?.betweenTurns)
   const idle = running && (turn === 'idle' || betweenTurns)
   const working = running && !betweenTurns && (turn === 'running' || turn === 'awaiting')
+  const opening = running && Boolean(conversation.starting)
+  const interruptible = working || opening
   // An older core takes a message only between turns.
   const queueable = optionsSupported && working
   const stopped = !running
@@ -489,12 +491,12 @@ export function ChatComposer({ conversation, state, compact = false }: { convers
   const interrupt = () => void perform((rpc) => rpc.call('conversations.interrupt', { id }))
   const sendRow: Record<SendWay, Omit<SendRow, 'way'>> = {
     send: { label: t('ChatComposer.send'), disabled: !canSend, run: () => void send() },
-    interrupt: { label: t('ChatComposer.interrupt'), disabled: false, run: interrupt },
+    interrupt: { label: t(opening ? 'ChatComposer.cancelStartup' : 'ChatComposer.interrupt'), disabled: false, run: interrupt },
     queue: { label: t('ChatComposer.sendAfterTheTurn'), disabled: !canSend, run: () => void send() },
     steer: { label: t('ChatComposer.insertNow'), disabled: !canSteer, run: () => void send(true) },
     newConversation: { label: t('ChatComposer.sendToNewConversation'), disabled: !canSendNew, run: () => void sendNew() }
   }
-  const sendRows = sendWays({ working, queueable, steerable, reusable }).map((way) => ({ way, ...sendRow[way] }))
+  const sendRows = sendWays({ working: interruptible, queueable, steerable, reusable }).map((way) => ({ way, ...sendRow[way] }))
   return (
     <>
     {queue.length > 0 && (
@@ -556,7 +558,7 @@ export function ChatComposer({ conversation, state, compact = false }: { convers
           } else if (sendsMessage(event)) {
             event.preventDefault()
             void send()
-          } else if (working && !event.repeat && isShortcut('interrupt-turn', event.nativeEvent)) {
+          } else if (interruptible && !event.repeat && isShortcut('interrupt-turn', event.nativeEvent)) {
             event.preventDefault()
             interrupt()
           }
@@ -601,7 +603,7 @@ export function ChatComposer({ conversation, state, compact = false }: { convers
         {canSteer && (
           <button type="button" className="button ghost chat-steer-button" data-tooltip-side="top-end" data-tooltip={t('ChatComposer.sendToAgentNow', { keys: steerKey ? `（${steerKey}）` : '' })} onClick={() => void send(true)}>{t('ChatComposer.insertNow')}</button>
         )}
-        {handingOff ? (
+        {handingOff && !opening ? (
           <button
             type="button"
             className="button primary chat-handoff-send"
@@ -614,8 +616,8 @@ export function ChatComposer({ conversation, state, compact = false }: { convers
           >{t('ChatComposer.handOff')}</button>
         ) : (
           <SendCard rows={sendRows} note={initialHint ?? (preparing ? t(preparing.error === null ? 'InvestigationPreparing.waitForTheIssue' : 'InvestigationPreparing.retryFirst') : starting ? t('ChatComposer.starting', { value1: agentLabel(conversation.agent) }) : null)}>
-            {working ? (
-              <button type="button" className="chat-input-button" data-stop aria-label={interruptLabel} onClick={interrupt}>
+            {interruptible ? (
+              <button type="button" className="chat-input-button" data-stop aria-label={opening ? t('ChatComposer.cancelStartup') : interruptLabel} onClick={interrupt}>
                 <StopIcon />
               </button>
             ) : (

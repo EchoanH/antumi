@@ -1,5 +1,9 @@
 // Application-owned text. Values and external content are passed separately.
 export const MESSAGES = {
+  "ProjectChoices.worktree": {"zh": "工作区副本", "en": "Worktree copies"},
+  "ProjectChoices.copy": {"zh": "副本", "en": "Copy"},
+  "ProjectChoices.detached": {"zh": "未关联分支", "en": "Detached HEAD"},
+  "ProjectChoices.source": {"zh": "源项目：{path}", "en": "Source project: {path}"},
   "ContactAuthor.createIssue": {"zh": "创建 GitHub Issue（预填问题信息）", "en": "Create a GitHub issue with problem details"},
   "ContactAuthor.title": {"zh": "找作者", "en": "Contact the author"},
   "ContactAuthor.description": {"zh": "遇到问题了？扫码联系作者，我来帮你看看。", "en": "Having trouble? Scan the WeChat QR code and I’ll help you out."},
@@ -2349,6 +2353,10 @@ export const MESSAGES = {
   "ChatComposer.interrupt": {
     "zh": "中断",
     "en": "Interrupt"
+  },
+  "ChatComposer.cancelStartup": {
+    "zh": "取消启动",
+    "en": "Cancel startup"
   },
   "ChatComposer.sendAfterTheTurn": {
     "zh": "回合结束后发送",
@@ -11518,6 +11526,14 @@ export const MESSAGES = {
   "labels.agentStartupTimedOut": {
     "zh": "Agent 太久没有完成启动",
     "en": "Agent startup timed out"
+  },
+  "labels.agentStartupCancelled": {
+    "zh": "已取消智能体启动",
+    "en": "Agent startup cancelled"
+  },
+  "labels.agentStopTimedOut": {
+    "zh": "尚未确认智能体已停止，请重试",
+    "en": "The agent has not confirmed it stopped. Try again."
   },
   "labels.runningDaemonIsTooOldForChatRestart": {
     "zh": "Antumi 后台（daemon）是旧版本，重启后才能用：等正在跑的 Agent 和终端结束，退出 Antumi，结束 Antumi 的后台进程再重新打开。从源码运行时重启 pnpm dev:daemon。",

@@ -56,14 +56,14 @@ describe('backendControl', () => {
     expect(await backendControl(['prepare', '2.0.0'], { home })).toEqual({ answer: { start: ['daemon', 'core'] } })
   })
 
-  it.skipIf(process.platform === 'win32')('names a daemon to start only once an older one left', async () => {
+  it('names a daemon to start only once an older one left', async () => {
     expect(await backendControl(['replace-daemon', '2.0.0'], { home })).toEqual({ answer: { start: [] } })
     await fakeDaemon('2.0.0')
     expect(await backendControl(['replace-daemon', '2.0.0'], { home })).toEqual({ answer: { start: [] } })
     expect(await backendControl(['replace-daemon', '3.0.0'], { home })).toEqual({ answer: { start: ['daemon'] } })
   })
 
-  it.skipIf(process.platform === 'win32')('keeps a newer daemon with --keep-newer, as a shared server does', async () => {
+  it('keeps a newer daemon with --keep-newer, as a shared server does', async () => {
     await fakeDaemon('3.0.0')
     expect(await backendControl(['replace-daemon', '2.0.0', '--keep-newer'], { home })).toEqual({ answer: { start: [] } })
     expect(await backendControl(['prepare', '2.0.0', '--keep-newer'], { home })).toEqual({ answer: { start: ['daemon', 'core'] } })
@@ -118,7 +118,7 @@ describe('backendControl', () => {
 
 // As the app will run it, minus wsl.exe: a child on plain Node with the source through tsx.
 describe('backend-control process', () => {
-  const loader = fileURLToPath(new URL('../node_modules/tsx/dist/loader.mjs', import.meta.url))
+  const loader = new URL('../node_modules/tsx/dist/loader.mjs', import.meta.url).href
   const entry = fileURLToPath(new URL('./backend-control-main.ts', import.meta.url))
 
   async function run(args: string[]): Promise<{ code: number | null; stdout: string; stderr: string }> {

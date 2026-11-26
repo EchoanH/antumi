@@ -11,7 +11,7 @@ export function mcpCommand(...args: string[]): McpServer {
   if (bundled) {
     return { command: process.execPath, args: [bundled, ...args], env: { ELECTRON_RUN_AS_NODE: '1' } }
   }
-  const loader = fileURLToPath(new URL('../node_modules/tsx/dist/loader.mjs', import.meta.url))
+  const loader = new URL('../node_modules/tsx/dist/loader.mjs', import.meta.url).href
   const entry = fileURLToPath(new URL('./mcp-main.ts', import.meta.url))
   return { command: process.execPath, args: ['--import', loader, entry, ...args] }
 }

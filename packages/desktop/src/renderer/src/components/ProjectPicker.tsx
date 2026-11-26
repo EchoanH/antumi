@@ -1,13 +1,15 @@
 import { t, tr } from '../i18n'
 import { useCallback, useState, type FormEvent } from 'react'
-import { MAX_TASK_REPOS, type TaskRepo } from '@antumi/protocol'
+import { MAX_TASK_REPOS, type TaskRepo, type ProjectChoice } from '@antumi/protocol'
 import { perform, useCore } from '../core-store'
 import { canPickFolder, pickFolder } from '../desktop-bridge'
 import { ContextMenu, MenuItem, menuPoint, type MenuPoint } from './ContextMenu'
 import { Popover } from './Popover'
-import { FolderIcon } from './icons'
+import { ChevronRightIcon, FolderIcon } from './icons'
 import { ProjectIcon } from './ProjectIcon'
 import { projectName } from '../project-names'
+import { availableProjects, recentProjectChoices, useProjectDescriptions } from '../project-choices'
+import { ProjectChoiceLabel, projectChoiceTitle } from './ProjectChoiceLabel'
 
 export { projectName }
 
@@ -69,43 +71,46 @@ function PathForm({ onSubmit }: { onSubmit: (projectPath: string) => void }) {
 
 function ProjectMenu({
   recent,
+  selected,
   onAdd,
   onBrowse,
   onForget,
   onClose
 }: {
-  recent: readonly string[]
+  recent: readonly ProjectChoice[]
+  selected: readonly string[]
   onAdd: (projectPath: string) => void
   onBrowse: () => void
   onForget: (projectPath: string) => void
   onClose: () => void
 }) {
   const location = useProjectLocation()
+  const [copiesOpen, setCopiesOpen] = useState(false)
+  const { sources, copies } = availableProjects(recent, selected)
+  const rows = (choices: readonly ProjectChoice[]) => choices.map((choice) => (
+    <li key={choice.path} className="menu-row">
+      <button type="button" className="menu-item" title={projectChoiceTitle(choice)} onClick={() => onAdd(choice.path)}>
+        <ProjectChoiceLabel choice={choice} location={location(choice.path)} />
+      </button>
+      <button type="button" className="icon-button"
+        title={t('ProjectPicker.removeFromRecentProjectsExistingTasksAndConversations')}
+        aria-label={t('ProjectPicker.removeFromRecentProjects', { value1: projectName(choice.path) })}
+        onClick={() => onForget(choice.path)}>×</button>
+    </li>
+  ))
   return (
     <Popover label={t('ProjectPicker.addProject')} onClose={onClose}>
       {recent.length > 0 && (
         <>
           <div className="menu-label">{t('ProjectPicker.recent')}</div>
-          <ul className="menu-list">
-            {recent.map((projectPath) => (
-              <li key={projectPath} className="menu-row">
-                <button type="button" className="menu-item" title={projectPath} onClick={() => onAdd(projectPath)}>
-                  <ProjectIcon path={projectPath} />
-                  <span className="menu-item-name">{projectName(projectPath)}</span>
-                  <span className="menu-item-path project-location">{location(projectPath)}</span>
-                </button>
-                <button
-                  type="button"
-                  className="icon-button"
-                  title={t('ProjectPicker.removeFromRecentProjectsExistingTasksAndConversations')}
-                  aria-label={t('ProjectPicker.removeFromRecentProjects', { value1: projectName(projectPath) })}
-                  onClick={() => onForget(projectPath)}
-                >
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
+          <ul className="menu-list">{rows(sources)}</ul>
+          {copies.length > 0 && <>
+            <button type="button" className="menu-item project-copies-toggle" aria-expanded={copiesOpen}
+              onClick={() => setCopiesOpen(!copiesOpen)}>
+              <ChevronRightIcon /><span>{t('ProjectChoices.worktree')}</span><span className="project-copies-count">{copies.length}</span>
+            </button>
+            {copiesOpen && <ul className="menu-list">{rows(copies)}</ul>}
+          </>}
           <div className="menu-separator" />
         </>
       )}
@@ -138,12 +143,13 @@ export function ProjectPicker({
   compact?: boolean
 }) {
   // Open menu → the recent projects it offers; null while closed.
-  const [menu, setMenu] = useState<string[] | null>(null)
+  const [menu, setMenu] = useState<ProjectChoice[] | null>(null)
   const close = useCallback(() => setMenu(null), [])
   // An additional project's right-click menu, which makes it the primary one.
   const [projectMenu, setProjectMenu] = useState<{ path: string; at: MenuPoint } | null>(null)
   const closeProjectMenu = useCallback(() => setProjectMenu(null), [])
   const paths = projects.map((project) => project.path)
+  const descriptions = useProjectDescriptions(paths)
   const promotable = !locked && !primaryLocked
   const promote = (projectPath: string) => {
     setProjectMenu(null)
@@ -155,20 +161,19 @@ export function ProjectPicker({
     onChange([...paths, projectPath])
   }
 
-  const browse = async (recent: readonly string[]) => {
+  const browse = async (recent: readonly ProjectChoice[]) => {
     setMenu(null)
-    const picked = await pickFolder(recent[0] ? parentDir(recent[0]) : undefined)
+    const picked = await pickFolder(recent[0] ? parentDir(recent[0].source ?? recent[0].path) : undefined)
     if (picked) {
       add(picked)
     }
   }
 
   const open = async () => {
-    const recent = ((await perform((rpc) => rpc.call('projects.recent', {}))) ?? []).filter(
-      (projectPath) => !paths.includes(projectPath)
-    )
+    const recent = (await perform(recentProjectChoices)) ?? []
+    const { sources, copies } = availableProjects(recent, paths)
     // Nothing to choose from yet: go straight to the folder dialog.
-    if (recent.length === 0 && canPickFolder()) {
+    if (sources.length + copies.length === 0 && canPickFolder()) {
       await browse(recent)
     } else {
       setMenu(recent)
@@ -176,8 +181,12 @@ export function ProjectPicker({
   }
 
   const forget = async (projectPath: string) => {
-    if (await perform((rpc) => rpc.call('projects.forget', { path: projectPath }))) {
-      setMenu((current) => current?.filter((entry) => entry !== projectPath) ?? null)
+    const removed = (menu ?? []).filter((choice) => choice.path === projectPath || choice.source === projectPath)
+    if (await perform(async (rpc) => {
+      for (const choice of removed) await rpc.call('projects.forget', { path: choice.path })
+      return true
+    })) {
+      setMenu((current) => current?.filter((choice) => !removed.includes(choice)) ?? null)
     }
   }
 
@@ -192,6 +201,7 @@ export function ProjectPicker({
           title={[
             index === 0 ? t('ProjectPicker.primaryProject', { value1: project.path }) : project.path,
             project.worktreePath && `worktree：${project.worktreePath}`,
+            descriptions[index]?.worktree && projectChoiceTitle(descriptions[index]),
             promotable && index > 0 && t('ProjectPicker.rightClickToMakePrimary'),
             !locked && primaryLocked && index === 0 && t('ProjectPicker.primaryProjectIsFixedAfterTheConversationStarts')
           ].filter(Boolean).join('\n')}
@@ -203,6 +213,7 @@ export function ProjectPicker({
           <span className="chip-main chip-static">
             <ProjectIcon path={project.path} />
             <span className="project-name">{projectName(project.path)}</span>
+            {descriptions[index]?.worktree && <span className="project-copy-badge">{t('ProjectChoices.copy')}</span>}
             {index === 0 && <span className="visually-hidden">{t('ProjectPicker.primaryProject_1427')}</span>}
           </span>
           {!locked && !(primaryLocked && index === 0) && (
@@ -239,6 +250,7 @@ export function ProjectPicker({
           {menu && (
             <ProjectMenu
               recent={menu}
+              selected={paths}
               onAdd={add}
               onBrowse={() => void browse(menu)}
               onForget={(projectPath) => void forget(projectPath)}

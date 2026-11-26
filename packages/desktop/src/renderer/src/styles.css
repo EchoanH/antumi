@@ -2420,6 +2420,13 @@ button.task-tag:hover {
 }
 
 .menu-item-path.project-location { font-size: 12px; }
+.menu:has(.project-choice-name) { width: 340px; min-width: min(280px, calc(100vw - 16px)); max-width: calc(100vw - 16px); }
+.project-choice-name { min-width: 0; max-width: 52%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-copy-badge { flex-shrink: 0; padding: 0 4px; border-radius: var(--radius-xs); background: var(--fill-2); color: var(--text-muted); font-size: 11px; line-height: 16px; white-space: nowrap; }
+.project-copies-toggle { color: var(--text-muted); font-size: 12px; }
+.project-copies-toggle > svg { width: 12px; height: 12px; }
+.project-copies-toggle[aria-expanded='true'] > svg { transform: rotate(90deg); }
+.project-copies-count { margin-left: auto; }
 
 .menu-item-title {
   flex: 1;
