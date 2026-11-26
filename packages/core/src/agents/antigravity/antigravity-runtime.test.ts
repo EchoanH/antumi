@@ -23,11 +23,27 @@ describe('Antigravity runtime', () => {
     const windows = '/mnt/c/Windows/System32/rundll32.exe'
     const executable = (file: string) => file === windows
     const wsl = { WSL_INTEROP: '/run/WSL/socket' }
-    expect(antigravityBrowserEnv('linux', wsl, executable)).toEqual({ BROWSER: `${windows} url.dll,FileProtocolHandler %s &` })
+    expect(antigravityBrowserEnv('linux', wsl, executable)).toEqual({ BROWSER: `${windows} url.dll,FileProtocolHandler %s` })
     expect(antigravityBrowserEnv('linux', { ...wsl, BROWSER: 'custom-browser' }, executable)).toEqual({})
     expect(antigravityBrowserEnv('linux', {}, executable)).toEqual({})
     expect(antigravityBrowserEnv('linux', wsl, () => false)).toEqual({})
     expect(antigravityBrowserEnv('win32', wsl, executable)).toEqual({})
+  })
+
+  it.skipIf(process.platform === 'win32')('passes the OAuth URL through xdg-open browser expansion without extra arguments', () => {
+    const windows = '/mnt/c/Windows/System32/rundll32.exe'
+    const env = antigravityBrowserEnv('linux', { WSL_INTEROP: '/run/WSL/socket' }, file => file === windows)
+    const url = 'https://accounts.google.com/o/oauth2/auth?redirect_uri=http%3A%2F%2Flocalhost%3A44138%2Fauth%2Fcallback&state=EXAMPLE'
+    // xdg-open expands BROWSER with command substitution, which does not interpret shell operators.
+    const result = spawnSync('/bin/sh', ['-c', String.raw`
+capture_browser() { printf '%s\n' "$@"; }
+browser=$BROWSER
+$(printf "$browser" "$1")
+`, 'browser-probe', url], {
+      encoding: 'utf8', env: { ...process.env, BROWSER: env.BROWSER?.replace(windows, 'capture_browser') }
+    })
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.stdout.trimEnd().split('\n')).toEqual(['url.dll,FileProtocolHandler', url])
   })
 
   it('downloads the pinned archive, checks its hash and renames it into place', () => {
