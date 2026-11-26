@@ -8,6 +8,7 @@ import { pickPlugin } from '../desktop-bridge'
 import { Segmented, SettingsGroup, Toggle } from './SettingsControls'
 import { ChatPicker } from './ChatPicker'
 import { DownloadIcon, PuzzleIcon, StarIcon } from './icons'
+import { IntegrationHelp } from './IntegrationHelp'
 
 // A plugin's GitHub repository, opened in the user's browser (main sends web links there).
 function RepositoryLink({ repository }: { repository: string }) {
@@ -225,6 +226,7 @@ export function PluginSettings() {
           </div>
         })}
       </SettingsGroup>}
+      <IntegrationHelp kind="source" />
     </div>
   )
 }

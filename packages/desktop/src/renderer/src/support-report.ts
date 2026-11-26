@@ -2,6 +2,18 @@ import { PROJECT_GITHUB_URL } from '@antumi/protocol'
 
 const HIDDEN = '[redacted]'
 
+export function githubIntegrationIssueUrl(kind: 'source' | 'agent', locale: string): string {
+  const zh = locale === 'zh-CN'
+  const source = kind === 'source'
+  const title = zh
+    ? source ? '来源接入请求：' : 'Agent 接入请求：'
+    : source ? 'Task source integration request: ' : 'Agent integration request: '
+  const body = zh
+    ? `## ${source ? '任务来源' : 'Agent'}名称\n\n## 官方网站或项目地址\n\n## 使用场景\n<!-- 你希望在 Antumi 中如何使用它？ -->\n\n## 相关文档\n<!-- 如有 API、CLI 或协议文档，请附上链接。 -->\n`
+    : `## ${source ? 'Task source' : 'Agent'} name\n\n## Official website or repository\n\n## Use case\n<!-- How would you like to use it in Antumi? -->\n\n## Documentation\n<!-- Link API, CLI or protocol documentation, if available. -->\n`
+  return `${PROJECT_GITHUB_URL}/issues/new?${new URLSearchParams({ title, body })}`
+}
+
 // Reports contain the selected error only, never settings, conversation history or logs.
 export function supportError(text: string): string {
   return text.slice(0, 64_000)

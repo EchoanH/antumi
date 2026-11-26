@@ -11665,6 +11665,10 @@ button.squad-member-main { cursor: pointer; }
 
 /* One contact surface, shared by error messages and Help. */
 .support-actions { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-inline-start: 8px; font: inherit; }
+.integration-help { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+.integration-help-title { margin: 0 0 4px; font-size: 13px; color: var(--text); }
+.integration-help-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+.integration-help-actions > .link-button { margin: 0; font-size: 12px; }
 .support-actions > .link-button { margin: 0; white-space: nowrap; font: inherit; text-decoration: none; }
 .support-actions > .link-button:hover { text-decoration: underline; }
 .contact-author-dialog { width: min(440px, calc(100vw - 32px)); overflow-y: auto; border-radius: var(--radius-lg); }

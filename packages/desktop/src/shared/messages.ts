@@ -1,5 +1,14 @@
 // Application-owned text. Values and external content are passed separately.
 export const MESSAGES = {
+  "IntegrationHelp.sourceTitle": {"zh": "缺少你需要的任务来源？", "en": "Missing a task source you need?"},
+  "IntegrationHelp.sourceDescription": {"zh": "告诉作者你想接入什么，也可以开发自己的来源插件。", "en": "Tell the author what you need, or build your own task source plugin."},
+  "IntegrationHelp.agentTitle": {"zh": "没有你常用的 Agent？", "en": "Can't find your usual Agent?"},
+  "IntegrationHelp.agentDescription": {"zh": "告诉作者你希望支持哪个 Agent，或了解如何接入。自行接入需修改 Antumi 源码。", "en": "Tell the author which Agent you'd like supported, or learn how to add it. Adding an Agent requires changes to Antumi's source code."},
+  "IntegrationHelp.sourceRequest": {"zh": "来源接入请求", "en": "Task source integration request"},
+  "IntegrationHelp.agentRequest": {"zh": "Agent 接入请求", "en": "Agent integration request"},
+  "IntegrationHelp.issue": {"zh": "提 Issue", "en": "Open an issue"},
+  "IntegrationHelp.developmentGuide": {"zh": "开发指南", "en": "Development guide"},
+  "IntegrationHelp.integrationGuide": {"zh": "接入指南", "en": "Integration guide"},
   "ProjectChoices.worktree": {"zh": "工作区副本", "en": "Worktree copies"},
   "ProjectChoices.copy": {"zh": "副本", "en": "Copy"},
   "ProjectChoices.detached": {"zh": "未关联分支", "en": "Detached HEAD"},

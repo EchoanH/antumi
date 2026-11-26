@@ -12,6 +12,7 @@ import { AgentIcon, RefreshIcon } from './icons'
 import { Toggle } from './SettingsControls'
 import { agentReadinessText } from '../agent-readiness-text'
 import { useProviderProbes } from '../provider-probes'
+import { IntegrationHelp } from './IntegrationHelp'
 
 // Turning one off takes it out of every choice of agent for new work; the last one on stays on.
 function setEnabled(kind: AgentKind, enabled: boolean): void {
@@ -402,6 +403,7 @@ export function InstalledAgentsSettings() {
           </ul>
         </details>
       )}
+      <IntegrationHelp kind="agent" />
     </div>
   )
 }
