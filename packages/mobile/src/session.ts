@@ -29,6 +29,7 @@ import {
 } from '@antumi/protocol'
 import { connectMobile, MobileConnectError, type MobileConnection, type MobileWelcome, type NoiseKeyPair } from '@antumi/protocol/mobile'
 import { t } from './i18n'
+import { reconcileDeliveries, type ChatDelivery } from './chat-deliveries'
 import { requestFailure as failure } from './request-failure'
 import { dropCache, loadComputers, loadSettings, phoneKey, readCache, saveComputers, saveSettings, writeCache, type Computer, type Settings } from './storage'
 
@@ -57,6 +58,7 @@ type State = {
   usage: AgentUsage[] | null
   // What the user wrote in a chat and has not sent, by conversation, while the app runs.
   drafts: Record<string, Draft>
+  deliveries: Record<string, ChatDelivery[]>
   // A short message for the user, shown once.
   notice: string | null
 }
@@ -74,6 +76,7 @@ export const useSession = create<State>()(() => ({
   chats: {},
   usage: null,
   drafts: {},
+  deliveries: {},
   notice: null
 }))
 
@@ -196,7 +199,7 @@ export async function connect(computerKey: string): Promise<void> {
   if (!computer || !key) return
   const switching = useSession.getState().current !== computerKey
   disconnect()
-  useSession.setState({ current: computerKey, status: 'connecting', ...(switching ? { welcome: null, conversations: {}, tasks: {}, chats: {}, usage: null, drafts: {} } : {}) })
+  useSession.setState({ current: computerKey, status: 'connecting', ...(switching ? { welcome: null, conversations: {}, tasks: {}, chats: {}, usage: null, drafts: {}, deliveries: {} } : {}) })
   if (switching) {
     watched.clear()
     await showCached(computerKey)
@@ -221,7 +224,7 @@ export async function connect(computerKey: string): Promise<void> {
 
 function revoked(computerKey: string): void {
   dropCache(computerKey)
-  useSession.setState({ status: 'revoked', conversations: {}, tasks: {}, chats: {}, usage: null, drafts: {} })
+  useSession.setState({ status: 'revoked', conversations: {}, tasks: {}, chats: {}, usage: null, drafts: {}, deliveries: {} })
 }
 
 async function connected(link: MobileConnection, computer: Computer): Promise<void> {
@@ -243,7 +246,8 @@ async function connected(link: MobileConnection, computer: Computer): Promise<vo
     useSession.setState((state) => {
       const { [id]: _gone, ...conversations } = state.conversations
       const { [id]: _chat, ...chats } = state.chats
-      return { conversations, chats }
+      const { [id]: _deliveries, ...deliveries } = state.deliveries
+      return { conversations, chats, deliveries }
     })
   })
   link.on('conversations.chatItems', ({ conversationId, items, replaceStage }) => {
@@ -251,7 +255,7 @@ async function connected(link: MobileConnection, computer: Computer): Promise<vo
       const chat = state.chats[conversationId]
       if (!chat) return {}
       const next = replaceStage ? replaceChatStage(chat.items, replaceStage, items) ?? chat.items : mergeChatItems(chat.items, items)
-      return { chats: { ...state.chats, [conversationId]: { ...chat, items: next } } }
+      return { chats: { ...state.chats, [conversationId]: { ...chat, items: next } }, deliveries: { ...state.deliveries, [conversationId]: reconcileDeliveries(state.deliveries[conversationId] ?? [], next) } }
     })
     saveCacheSoon()
   })
@@ -313,7 +317,8 @@ async function loadChat(id: string): Promise<void> {
   const link = connection
   if (!link) return
   const page = await link.call('conversations.watchChat', { id, limit: PAGE_LIMIT })
-  useSession.setState((state) => ({ chats: { ...state.chats, [id]: { items: page.items, before: page.before, truncated: page.truncated ?? false } } }))
+  if (connection !== link) return
+  useSession.setState((state) => ({ chats: { ...state.chats, [id]: { items: page.items, before: page.before, truncated: page.truncated ?? false } }, deliveries: { ...state.deliveries, [id]: reconcileDeliveries(state.deliveries[id] ?? [], page.items) } }))
 }
 
 export async function watch(id: string): Promise<void> {
@@ -387,6 +392,51 @@ export function setDraft(id: string, change: (draft: Draft) => Draft): void {
 // While a turn runs, the message waits its turn (queue); otherwise the agent must be idle.
 export async function send(id: string, text: string, images: readonly string[] = [], queue = false): Promise<boolean> {
   return (await call('conversations.send', { id, text, ref: randomUUID(), ...(images.length ? { images: [...images] } : {}), ...(queue ? { queue: true } : {}) })) !== null
+}
+
+// Keep requests ordered, including starting a stopped conversation, without holding the input.
+const outgoing = new Map<string, Promise<void>>()
+export function submitDraft(id: string): void {
+  const draft = useSession.getState().drafts[id] ?? EMPTY_DRAFT
+  if (!draft.text.trim() && !draft.images.length) return
+  const message: ChatDelivery = { ref: randomUUID(), text: draft.text.trim(), images: [...draft.images], at: Date.now(), phase: 'sending', error: null }
+  const link = connection
+  useSession.setState((state) => ({ deliveries: { ...state.deliveries, [id]: [...(state.deliveries[id] ?? []), message] } }))
+  setDraft(id, () => EMPTY_DRAFT)
+  const update = (phase: ChatDelivery['phase'], error: string | null) => {
+    useSession.setState((state) => ({ deliveries: { ...state.deliveries, [id]: reconcileDeliveries((state.deliveries[id] ?? []).map((each) => each.ref === message.ref ? { ...each, phase, error } : each), state.chats[id]?.items ?? []) } }))
+  }
+  const delivery = (outgoing.get(id) ?? Promise.resolve()).then(async () => {
+    try {
+      if (!link || connection !== link) throw new Error(t('offline'))
+      if (useSession.getState().conversations[id]?.sessionId === null) {
+        const conversation = await link.call('conversations.continue', { id })
+        if (connection !== link) throw new Error(t('offline'))
+        useSession.setState((state) => ({ conversations: { ...state.conversations, [id]: conversation } }))
+      }
+      if (connection !== link) throw new Error(t('offline'))
+      await link.call('conversations.send', { id, ref: message.ref, text: message.text, images: message.images.map((image) => image.id), queue: true })
+      update('sent', null)
+    } catch (error) {
+      update('failed', failure(error))
+    }
+  }).finally(() => { if (outgoing.get(id) === delivery) outgoing.delete(id) })
+  outgoing.set(id, delivery)
+}
+
+export function restoreDelivery(id: string, ref: string): void {
+  const message = useSession.getState().deliveries[id]?.find((each) => each.ref === ref && each.phase === 'failed')
+  if (!message) return
+  setDraft(id, (draft) => ({ text: [draft.text, message.text].filter(Boolean).join('\n'), images: [...draft.images, ...message.images.filter((image) => !draft.images.some((each) => each.id === image.id))] }))
+  useSession.setState((state) => ({ deliveries: { ...state.deliveries, [id]: (state.deliveries[id] ?? []).filter((each) => each.ref !== ref) } }))
+}
+
+export async function cancelQueued(id: string, ref: string): Promise<void> {
+  await call('conversations.cancelQueued', { id, ref })
+}
+
+export async function releaseQueued(id: string, ref: string): Promise<void> {
+  await call('conversations.sendQueued', { id, ref })
 }
 
 export async function respond(id: string, requestId: string, decision: ChatDecision, extra: { choice?: string; mode?: ChatPermissionMode; answers?: Record<string, string[]> } = {}): Promise<boolean> {
@@ -584,7 +634,7 @@ export async function pair(text: string, onCode: (code: string) => void): Promis
     }
     await updateComputers((computers) => [computer, ...computers.filter((each) => each.key !== code.key)])
     watched.clear()
-    useSession.setState({ current: code.key, status: 'connecting', conversations: {}, tasks: {}, chats: {}, usage: null, drafts: {} })
+    useSession.setState({ current: code.key, status: 'connecting', conversations: {}, tasks: {}, chats: {}, usage: null, drafts: {}, deliveries: {} })
     await connected(link, computer)
     return null
   } catch (error) {
@@ -596,7 +646,7 @@ export async function pair(text: string, onCode: (code: string) => void): Promis
 export async function forget(computerKey: string): Promise<void> {
   if (useSession.getState().current === computerKey) {
     disconnect()
-    useSession.setState({ current: null, status: 'idle', welcome: null, conversations: {}, tasks: {}, chats: {}, usage: null, drafts: {} })
+    useSession.setState({ current: null, status: 'idle', welcome: null, conversations: {}, tasks: {}, chats: {}, usage: null, drafts: {}, deliveries: {} })
   }
   dropCache(computerKey)
   await updateComputers((computers) => computers.filter((each) => each.key !== computerKey))

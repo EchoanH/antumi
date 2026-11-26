@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { FlatList, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useKeyboardState, useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller'
 import Animated, { useAnimatedStyle } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -15,7 +15,8 @@ import { EmptyState, IconButton, Muted, Screen, confirmTap, tap } from '../compo
 import { t } from '../i18n'
 import { agentName, effortName, modeName, where } from '../labels'
 import { pop, push, useNavigation } from '../navigation'
-import { canHandOff, canOperate, continueChat, EMPTY_DRAFT, interrupt, loadOlder, send, setDraft, setOption, unwatch, uploadImage, useSession, viewsOnly, watch } from '../session'
+import { canHandOff, canOperate, cancelQueued, EMPTY_DRAFT, interrupt, loadOlder, releaseQueued, restoreDelivery, submitDraft, setDraft, setOption, unwatch, uploadImage, useSession, viewsOnly, watch } from '../session'
+import { withDeliveries } from '../chat-deliveries'
 import { radius, space, type, useTheme } from '../theme'
 import { handOffable } from './HandoffScreen'
 
@@ -95,7 +96,7 @@ function rowsOf(items: readonly ChatItem[], working: boolean, docked: ChatItem |
 
 function ItemView({ item, conversation }: { item: ChatItem; conversation: Conversation }) {
   switch (item.kind) {
-    case 'user': return <UserMessage item={item} agent={conversation.agent} />
+    case 'user': return <DeliveryMessage item={item} conversation={conversation} />
     case 'assistant': return <AssistantText text={item.text} />
     case 'reasoning': return <ReasoningLine item={item} />
     case 'approval':
@@ -106,6 +107,50 @@ function ItemView({ item, conversation }: { item: ChatItem; conversation: Conver
     case 'todos': return <TodosCard item={item} />
     default: return null
   }
+}
+
+function DeliveryMessage({ item, conversation }: { item: Extract<ChatItem, { kind: 'user' }>; conversation: Conversation }) {
+  const theme = useTheme()
+  const delivery = useSession((s) => s.deliveries[conversation.id]?.find((each) => `u:${each.ref}` === item.id))
+  return (
+    <View style={styles.delivery}>
+      <UserMessage item={item} agent={conversation.agent} />
+      {delivery ? (
+        <View style={styles.deliveryStatus}>
+          {delivery.phase === 'sending' ? <ActivityIndicator size="small" color={theme.textMuted} /> : null}
+          <Text style={[type.caption, styles.statusText, { color: delivery.phase === 'failed' ? theme.danger : theme.textMuted }]}>
+            {t(delivery.phase === 'sending' ? 'messageSending' : delivery.phase === 'sent' ? 'messageSent' : 'messageFailed')}
+            {delivery.error ? ` · ${delivery.error}` : ''}
+          </Text>
+          {delivery.phase === 'failed' && canOperate() ? <Pressable accessibilityRole="button" onPress={() => restoreDelivery(conversation.id, delivery.ref)}><Text style={[type.caption, { color: theme.accent }]}>{t('restoreMessage')}</Text></Pressable> : null}
+        </View>
+      ) : item.delivery === 'undelivered' ? <Text style={[type.caption, { color: theme.danger, textAlign: 'right' }]}>{t('messageFailed')}</Text> : null}
+    </View>
+  )
+}
+
+function QueuedMessages({ conversation, state }: { conversation: Conversation; state: StateItem | null }) {
+  const theme = useTheme()
+  const queue = state?.queue ?? []
+  if (!queue.length) return null
+  return (
+    <ScrollView style={styles.queue} contentContainerStyle={styles.queueContent} keyboardShouldPersistTaps="handled">
+      <Muted>{t('queuedMessages', { count: queue.length })}</Muted>
+      {queue.map((entry) => (
+        <View key={entry.ref} style={styles.queueEntry}>
+          <View style={styles.deliveryText}>
+            <Text style={[type.secondary, { color: theme.text }]} numberOfLines={3}>{entry.text}</Text>
+            {entry.images.length ? <View style={styles.attachments}>{entry.images.map((image) => <ChatImageView key={image.id} image={image} size={40} />)}</View> : null}
+            {entry.held ? <Muted>{t('queueHeld')}</Muted> : null}
+          </View>
+          {canOperate() && !conversation.parentConversationId ? <>
+            {entry.held ? <Pressable accessibilityRole="button" onPress={() => void releaseQueued(conversation.id, entry.ref)}><Text style={[type.caption, { color: theme.accent }]}>{t('send')}</Text></Pressable> : null}
+            <IconButton icon={X} label={t('cancelQueued')} onPress={() => void cancelQueued(conversation.id, entry.ref)} />
+          </> : null}
+        </View>
+      ))}
+    </ScrollView>
+  )
 }
 
 // The agent leads, for a handoff where the chat's agent is the user's to change; what the stage
@@ -139,10 +184,8 @@ function Composer({ conversation, state, onOptions }: { conversation: Conversati
   const { text, images } = useSession((s) => s.drafts[conversation.id]) ?? EMPTY_DRAFT
   const setText = (next: string) => setDraft(conversation.id, (draft) => ({ ...draft, text: next }))
   const [uploading, setUploading] = useState(false)
-  const [sending, setSending] = useState(false)
   // Only background work left running: the turn is over and a message starts the next one.
   const running = conversationWorking(conversation) && !conversation.chat?.betweenTurns
-  const stopped = conversation.sessionId === null
   const empty = !text.trim() && images.length === 0
   const modelLabel = state ? state.models.find((each) => each.id === state.model)?.label ?? state.model : null
   const chip = [modelLabel, state?.permissionMode ? modeName(conversation.agent, state.permissionMode) : null].filter(Boolean).join(' · ')
@@ -155,13 +198,10 @@ function Composer({ conversation, state, onOptions }: { conversation: Conversati
     setUploading(false)
     if (uploaded) setDraft(conversation.id, (draft) => ({ ...draft, images: [...draft.images, { id: uploaded, width: asset.width, height: asset.height }] }))
   }
-  const submit = async () => {
+  const submit = () => {
     if (empty) return
     confirmTap()
-    setSending(true)
-    if (stopped) await continueChat(conversation.id)
-    if (await send(conversation.id, text.trim(), images.map((image) => image.id), running)) setDraft(conversation.id, () => EMPTY_DRAFT)
-    setSending(false)
+    submitDraft(conversation.id)
   }
   return (
     <View style={[styles.composerWrap, { paddingBottom: keyboardOpen ? space.sm : Math.max(insets.bottom, space.sm) }]}>
@@ -203,7 +243,7 @@ function Composer({ conversation, state, onOptions }: { conversation: Conversati
               <Square size={13} color={theme.bg} fill={theme.bg} />
             </Pressable>
           ) : (
-            <Pressable accessibilityLabel={t('send')} disabled={empty || sending} onPress={() => void submit()} style={({ pressed }) => [styles.send, { backgroundColor: empty ? theme.sunken : theme.accent, opacity: pressed ? 0.75 : 1 }]}>
+            <Pressable accessibilityLabel={t(running ? 'queueMessage' : 'send')} disabled={empty} onPress={() => void submit()} style={({ pressed }) => [styles.send, { backgroundColor: empty ? theme.sunken : theme.accent, opacity: pressed ? 0.75 : 1 }]}>
               <ArrowUp size={19} color={empty ? theme.text3 : theme.accentText} strokeWidth={2.5} />
             </Pressable>
           )}
@@ -257,7 +297,8 @@ export function ChatScreen({ id }: { id: string }) {
     if (status === 'online') void watch(id)
     return () => unwatch(id)
   }, [id, status])
-  const items = chat?.items ?? []
+  const deliveries = useSession((s) => s.deliveries[id])
+  const items = useMemo(() => withDeliveries(chat?.items ?? [], deliveries ?? []), [chat?.items, deliveries])
   const request = useMemo(() => openRequest(items), [items])
   const state = useMemo(() => latestState(items), [items])
   const working = conversation ? conversationWorking(conversation) && !request : false
@@ -300,6 +341,7 @@ export function ChatScreen({ id }: { id: string }) {
             </View>
           ) : undefined}
         />
+        <QueuedMessages conversation={conversation} state={state} />
         <DelegatesWaiting id={conversation.id} />
         {request && request.kind === 'approval' ? <ApprovalDock key={request.requestId} item={request} conversation={conversation} /> : null}
         {request && request.kind === 'question' ? <QuestionDock key={request.requestId} item={request} conversation={conversation} /> : null}
@@ -319,6 +361,13 @@ export function ChatScreen({ id }: { id: string }) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  delivery: { gap: space.xs },
+  deliveryStatus: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: space.sm },
+  deliveryText: { flex: 1 },
+  statusText: { flexShrink: 1 },
+  queue: { maxHeight: 180, flexGrow: 0 },
+  queueContent: { paddingHorizontal: space.lg, paddingVertical: space.sm, gap: space.sm },
+  queueEntry: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   // Undoes the list's inversion, which on Android flips both axes (see VirtualizedList).
   flipped: { flex: 1, justifyContent: 'center', transform: Platform.OS === 'android' ? [{ scale: -1 }] : [{ scaleY: -1 }] },
   grow: { flexGrow: 1 },
