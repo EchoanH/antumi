@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
+import { createRpcClient, RpcRequest, type RpcConnection } from '@antumi/protocol'
 
 vi.hoisted(() => {
   vi.stubGlobal('window', { antumi: undefined, matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) })
   vi.stubGlobal('navigator', { userAgent: 'Mac', platform: 'MacIntel' })
 })
 
-const { availableProjects, plainProject, sourceProjects } = await import('./project-choices')
+const { availableProjects, plainProject, recentProjectChoices, sourceProjects } = await import('./project-choices')
 
 describe('source project suggestions', () => {
   it('offers the source of an already selected copy, and a copy of an already selected source', () => {
@@ -30,5 +31,69 @@ describe('source project suggestions', () => {
       plainProject('/work/magi'), plainProject('/personal/magi'),
       { path: '/worktrees/copy/magi', source: null, worktree: true, branch: null }
     ])).toEqual([plainProject('/work/magi'), plainProject('/personal/magi')])
+  })
+})
+
+function connection(features = ['project-choices', 'project-suggestions']) {
+  const sent: Array<{ id: number; method: string; params: unknown }> = []
+  const client = createRpcClient((frame) => { const request = RpcRequest.parse(JSON.parse(frame)); sent.push({ id: request.id, method: request.method, params: request.params }) })
+  const rpc: RpcConnection = { ...client, features, close() {}, closed: new Promise(() => {}) }
+  const reply = (index: number, result: unknown) => client.receive(JSON.stringify({ jsonrpc: '2.0', id: sent[index]!.id, result }))
+  return { rpc, sent, reply }
+}
+
+describe('progressive project choices', () => {
+  it('publishes sources before a slow copy query, without querying source checkouts again', async () => {
+    const { rpc, sent, reply } = connection()
+    const source = plainProject('/code/app')
+    const copy = { path: '/worktrees/app', source: source.path, worktree: true, branch: 'old' }
+    const publish = vi.fn()
+    let settled = false
+    const loading = recentProjectChoices(rpc, publish).then((choices) => { settled = true; return choices })
+    expect(sent[0]?.method).toBe('projects.suggestions')
+    reply(0, { paths: [source.path, copy.path], choices: [source, copy] })
+    await vi.waitFor(() => expect(sent).toHaveLength(2))
+    expect(publish).toHaveBeenCalledWith([source, copy])
+    expect(availableProjects(publish.mock.calls[0]![0], []).sources).toEqual([source])
+    expect(settled).toBe(false)
+    expect(sent[1]).toMatchObject({ method: 'projects.describe', params: { paths: [copy.path] } })
+    reply(1, [{ ...copy, branch: 'new' }])
+    expect(await loading).toEqual([source, { ...copy, branch: 'new' }])
+  })
+
+  it('never temporarily offers an unclassified copy as a source', async () => {
+    const { rpc, sent, reply } = connection()
+    const publish = vi.fn()
+    const loading = recentProjectChoices(rpc, publish)
+    reply(0, { paths: ['/unknown/copy'], choices: [] })
+    await vi.waitFor(() => expect(sent).toHaveLength(2))
+    expect(publish).toHaveBeenCalledWith([])
+    const copy = { path: '/unknown/copy', source: '/code/app', worktree: true, branch: 'feature' }
+    reply(1, [copy])
+    expect(availableProjects(await loading, []).sources).toEqual([plainProject('/code/app')])
+  })
+
+  it('shares an outstanding copy inspection across repeated openings', async () => {
+    const { rpc, sent, reply } = connection()
+    const first = recentProjectChoices(rpc)
+    reply(0, { paths: ['/copy'], choices: [] })
+    await vi.waitFor(() => expect(sent).toHaveLength(2))
+    const second = recentProjectChoices(rpc)
+    reply(2, { paths: ['/copy'], choices: [] })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(sent.filter((request) => request.method === 'projects.describe')).toHaveLength(1)
+    reply(1, [{ path: '/copy', source: '/source', worktree: true, branch: null }])
+    expect(await first).toEqual(await second)
+  })
+
+  it('uses the recent list directly on older cores without checkout descriptions', async () => {
+    const { rpc, sent, reply } = connection([])
+    const publish = vi.fn()
+    const loading = recentProjectChoices(rpc, publish)
+    expect(sent[0]?.method).toBe('projects.recent')
+    reply(0, ['/source'])
+    expect(await loading).toEqual([plainProject('/source')])
+    expect(publish).toHaveBeenCalledWith([plainProject('/source')])
+    expect(sent).toHaveLength(1)
   })
 })

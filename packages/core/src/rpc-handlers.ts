@@ -834,7 +834,8 @@ export function createRpcHandlers(
       return OK
     },
     'projects.recent': () => projects.recent(),
-    'projects.describe': ({ paths }) => describeProjects(paths),
+    'projects.suggestions': () => projects.suggestions(),
+    'projects.describe': ({ paths }) => describeProjects(paths, (choice) => projects.rememberChoices([choice]), projects.suggestions().choices),
     'worktrees.list': () => worktrees.list(),
     'worktrees.clean': ({ paths }) => worktrees.clean(paths),
     'projects.findFile': ({ roots, path }) => findFiles(roots, path),
