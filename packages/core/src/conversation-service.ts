@@ -2,6 +2,7 @@ import type { ChatReference, AgentProfile, SkillRef } from '@antumi/protocol'
 import { agentCliAccess } from './agent-cli-access'
 import { limitChatPage } from './chat-page-limit'
 import { randomUUID } from 'node:crypto'
+import { z } from 'zod'
 import { mkdir, realpath, rm, rmdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { branchSwitchMessage, withoutBranchSwitchNote, chatReferencesFor, canHaveHelper, helperAllowsMode, isHelper, agentDescriptor, modelPrice, providerEndpoint, type CostBaseline, checkEditAdditionalProjects, checkSwitchBranch, handoffMessage, isPlanApproval, parseHandoffMessage, MAX_TASK_REPOS, type AgentKind, type ChatCatalog, type ChatImage, type ChatItem, type ChatModel, type ChatOption, type ChatSettings, type CommitPushResult, type CommitResult, type PushResult, type Conversation, type ConversationMessage, type ConversationSearchHit, type ConversationStage, type FileDiff, type FolderChanges, type ProjectBranches, type ProjectHead, type ChatDecision, type KnowledgeBase, type TaskSource, type UnattendedMode, type ChatPermissionMode, startModes, unattendedPermission, isAntumiRequest , PROCESS_OWNER_ENV, processOwner, parseProcessOwner } from '@antumi/protocol'
@@ -57,6 +58,8 @@ export type ConversationEvent =
   // A running chat agent reported its account's limits.
   | { type: 'usage'; agent: AgentKind; account: string; report: UsageReport }
 
+type UnattendedRun = { mode: UnattendedMode; permission: ChatPermissionMode; reads?: 'allow' | 'only' }
+type AutomaticInvestigationHooks = { owns(id: string): boolean; takeover(id: string): void; unattended?(id: string): UnattendedRun | null }
 export type ChatStageRef = { conversationId: string; taskId: string | null; stageId: string; agent: AgentKind; ended: boolean }
 
 // How a task's chat starts a stage: where its agent works (worktrees once the task runs, its projects
@@ -184,8 +187,8 @@ export class ConversationService {
   }
   private maxConcurrentAgents = 20
   private agentConcurrency: Partial<Record<AgentKind, number>> = {}
-  private automaticInvestigation: { owns(id: string): boolean; takeover(id: string): void } | null = null
-  setAutomaticInvestigation(hooks: { owns(id: string): boolean; takeover(id: string): void }): void { this.automaticInvestigation = hooks }
+  private automaticInvestigation: AutomaticInvestigationHooks | null = null
+  setAutomaticInvestigation(hooks: AutomaticInvestigationHooks): void { this.automaticInvestigation = hooks }
 
   private capacityReleased: (() => void) | null = null
   private readonly freshCatalogs = new Set<AgentKind>()
@@ -217,7 +220,7 @@ export class ConversationService {
   // them. Kept in memory: after a restart, a request waits for the user, as it always did.
   // permission: the agent's own mode the run works in (unattendedPermission), which an approved
   // plan returns to.
-  private readonly unattended = new Map<string, { mode: UnattendedMode; permission: ChatPermissionMode }>()
+  private readonly unattended = new Map<string, UnattendedRun>()
   // Requests already answered that way, which the next items may still show as open.
   private readonly autoAnswered = new Set<string>()
   // Questions such a run's agent asked, waiting a while for the user before Antumi answers them
@@ -1553,7 +1556,7 @@ export class ConversationService {
       return
     }
     if (this.chats.activity(id) === null) {
-      this.chooseForNextStart(conversation, option, value)
+      await this.chooseForNextStart(conversation, option, value)
       return
     }
     await this.chats.setOption(id, option, value)
@@ -1568,19 +1571,23 @@ export class ConversationService {
     this.store.setChatOptions(id, { [agent]: { ...chosen[agent], [option]: value } })
   }
 
-  private chooseForNextStart(conversation: Conversation, option: ChatOption, value: string): void {
+  private async chooseForNextStart(conversation: Conversation, option: ChatOption, value: string): Promise<void> {
     const { id, agent } = conversation
     const stage = this.store.stages(id).at(-1)
     const state = stage?.agent === agent
       ? this.chats.items(this.chatStage(conversation, stage)).findLast((item) => item.kind === 'state')
       : undefined
-    if (state?.kind !== 'state') throw new Rejection('chat-option-invalid', `no chat stage of ${agent} to take options from`)
+    // Imported transcripts have messages but no model catalog until their first resume.
+    const models = state?.models.length ? state.models : (await this.chatCatalog(agent, this.catalogProvider(conversation, agent)))?.models ?? []
+    const latest = this.get(id)
+    if (latest.agent !== agent || latest.sessionId !== conversation.sessionId || this.store.stages(id).at(-1)?.id !== stage?.id) return this.setOption(id, option, value)
+    const permissionModes = state?.permissionModes.length ? state.permissionModes : conversation.planOnly ? ['plan'] : startModes(agent, models.find((each) => each.isDefault))
     const chosen = this.store.chatOptions(id)
     const current = chosen[agent] ?? {}
-    const model = (name: string | null | undefined) => state.models.find((each) => each.id === name)
+    const model = (name: string | null | undefined) => models.find((each) => each.id === name)
     if (option === 'permissionMode') {
       // Bypass is for the start to allow, which asks the user's setting again.
-      if ((value !== 'bypass' || !agentDescriptor(agent).capabilities.bypass) && !state.permissionModes.includes(value)) throw new Rejection('chat-option-invalid', `${agent} offers no permission mode ${value}`)
+      if ((value !== 'bypass' || !agentDescriptor(agent).capabilities.bypass) && !permissionModes.includes(value)) throw new Rejection('chat-option-invalid', `${agent} offers no permission mode ${value}`)
       this.store.setChatOptions(id, { permissionMode: value })
     } else if (option === 'model') {
       const picked = model(value)
@@ -1589,7 +1596,7 @@ export class ConversationService {
       const effort = current.effort && picked.efforts.includes(current.effort) ? current.effort : undefined
       this.store.setChatOptions(id, { [agent]: { model: value, effort } })
     } else {
-      if (!model(current.model ?? state.model)?.efforts.includes(value)) throw new Rejection('chat-option-invalid', `the model takes no effort ${value}`)
+      if (!model(current.model ?? state?.model ?? models.find((each) => each.isDefault)?.id)?.efforts.includes(value)) throw new Rejection('chat-option-invalid', `the model takes no effort ${value}`)
       this.store.setChatOptions(id, { [agent]: { ...current, effort: value } })
     }
     this.changed(conversation)
@@ -1991,12 +1998,14 @@ export class ConversationService {
   // watches never shows, or notifies, as waiting: respond applies its answer at once. A question
   // is the exception: only the user can settle what the agent cannot tell, so it waits and
   // notifies as any would, and is answered for them only once nobody has.
+  // An automatic investigation is such a run for as long as it owns its conversation, restarts included.
   private answerUnattended(conversationId: string, items: readonly ChatItem[]): void {
-    const run = this.unattended.get(conversationId)
+    if (!items.some((item) => item.kind === 'approval' || item.kind === 'question')) return
+    const run = this.unattended.get(conversationId) ?? this.automaticInvestigation?.unattended?.(conversationId)
     if (!run) return
     for (const item of items) {
       if (item.kind !== 'approval' && item.kind !== 'question') continue
-      const answer = unattendedAnswer(item, run.mode)
+      const answer = unattendedAnswer(item, run.mode, run.reads, run.reads && item.kind === 'approval' ? this.approvedCommand(conversationId, items, item) : null)
       const key = `${conversationId}:${item.requestId}`
       if (!answer || this.autoAnswered.has(key)) continue
       this.autoAnswered.add(key)
@@ -2010,9 +2019,21 @@ export class ConversationService {
         continue
       }
       // An approved plan is carried out in the run's mode, not the one approving leaves it in.
-      const after = item.kind === 'approval' && isPlanApproval(item) ? () => this.chats.setOption(conversationId, 'permissionMode', run.permission) : undefined
+      const after = item.kind === 'approval' && isPlanApproval(item) && answer.decision !== 'deny' ? () => this.chats.setOption(conversationId, 'permissionMode', run.permission) : undefined
       this.answerFor(conversationId, item.stageId, item.requestId, answer, after)
     }
+  }
+
+  // The full command an approval asks about, from its tool's card: its title holds only the first
+  // line. A card shows a command as the command, or, under a name an ACP dialect gave it, as JSON.
+  private approvedCommand(conversationId: string, items: readonly ChatItem[], approval: Extract<ChatItem, { kind: 'approval' }>): string | null {
+    if (!approval.toolItemId) return null
+    const stage = this.store.stages(conversationId).find((each) => each.id === approval.stageId)
+    const tool = items.find((each) => each.id === approval.toolItemId)
+      ?? (stage ? this.chats.items(this.chatStage(this.get(conversationId), stage)).find((each) => each.id === approval.toolItemId) : undefined)
+    if (tool?.kind !== 'tool' || tool.input === null) return null
+    if (!tool.input.startsWith('{')) return tool.input
+    try { return z.looseObject({ command: z.string() }).safeParse(JSON.parse(tool.input)).data?.command ?? null } catch { return null }
   }
 
   // Whatever an agent answering a chat platform's asker asks for is refused at once: nobody there

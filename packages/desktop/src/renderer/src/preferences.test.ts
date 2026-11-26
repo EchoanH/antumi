@@ -204,3 +204,55 @@ describe('windows sharing preferences', () => {
     expect(usePreferences.getState().showArchivedConversations).toBe(false)
   })
 })
+
+describe('backdrop preferences', () => {
+  it('defaults absent fields independently and handles non-record inputs', async () => {
+    const { parsePreferences } = await import('./preferences')
+    const expected = { backdropMode: 'none', backdropPreset: 'aurora', backdropScope: 'full', backdropOpacity: 65, backdropBlur: 0, backdropSurfaceOpacity: 68, backdropGlassBlur: 12, backdropFit: 'cover', wallpaper: null }
+    for (const saved of [{}, null, [], 'invalid']) expect(parsePreferences(saved)).toMatchObject(expected)
+  })
+  it('preserves valid boundaries and falls back for invalid numbers, enums, or assets', async () => {
+    const { parsePreferences } = await import('./preferences')
+    const wallpaper = { ext: 'avif', version: '123-16', size: 16 }
+    expect(parsePreferences({ theme: 'dark', backdropMode: 'image', backdropPreset: 'forest', backdropScope: 'frame', backdropOpacity: 5, backdropBlur: 30, backdropSurfaceOpacity: 95, backdropGlassBlur: 24, backdropFit: 'contain', wallpaper })).toMatchObject({ theme: 'dark', backdropMode: 'image', backdropPreset: 'forest', backdropScope: 'frame', backdropOpacity: 5, backdropBlur: 30, backdropSurfaceOpacity: 95, backdropGlassBlur: 24, backdropFit: 'contain', wallpaper })
+    expect(parsePreferences({ backdropOpacity: 100, backdropBlur: 0, backdropSurfaceOpacity: 30, backdropGlassBlur: 0 })).toMatchObject({ backdropOpacity: 100, backdropBlur: 0, backdropSurfaceOpacity: 30, backdropGlassBlur: 0 })
+    for (const bad of [-1, 200, 1.5, '60', null]) {
+      expect(parsePreferences({ theme: 'dark', backdropOpacity: bad, backdropBlur: bad, backdropSurfaceOpacity: bad, backdropGlassBlur: bad })).toMatchObject({ theme: 'dark', backdropOpacity: 65, backdropBlur: 0, backdropSurfaceOpacity: 68, backdropGlassBlur: 12 })
+    }
+    expect(parsePreferences({ backdropMode: 'bad', backdropPreset: 'bad', backdropScope: 'bad', backdropFit: 'bad', wallpaper: { ...wallpaper, ext: 'svg' } })).toMatchObject({ backdropMode: 'none', backdropPreset: 'aurora', backdropScope: 'full', backdropFit: 'cover', wallpaper: null })
+    for (const patch of [{ version: '' }, { size: 0 }, { size: 20 * 1024 * 1024 + 1 }]) expect(parsePreferences({ wallpaper: { ...wallpaper, ...patch } }).wallpaper).toBeNull()
+  })
+  it.each([
+    ['none', 'none', 'aurora'], ['sea-glass', 'preset', 'sea-glass'], ['funky-fresh', 'preset', 'funky-fresh'], ['invalid', 'none', 'aurora']
+  ])('migrates legacy backdrop %s once, removing the obsolete key', async (backdrop, mode, preset) => {
+    const { migratePreferencesRecord, parsePreferences } = await import('./preferences')
+    const original = { backdrop, theme: 'dark', conversationKinds: 'all', sidebarMenuCollapsed: false }
+    const migrated = migratePreferencesRecord(original)
+    expect(migrated).not.toBe(original)
+    expect(migrated).not.toHaveProperty('backdrop')
+    expect(original.backdrop).toBe(backdrop)
+    expect(migratePreferencesRecord(migrated)).toBe(migrated)
+    expect(parsePreferences(original)).toMatchObject({ backdropMode: mode, backdropPreset: preset, backdropScope: 'full', theme: 'dark' })
+  })
+  it('does not overwrite an already-migrated mode or its preset', async () => {
+    const { migratePreferencesRecord, parsePreferences } = await import('./preferences')
+    const saved = { backdrop: 'sea-glass', backdropMode: 'image', backdropPreset: 'nebula', conversationKinds: 'all', sidebarMenuCollapsed: true }
+    expect(migratePreferencesRecord(saved)).toBe(saved)
+    expect(parsePreferences(saved)).toMatchObject({ backdropMode: 'image', backdropPreset: 'nebula' })
+    expect(parsePreferences(saved)).not.toHaveProperty('backdrop')
+  })
+  it('persists the migration once so a later choice survives restarting', async () => {
+    storage.set('antumi.preferences', JSON.stringify({ backdrop: 'sea-glass' }))
+    const { setPreference, usePreferences } = await import('./preferences')
+    expect(usePreferences.getState().backdropMode).toBe('preset')
+    expect(JSON.parse(storage.get('antumi.preferences') ?? '{}')).not.toHaveProperty('backdrop')
+    setPreference('backdropMode', 'none')
+    vi.resetModules()
+    const restarted = await import('./preferences')
+    expect(restarted.usePreferences.getState().backdropMode).toBe('none')
+  })
+  it('retains the existing migrations alongside backdrop migration', async () => {
+    const { parsePreferences } = await import('./preferences')
+    expect(parsePreferences({ backdrop: 'funky-fresh', translateModels: { codex: 'small' }, requestPopup: false, sidebarDiscussions: false, showArchivedDiscussions: true, sidebarHidden: true, sidebarWidth: 400 })).toMatchObject({ backdropMode: 'preset', backdropPreset: 'funky-fresh', quickModels: { codex: 'small' }, island: 'off', conversationKinds: 'conversations', showArchivedConversations: true, sidebarMenuCollapsed: true, conversationListWidth: 344 })
+  })
+})

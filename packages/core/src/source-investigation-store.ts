@@ -58,6 +58,9 @@ export class SourceInvestigationStore {
   active(): InvestigationRun[] {
     return this.decode(this.db.prepare("SELECT data FROM source_investigation_runs WHERE json_extract(data,'$.status') IN ('preparing','running')").all())
   }
+  waiting(): InvestigationRun[] {
+    return this.decode(this.db.prepare("SELECT data FROM source_investigation_runs WHERE json_extract(data,'$.status')='waiting-user'").all())
+  }
   queued(provider: string, instance: string): InvestigationRun[] {
     return this.decode(this.db.prepare("SELECT data FROM source_investigation_runs WHERE instance_key=? AND json_extract(data,'$.status') IN ('queued','retry-wait')").all(investigationInstance(provider, instance)))
   }

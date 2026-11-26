@@ -7,6 +7,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ConversationService, type ConversationEvent } from './conversation-service'
 import { ConversationStore } from './conversation-store'
+import { zcode } from './agents/zcode/zcode-adapter'
 import { dsh } from './agents/dsh/dsh-adapter'
 import { antigravity } from './agents/antigravity/antigravity-adapter'
 import { claudeEditDenials, claudeReadRules } from './agents/claude/claude-command'
@@ -1048,6 +1049,32 @@ describe('ConversationService', () => {
     expect(daemon.spawns[0]?.args).not.toContain('--allow-dangerously-skip-permissions')
   })
 
+  it('answers what an automatic coordinator asks while it owns the run, reads only, and asks the user once handed over', async () => {
+    const id = randomUUID()
+    const source = { provider: 'demo', instance: 'default', name: 'Demo', key: 'D-1', url: 'https://demo.test/D-1' }
+    let owned = true
+    service.setAutomaticInvestigation({ owns: () => owned, takeover: () => {}, unattended: (candidate) => owned && candidate === id ? { mode: 'acceptEdits', permission: 'ask', reads: 'only' } : null })
+    await service.openInvestigation('claude', [], false, { permissionMode: 'ask', readOnly: true }, { source, title: 'Crash', automaticId: id })
+    const { sessionId } = await service.beginInvestigation(id, { title: 'Crash', brief: '# Issue', readable: [] }, 'Find the cause', undefined, [], `auto-investigate:${id}`)
+    // The command reaches Antumi first in the assistant's tool call, then in the request about it.
+    const ask = (requestId: string, command: string) => {
+      daemon.emit(sessionId!, { type: 'assistant', message: { id: `m-${requestId}`, model: 'claude-sonnet-5', content: [{ type: 'tool_use', id: `toolu_${requestId}`, name: 'Bash', input: { command } }] } })
+      daemon.emit(sessionId!, { type: 'control_request', request_id: requestId, request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command }, tool_use_id: `toolu_${requestId}` } })
+    }
+    const approval = (requestId: string) => service.chatPage(id).items.find((item) => item.kind === 'approval' && item.requestId === requestId)
+    ask('ask-1', 'gh issue view 26')
+    ask('ask-2', 'ls\nrm -rf build')
+    await settle()
+    expect(approval('ask-1')).toMatchObject({ resolution: 'allowed' })
+    expect(approval('ask-2')).toMatchObject({ resolution: 'denied' })
+    const refusals = () => daemon.written(sessionId!).filter((frame) => JSON.stringify(frame).includes('已自动拒绝'))
+    expect(refusals()).toHaveLength(1)
+    owned = false
+    ask('ask-3', 'gh issue view 26')
+    await settle()
+    expect(approval('ask-3')).toMatchObject({ resolution: null })
+  })
+
   it('uses a reconciled empty Agent process for an automatic opening that never left core', async () => {
     const id = randomUUID()
     const source = { provider: 'demo', instance: 'default', name: 'Demo', key: 'D-1', url: 'https://demo.test/D-1' }
@@ -1431,6 +1458,30 @@ describe('ConversationService', () => {
     await service.setOption(created.id, 'effort', 'low')
     await service.continue(created.id)
     expect(daemon.spawns.at(-1)?.args).toEqual(expect.arrayContaining(['--permission-mode', 'plan', '--model', 'sonnet', '--effort', 'low']))
+  })
+
+  it('takes models for an imported ZCode session before its first resume and keeps the choice across restarts', async () => {
+    const catalog = vi.spyOn(zcode, 'catalog').mockResolvedValue({ models: [
+      { id: 'zai/glm', label: 'GLM', description: null, efforts: ['disabled', 'enabled'], isDefault: true },
+      { id: 'zai/flash', label: 'Flash', description: null, efforts: [], isDefault: false }
+    ] })
+    try {
+      const created = await service.create('zcode', [], undefined, { deferStart: true })
+      service.importStage(created.id, 'zcode', 'sess_imported', {
+        entries: [{ at: 1, item: { id: 'u:old', kind: 'user', text: 'earlier message', images: [] } }], messages: []
+      })
+      expect(service.chatPage(created.id).items.find((item) => item.kind === 'state')).toMatchObject({ models: [] })
+      await expect(service.setOption(created.id, 'model', 'unknown')).rejects.toMatchObject({ reason: 'chat-option-invalid' })
+      await service.setOption(created.id, 'model', 'zai/glm')
+      await service.setOption(created.id, 'effort', 'enabled')
+      expect(service.get(created.id).chatOptions).toMatchObject({ model: 'zai/glm', effort: 'enabled' })
+      await service.setOption(created.id, 'model', 'zai/flash')
+      await expect(service.setOption(created.id, 'effort', 'enabled')).rejects.toMatchObject({ reason: 'chat-option-invalid' })
+      service = serve()
+      expect(service.get(created.id).chatOptions).toMatchObject({ model: 'zai/flash', effort: null })
+      expect(service.stages(created.id).at(-1)?.providerSessionId).toBe('sess_imported')
+      expect(daemon.spawns).toEqual([])
+    } finally { catalog.mockRestore() }
   })
 
   it('lets an idle chat agent go after 30 minutes, and never one with work in hand', async () => {

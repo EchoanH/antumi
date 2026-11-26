@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite'
 import { z } from 'zod'
+import { ProjectChoice } from '@antumi/protocol'
 import { normalizeRepoPath } from './workspace'
 
 const RECENT_LIMIT = 50
@@ -26,6 +27,21 @@ export class ProjectRegistry {
       .prepare('SELECT path FROM known_repos ORDER BY used_at DESC LIMIT ?')
       .all(RECENT_LIMIT)
       .map((row) => z.object({ path: z.string() }).parse(row).path)
+  }
+
+  // Cached identities only: opening a picker never needs to inspect a checkout.
+  suggestions(): { paths: string[]; choices: ProjectChoice[] } {
+    const paths = this.recent()
+    const choices = this.db.prepare(`SELECT c.data FROM known_repos r
+      JOIN project_choices c ON c.path = r.path
+      WHERE r.path IN (SELECT path FROM known_repos ORDER BY used_at DESC LIMIT ?)
+      ORDER BY r.used_at DESC`).all(RECENT_LIMIT).map((row) => ProjectChoice.parse(JSON.parse(String(row.data))))
+    return { paths, choices }
+  }
+
+  rememberChoices(choices: readonly ProjectChoice[]): void {
+    const write = this.db.prepare('INSERT INTO project_choices (path, data) VALUES (?, ?) ON CONFLICT(path) DO UPDATE SET data = excluded.data')
+    for (const choice of choices) write.run(normalizeRepoPath(choice.path), JSON.stringify(choice))
   }
 
   remember(paths: readonly string[]): void {

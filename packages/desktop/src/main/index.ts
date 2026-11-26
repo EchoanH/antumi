@@ -27,6 +27,8 @@ import { bundleOf, leftovers, stageFromDmg, swapBlocked, swapInto } from './app-
 import { appImageBlocked, replaceAppImage } from './app-image-swap'
 import { VisualizationPages } from './visualization-pages'
 import { PluginPageBundles } from './plugin-page-bundles'
+import { WallpaperStore } from './wallpaper-store'
+import { WALLPAPER_DIALOG_EXTENSIONS, WALLPAPER_SCHEME, MAX_WALLPAPER_BYTES } from '../shared/wallpaper'
 import { VISUALIZATION_SCHEME } from '../shared/visualization-policy'
 import { previewHtml } from './preview-html'
 
@@ -59,10 +61,12 @@ const PREVIEW_SCHEME = 'antumi-preview'
 protocol.registerSchemesAsPrivileged([
   { scheme: PREVIEW_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
   { scheme: VISUALIZATION_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
-  { scheme: PLUGIN_PAGE_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } }
+  { scheme: PLUGIN_PAGE_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  { scheme: WALLPAPER_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } }
 ])
 const visualizationPages = new VisualizationPages()
 const pluginPages = new PluginPageBundles()
+const wallpaperStore = new WallpaperStore(join(app.getPath('userData'), 'wallpaper'))
 
 const PREVIEW_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8', '.htm': 'text/html; charset=utf-8', '.svg': 'image/svg+xml', '.css': 'text/css; charset=utf-8',
@@ -382,6 +386,34 @@ ipcMain.handle('antumi:plugin-page-create', (event, files: unknown) => {
 ipcMain.handle('antumi:plugin-page-remove', (event, url: unknown) => {
   if (event.senderFrame !== event.sender.mainFrame) throw new Error('Invalid plugin page owner')
   if (typeof url === 'string') pluginPages.remove(event.sender.id, url)
+})
+
+const validWallpaperSender = (event: Electron.IpcMainInvokeEvent) => event.senderFrame === event.sender.mainFrame && !requestPopup.owns(event.sender)
+ipcMain.handle('antumi:wallpaper-get', (event) => validWallpaperSender(event) ? wallpaperStore.getState() : null)
+ipcMain.handle('antumi:wallpaper-pick', async (event) => {
+  if (!validWallpaperSender(event)) return { ok: false, reason: 'invalid-file' }
+  const options: OpenDialogOptions = {
+    title: uiText('Choose background image', '选择背景图片'),
+    properties: ['openFile'],
+    filters: [{ name: uiText('Images', '图片'), extensions: [...WALLPAPER_DIALOG_EXTENSIONS] }]
+  }
+  const window = BrowserWindow.fromWebContents(event.sender)
+  const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
+  if (result.canceled || !result.filePaths[0]) return { ok: false, reason: 'canceled' }
+  return wallpaperStore.setFromFile(result.filePaths[0])
+})
+ipcMain.handle('antumi:wallpaper-set-file', (event, localPath: unknown) => {
+  if (!validWallpaperSender(event) || typeof localPath !== 'string') return { ok: false, reason: 'invalid-file' }
+  return wallpaperStore.setFromFile(localPath)
+})
+ipcMain.handle('antumi:wallpaper-set-bytes', (event, bytes: unknown) => {
+  if (!validWallpaperSender(event) || !(bytes instanceof Uint8Array)) return { ok: false, reason: 'invalid-file' }
+  if (bytes.byteLength > MAX_WALLPAPER_BYTES) return { ok: false, reason: 'too-large' }
+  return wallpaperStore.setFromBytes(bytes)
+})
+ipcMain.handle('antumi:wallpaper-clear', async (event) => {
+  if (!validWallpaperSender(event)) return false
+  return wallpaperStore.clear().then(() => true, () => false)
 })
 
 ipcMain.handle('antumi:core-endpoint', () => backend.coreEndpoint())
@@ -782,6 +814,7 @@ void app.whenReady().then(async () => {
   protocol.handle(PREVIEW_SCHEME, servePreview)
   protocol.handle(VISUALIZATION_SCHEME, (request) => visualizationPages.serve(request))
   protocol.handle(PLUGIN_PAGE_SCHEME, (request) => pluginPages.serve(request))
+  protocol.handle(WALLPAPER_SCHEME, (request) => wallpaperStore.serve(request))
   // Windows names a notification's sender by this id, the installer's shortcut carries the same.
   if (process.platform === 'win32') app.setAppUserModelId('dev.antumi.desktop')
   uiLocale = resolveUiLocale('system', app.getPreferredSystemLanguages())

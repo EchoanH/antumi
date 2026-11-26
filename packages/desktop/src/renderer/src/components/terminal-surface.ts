@@ -44,6 +44,7 @@ export function terminalSelection(sessionId: string): string {
 export function createTerminalSurface(element: HTMLElement, rpc: RpcConnection, sessionId: string | null) {
   const preferences = usePreferences.getState()
   const term = new Terminal({
+    allowTransparency: true,
     fontSize: preferences.terminalFontSize,
     fontFamily: codeFontStack(preferences.codeFontFamily, preferences.codeCjkFontFamily),
     lineHeight: preferences.terminalLineHeight,

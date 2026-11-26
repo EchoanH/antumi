@@ -2,8 +2,9 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { describeProjects } from './project-choices'
+import * as gitWorkspaces from './git-workspaces'
 
 const git = (dir: string, ...args: string[]) => execFileSync('git', ['-C', dir, ...args], { stdio: 'pipe' })
 
@@ -34,6 +35,35 @@ describe('project choices', () => {
     ])
     git(copy, 'switch', '-qc', 'new-branch')
     expect(await describeProjects([copy])).toEqual([{ path: copy, source, worktree: true, branch: 'new-branch' }])
+  })
+
+  it('publishes a source identity while a copy is still being inspected', async () => {
+    const original = gitWorkspaces.gitWorkspaces
+    let release = () => {}
+    const blocked = new Promise<void>((resolve) => { release = resolve })
+    const inspect = vi.spyOn(gitWorkspaces, 'gitWorkspaces').mockImplementation(async (dir) => {
+      await blocked
+      return original(dir)
+    })
+    const publish = vi.fn()
+    const loading = describeProjects([copy, source], publish)
+    try {
+      await vi.waitFor(() => expect(publish).toHaveBeenCalledWith({ path: source, source: null, worktree: false, branch: null }))
+      expect(publish).toHaveBeenCalledTimes(1)
+    } finally {
+      release()
+      await loading
+      inspect.mockRestore()
+    }
+    expect(publish).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps an unavailable copy’s cached identity without saving a false source', async () => {
+    const [known] = await describeProjects([copy])
+    rmSync(copy, { recursive: true, force: true })
+    const publish = vi.fn()
+    expect(await describeProjects([copy], publish, known ? [known] : [])).toEqual([known])
+    expect(publish).not.toHaveBeenCalled()
   })
 
   it('preserves a selected subdirectory instead of expanding access to the repository root', async () => {

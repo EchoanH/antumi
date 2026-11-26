@@ -2,6 +2,7 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'electron-vite'
 import type { Plugin } from 'vite'
 import { communityThemePackages } from './community-theme-packages.vite'
+import { WALLPAPER_SCHEME } from './src/shared/wallpaper'
 
 // Everything lives in devDependencies so electron-vite bundles it (including the
 // TS-source @antumi/protocol) instead of externalizing it into a runtime require. playwright-core
@@ -9,13 +10,13 @@ import { communityThemePackages } from './community-theme-packages.vite'
 // resolve, so it stays a dependency, required at run time from the app's own node_modules. ws
 // asks for two such modules too, inside a try: left unresolved, it does without them.
 
-const CSP = [
+export const PRODUCTION_CSP = [
   "default-src 'self'",
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
-  // Task images arrive from core as blob: URLs, and images a reply names through main's preview
-  // protocol; nothing is ever loaded from the web.
-  "img-src 'self' data: blob: antumi-preview:",
+  // Task images arrive from core as blob: URLs, reply images through main's preview protocol, and
+  // the custom wallpaper through main's read-only wallpaper protocol; nothing loads from the web.
+  `img-src 'self' data: blob: antumi-preview: ${WALLPAPER_SCHEME}:`,
   "font-src 'self' data:",
   // Copying an attachment fetches its in-memory object URL before writing a PNG to the clipboard.
   'connect-src ws://127.0.0.1:* blob:',
@@ -25,14 +26,14 @@ const CSP = [
 ].join('; ')
 
 // Build-only: the dev server injects an inline React Refresh preamble a strict CSP would block.
-function productionCsp(): Plugin {
+export function productionCsp(): Plugin {
   return {
     name: 'antumi-production-csp',
     apply: 'build',
     transformIndexHtml: () => [
       {
         tag: 'meta',
-        attrs: { 'http-equiv': 'Content-Security-Policy', content: CSP },
+        attrs: { 'http-equiv': 'Content-Security-Policy', content: PRODUCTION_CSP },
         injectTo: 'head-prepend'
       }
     ]

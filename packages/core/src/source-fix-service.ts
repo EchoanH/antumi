@@ -77,6 +77,15 @@ export class SourceFixService {
         this.update({ id: run.id, taskId: null, state: report.fix.task ? 'queued' : 'waiting-user', proposal: report.fix.task, urls: [], message: report.fix.task ? null : '中枢尚未提交完整任务提案', attempts: 0, revision: null }, {})
       }
     }
+    // A wait on the user's answer or approval ends once it is given; every other wait is a person's to clear.
+    for (const record of this.store.list()) {
+      if (record.state !== 'waiting-user' || !record.awaitsAnswer) continue
+      const run = runs.find((each) => each.id === record.id)
+      const task = record.taskId ? this.deps.task(record.taskId) : null
+      const conversation = task ? this.deps.conversation(task) : null
+      if (!run || !this.deps.allowed(run) || !conversation || conversation.chat?.turn === 'awaiting' || conversation.chat?.request) continue
+      this.update(record, { state: 'working', awaitsAnswer: false, message: null })
+    }
     // Reserve before awaiting work; independent tasks can initialize and run concurrently.
     const work: Promise<void>[] = []
     const records = this.store.list()
@@ -149,7 +158,7 @@ export class SourceFixService {
       const chat = this.deps.conversation(task)
       if (!chat || chat.sessionId === null) { this.update(record, { state: 'waiting-user', message: '任务会话已退出，请打开任务继续' }); return }
       if (chat.chat?.turn === 'running' || chat.starting) return
-      if (chat.chat?.turn !== 'idle') { this.update(record, { state: 'waiting-user', message: '修复需要用户回答或批准' }); return }
+      if (chat.chat?.turn !== 'idle') { this.update(record, { state: 'waiting-user', awaitsAnswer: true, message: '修复需要用户回答或批准' }); return }
       if (task.status !== 'running') { this.update(record, { state: 'handed-over', message: '用户已改变任务阶段' }); return }
       const report = this.deps.taskReport(task)
       if (report?.outcome !== 'delivered' || (record.reportAt !== undefined && report.updatedAt <= record.reportAt)) { this.update(record, { state: 'waiting-user', message: 'Agent 未交付可验证的修复，请查看任务总结' }); return }

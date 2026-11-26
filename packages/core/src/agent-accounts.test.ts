@@ -49,6 +49,7 @@ describe('AgentAccountStore', () => {
     bin = path.join(root, 'bin')
     mkdirSync(bin)
     vi.stubEnv('PATH', bin)
+    vi.stubEnv('GEMINI_HOME', path.join(root, 'own-gemini'))
     signIns = []
     exits = []
     changes = []
@@ -69,8 +70,8 @@ describe('AgentAccountStore', () => {
     const accounts = store()
     await accounts.load()
     expect(accounts.list()).toMatchObject({
-      accounts: [{ id: 'default', agent: 'claude', signedIn: false }, { id: 'default', agent: 'codex', signedIn: false }, { id: 'default', agent: 'codebuddy' }],
-      active: { claude: 'default', codex: 'default', codebuddy: 'default' },
+      accounts: [{ id: 'default', agent: 'claude', signedIn: false }, { id: 'default', agent: 'codex', signedIn: false }, { id: 'default', agent: 'antigravity', signedIn: false }, { id: 'default', agent: 'codebuddy' }],
+      active: { claude: 'default', codex: 'default', antigravity: 'default', codebuddy: 'default' },
       autoSwitch: true
     })
     expect(await accounts.launch('claude')).toEqual({ id: 'default', env: null })

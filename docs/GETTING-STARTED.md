@@ -42,11 +42,13 @@
 
 ## 多个账号
 
-**可选，** 只有 Claude Code 和 Codex 支持。
+**可选，** Claude Code、Codex、Antigravity 和 CodeBuddy 支持。
 
 ![设置 → 账号：额度用完自动换号，以及添加账号](assets/guide/accounts.png)
 
-在 [**设置 → 账号**](antumi:settings/accounts) 点 **添加 Claude Code 账号**（或 Codex），再点 **添加并登录**，在下方终端登录后点 **设为当前**。额度用完时默认自动换到下一个账号，会话接着跑。
+在 [**设置 → 账号**](antumi:settings/accounts) 点 **添加 Claude Code 账号**（或 Codex、Antigravity），再点 **添加并登录**，在下方终端登录后点 **设为当前**。额度用完时默认自动换到下一个账号，会话接着跑。
+
+Antigravity 在浏览器中授权 Google 账号，终端显示进度。可分别查看各账号额度；服务把额度不足作为普通回复时，当轮不会自动重试。
 
 ## 任务来源
 

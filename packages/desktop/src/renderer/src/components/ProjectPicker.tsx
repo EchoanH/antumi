@@ -8,7 +8,7 @@ import { Popover } from './Popover'
 import { ChevronRightIcon, FolderIcon } from './icons'
 import { ProjectIcon } from './ProjectIcon'
 import { projectName } from '../project-names'
-import { availableProjects, recentProjectChoices, useProjectDescriptions } from '../project-choices'
+import { availableProjects, useRecentProjectChoices, useProjectDescriptions } from '../project-choices'
 import { ProjectChoiceLabel, projectChoiceTitle } from './ProjectChoiceLabel'
 
 export { projectName }
@@ -142,9 +142,11 @@ export function ProjectPicker({
   maxProjects?: number
   compact?: boolean
 }) {
-  // Open menu → the recent projects it offers; null while closed.
-  const [menu, setMenu] = useState<ProjectChoice[] | null>(null)
-  const close = useCallback(() => setMenu(null), [])
+  const [open, setOpen] = useState(false)
+  const choices = useRecentProjectChoices(open)
+  const [forgotten, setForgotten] = useState<readonly string[]>([])
+  const recent = choices.filter((choice) => !forgotten.includes(choice.path) && (!choice.source || !forgotten.includes(choice.source)))
+  const close = useCallback(() => setOpen(false), [])
   // An additional project's right-click menu, which makes it the primary one.
   const [projectMenu, setProjectMenu] = useState<{ path: string; at: MenuPoint } | null>(null)
   const closeProjectMenu = useCallback(() => setProjectMenu(null), [])
@@ -157,37 +159,24 @@ export function ProjectPicker({
   }
 
   const add = (projectPath: string) => {
-    setMenu(null)
+    setOpen(false)
     onChange([...paths, projectPath])
   }
 
   const browse = async (recent: readonly ProjectChoice[]) => {
-    setMenu(null)
+    setOpen(false)
     const picked = await pickFolder(recent[0] ? parentDir(recent[0].source ?? recent[0].path) : undefined)
     if (picked) {
       add(picked)
     }
   }
 
-  const open = async () => {
-    const recent = (await perform(recentProjectChoices)) ?? []
-    const { sources, copies } = availableProjects(recent, paths)
-    // Nothing to choose from yet: go straight to the folder dialog.
-    if (sources.length + copies.length === 0 && canPickFolder()) {
-      await browse(recent)
-    } else {
-      setMenu(recent)
-    }
-  }
-
   const forget = async (projectPath: string) => {
-    const removed = (menu ?? []).filter((choice) => choice.path === projectPath || choice.source === projectPath)
+    const removed = recent.filter((choice) => choice.path === projectPath || choice.source === projectPath)
     if (await perform(async (rpc) => {
       for (const choice of removed) await rpc.call('projects.forget', { path: choice.path })
       return true
-    })) {
-      setMenu((current) => current?.filter((choice) => !removed.includes(choice)) ?? null)
-    }
+    })) setForgotten((known) => [...known, projectPath, ...removed.map((choice) => choice.path)])
   }
 
   return (
@@ -240,19 +229,19 @@ export function ProjectPicker({
             type="button"
             className="chip chip-add-button"
             aria-haspopup="dialog"
-            aria-expanded={menu !== null}
-            onClick={() => (menu ? setMenu(null) : void open())}
+            aria-expanded={open}
+            onClick={() => setOpen(!open)}
           >
             {compact && paths.length === 0 ? (
               <>{tr('ProjectPicker.noProject_1431', { value1: <FolderIcon /> })}</>
             ) : t('ProjectPicker.addProject_1432')}
           </button>
-          {menu && (
+          {open && (
             <ProjectMenu
-              recent={menu}
+              recent={recent}
               selected={paths}
               onAdd={add}
-              onBrowse={() => void browse(menu)}
+              onBrowse={() => void browse(recent)}
               onForget={(projectPath) => void forget(projectPath)}
               onClose={close}
             />

@@ -7,7 +7,7 @@ export function IntegrationHelp({ kind }: { kind: 'source' | 'agent' }) {
   const locale = useLocale((state) => state.locale)
   const source = kind === 'source'
   const title = t(source ? 'IntegrationHelp.sourceTitle' : 'IntegrationHelp.agentTitle')
-  const guide = `${PROJECT_GITHUB_URL}/blob/main/docs/${source ? 'PLUGINS.md' : 'ARCHITECTURE.md#新增-agent'}`
+  const guide = `${PROJECT_GITHUB_URL}/blob/main/docs/${source ? 'PLUGINS.md' : locale === 'zh-CN' ? 'ADDING-AN-AGENT.md' : 'ADDING-AN-AGENT.en.md'}`
   return <div className="integration-help">
     <p className="integration-help-title">{title}</p>
     <p className="settings-row-description">{t(source ? 'IntegrationHelp.sourceDescription' : 'IntegrationHelp.agentDescription')}</p>

@@ -141,7 +141,7 @@ export function PluginPageView({ plugin, page, visible = true }: PluginPageRef &
     }
     window.addEventListener('message', onMessage)
     const observer = new MutationObserver(() => sendTheme.current?.())
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-palette', 'data-backdrop', 'style'] })
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-palette', 'data-backdrop', 'data-backdrop-scope', 'style'] })
     const appearance = window.matchMedia('(prefers-color-scheme: dark)')
     const onAppearance = () => sendTheme.current?.()
     appearance.addEventListener('change', onAppearance)
