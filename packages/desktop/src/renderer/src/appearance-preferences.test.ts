@@ -54,3 +54,34 @@ describe('appearance group defaults', () => {
     expect(current.markdownTheme).toBe('newsprint')
   })
 })
+
+describe('backdrop and glass group defaults', () => {
+  const wallpaper = { ext: 'png' as const, version: '123-16', size: 16 }
+  const current = {
+    ...DEFAULT_PREFERENCES, backdropMode: 'image' as const, backdropPreset: 'forest' as const, backdropScope: 'frame' as const,
+    backdropOpacity: 80, backdropBlur: 20, backdropSurfaceOpacity: 90, backdropGlassBlur: 24, backdropFit: 'contain' as const,
+    wallpaper, chatFontSize: 18, terminalFontSize: 16, language: 'en' as const, notifications: false
+  }
+  it('compares every backdrop style knob and excludes the asset stamp', () => {
+    expect(changedAppearancePreferences(current, DEFAULT_PREFERENCES, 'colors')).toEqual([
+      'backdropMode', 'backdropPreset', 'backdropScope', 'backdropOpacity', 'backdropBlur', 'backdropSurfaceOpacity', 'backdropGlassBlur', 'backdropFit'
+    ])
+    expect(changedAppearancePreferences({ ...DEFAULT_PREFERENCES, wallpaper }, DEFAULT_PREFERENCES, 'colors')).toEqual([])
+  })
+  it('resets styling without deleting uploaded image metadata or other sections', () => {
+    const reset = withAppearanceDefaults(current, DEFAULT_PREFERENCES, 'colors')
+    expect(changedAppearancePreferences(reset, DEFAULT_PREFERENCES, 'colors')).toEqual([])
+    expect(reset.backdropMode).toBe('none')
+    expect(reset.wallpaper).toBe(wallpaper)
+    expect(reset).toMatchObject({ chatFontSize: 18, terminalFontSize: 16, language: 'en', notifications: false })
+    expect(current.backdropMode).toBe('image')
+    expect(current.backdropBlur).toBe(20)
+  })
+  it('keeps every backdrop parameter and image while resetting another section', () => {
+    for (const section of ['chat', 'terminal', 'markdown', 'language'] as const) {
+      const reset = withAppearanceDefaults(current, DEFAULT_PREFERENCES, section)
+      expect(changedAppearancePreferences(reset, current, 'colors')).toEqual([])
+      expect(reset.wallpaper).toBe(wallpaper)
+    }
+  })
+})

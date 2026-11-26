@@ -4,7 +4,7 @@ export const APPEARANCE_SECTIONS = ['colors', 'chat', 'markdown', 'terminal', 'l
 export type AppearanceSection = typeof APPEARANCE_SECTIONS[number]
 
 const SECTION_PREFERENCES = {
-  colors: ['theme', 'palette', 'backdrop'],
+  colors: ['theme', 'palette', 'backdropMode', 'backdropPreset', 'backdropScope', 'backdropOpacity', 'backdropBlur', 'backdropSurfaceOpacity', 'backdropGlassBlur', 'backdropFit'],
   chat: ['chatFontSize', 'chatLineHeight', 'chatParagraphSpacing', 'chatFont', 'chatFontFamily', 'chatCjkFontFamily', 'chatWidth', 'foldTurns'],
   markdown: ['markdownTheme'],
   terminal: ['codeFontFamily', 'codeCjkFontFamily', 'terminalFontSize', 'terminalLineHeight', 'colorPrompt'],
