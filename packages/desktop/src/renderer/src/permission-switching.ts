@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 type PermissionSwitchState = { switching: Record<string, string> }
-const usePermissionSwitchStore = create<PermissionSwitchState>(() => ({ switching: {} }))
+const usePermissionSwitchStore = create<PermissionSwitchState>()(() => ({ switching: {} }))
 
 export function beginPermissionSwitch(conversationId: string, mode: string): void {
   usePermissionSwitchStore.setState((state) => ({ switching: { ...state.switching, [conversationId]: mode } }))

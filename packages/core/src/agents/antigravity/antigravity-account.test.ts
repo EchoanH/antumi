@@ -20,7 +20,8 @@ let root: string
 let own: string
 const credential = { client_id: 'client', client_secret: 'secret', refresh_token: 'refresh' }
 beforeEach(async () => {
-  root = await mkdtemp(path.join(os.tmpdir(), 'antumi-agy-accounts-'))
+  // macOS's tmpdir is behind a symlink; the tests compare real paths.
+  root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'antumi-agy-accounts-')))
   own = path.join(root, 'own')
   vi.stubEnv('GEMINI_HOME', own)
   setAntigravityRuntimeMode('managed-acp')
