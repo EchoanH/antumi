@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { AGENT_KINDS, agentDescriptor, AgentKind, MAX_SOURCE_REPORT, SourceTaskProposal, SourceFixProposal, SOURCE_OUTCOMES, SOURCE_REPORT_LIMIT, SOURCE_REPORT_TOOL, SOURCE_TASK_READ_TOOLS, type RpcConnection } from '@antumi/protocol'
+import { AGENT_KINDS, agentDescriptor, AgentKind, MAX_SOURCE_REPORT, SourceTaskProposal, SOURCE_OUTCOMES, SOURCE_REPORT_LIMIT, SOURCE_REPORT_TOOL, SOURCE_TASK_CREATE_TOOL, SOURCE_TASK_READ_TOOLS, type RpcConnection } from '@antumi/protocol'
 import { reportRules, RESULT_FIELDS } from './source-report-prompt'
 
 type WithCore = <T>(action: (rpc: RpcConnection) => Promise<T>) => Promise<T>
@@ -7,13 +7,14 @@ type Result = { content: { type: 'text'; text: string }[]; isError: boolean }
 
 // summary alone is the tool as it first was; the rest says how the work ended, for core to act on.
 const Note = z.string().trim().max(SOURCE_REPORT_LIMIT).optional()
-const ReportInput = z.object({ summary: z.string().trim().min(1).max(MAX_SOURCE_REPORT), outcome: z.enum(SOURCE_OUTCOMES).optional(), verification: Note, question: Note, blocker: Note, fix: SourceFixProposal.optional() })
+const ReportInput = z.object({ summary: z.string().trim().min(1).max(MAX_SOURCE_REPORT), outcome: z.enum(SOURCE_OUTCOMES).optional(), verification: Note, question: Note, blocker: Note })
 const text = (value: string, isError = false): Result => ({ content: [{ type: 'text', text: value }], isError })
 
 // The summary tool for the agent of a task or investigation from an issue that can be written back
-// to (docs/SOURCE-WRITEBACK.md). It drafts; Antumi posts, by the user's rules or hand.
-export function sourceToolsOverCore(withCore: WithCore, conversationId: string) {
-  return [
+// to (docs/SOURCE-WRITEBACK.md). It drafts; Antumi posts, by the user's rules or hand. tasks: an
+// automatic investigation, which may open the issue's task where its source allows (core decides).
+export function sourceToolsOverCore(withCore: WithCore, conversationId: string, { tasks = true }: { tasks?: boolean } = {}) {
+  const tools = [
     {
       spec: {
         name: SOURCE_REPORT_TOOL,
@@ -26,13 +27,7 @@ export function sourceToolsOverCore(withCore: WithCore, conversationId: string) 
             outcome: { type: 'string', enum: [...SOURCE_OUTCOMES], description: '这次工作的结果：delivered 已交付等验证，answered 只答复了问题，needs_input 缺信息无法继续，blocked 受阻' },
             verification: { type: 'string', description: '给验证的人看：怎么验、影响哪些地方。一两句，会作为单独一段附在评论后面' },
             question: { type: 'string', description: 'outcome 是 needs_input 时：要问报告人的一个具体问题' },
-            blocker: { type: 'string', description: 'outcome 是 blocked 时：被什么挡住了' },
-            fix: { type: 'object', description: '自动排查的分流建议，由 core 按用户授权决定是否创建修复任务；不直接执行。', properties: {
-              decision: { type: 'string', enum: ['repair', 'needs_input', 'no_fix'] },
-              evidence: { type: 'string', description: '缺陷证据与定位依据，最多 2000 字', maxLength: 2000 },
-              plan: { type: 'string', description: '建议的修复范围与验证方法，最多 4000 字', maxLength: 4000 },
-              task: { ...z.toJSONSchema(SourceTaskProposal), description: 'decision 为 repair 时必须提交完整任务提案：标题、详情、执行 Agent、模型、推理强度、服务商、项目与分支起点由中枢决定。先用 source_task_options 查询候选，再用 source_task_catalog 查询模型；未指定模型等表示使用所选 Agent 的默认值，不继承排查配置。权限由用户策略控制，不能在提案里设置。' }
-            }, required: ['decision', 'evidence', 'plan'], additionalProperties: false }
+            blocker: { type: 'string', description: 'outcome 是 blocked 时：被什么挡住了' }
           },
           required: ['summary'],
           additionalProperties: false
@@ -55,7 +50,7 @@ export function sourceToolsOverCore(withCore: WithCore, conversationId: string) 
     {
       spec: {
         name: SOURCE_TASK_READ_TOOLS[0],
-        description: '只读查询可用于任务提案的已登记项目、可用外部智能体及模型服务商。返回项目绝对路径；可结合事项所属项目、仓库地址、README 和代码判断任务应使用的项目，不需要用户维护项目映射。不会创建或启动任务。',
+        description: `只读查询新建任务可用的已登记项目、可用外部智能体及模型服务商。返回项目绝对路径；可结合事项所属项目、仓库地址、README 和代码判断任务应使用的项目，不需要用户维护项目映射。不会创建或启动任务，新建用 ${SOURCE_TASK_CREATE_TOOL}。`,
         inputSchema: { type: 'object', properties: {}, required: [], additionalProperties: false },
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
       },
@@ -72,7 +67,7 @@ export function sourceToolsOverCore(withCore: WithCore, conversationId: string) 
     {
       spec: {
         name: SOURCE_TASK_READ_TOOLS[1],
-        description: '只读查询某个执行 Agent 的真实模型目录和可用推理强度。提交任务前先查询，选择返回的模型 ID 和 effort；不指定或填 null 表示使用该 Agent 的默认值。不会创建或启动任务。',
+        description: `只读查询某个执行 Agent 的真实模型目录和可用推理强度。新建任务前先查询，选择返回的模型 ID 和 effort；不指定或填 null 表示使用该 Agent 的默认值。不会创建或启动任务，新建用 ${SOURCE_TASK_CREATE_TOOL}。`,
         inputSchema: { type: 'object', properties: { agent: { type: 'string', enum: [...AGENT_KINDS] }, modelProvider: { type: 'string' } }, required: ['agent'], additionalProperties: false },
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
       },
@@ -82,6 +77,29 @@ export function sourceToolsOverCore(withCore: WithCore, conversationId: string) 
         try { return await withCore(async (rpc) => text(JSON.stringify(await rpc.call('conversations.chatCatalog', args.data)))) }
         catch (error) { return text(error instanceof Error ? error.message : String(error), true) }
       }
+    },
+    {
+      spec: {
+        name: SOURCE_TASK_CREATE_TOOL,
+        description: '为这个事项新建一个任务并立即开始：执行 Agent 在独立工作区完成，通过项目的交付检查后交给用户验收，GitHub 仓库会自动创建 PR。只在自动排查且用户允许新建任务时可用；一个事项只能建一个任务，PR 类事项不能建。' +
+          `先用 ${SOURCE_TASK_READ_TOOLS[0]} 选项目和执行 Agent，用 ${SOURCE_TASK_READ_TOOLS[1]} 选模型和推理强度；不填模型等表示用该 Agent 的默认值。权限按用户的无人值守设置，不能在这里指定。被退回时按错误修正后再调用。`,
+        inputSchema: {
+          ...Object.fromEntries(Object.entries(z.toJSONSchema(SourceTaskProposal)).filter(([key]) => key !== '$schema')),
+          description: 'details 写清任务目标和验收标准，并要求做完后检查、提交，再用 source_report 交付。repos 的第一个项目必须可写；startRef 是分支起点，只能是 HEAD、refs/heads/<分支> 或 refs/remotes/origin/<分支>，不填用远端默认分支。'
+        },
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+      },
+      run: async (raw: Record<string, unknown>): Promise<Result> => {
+        const args = SourceTaskProposal.safeParse(raw)
+        if (!args.success) return text(`参数不对：${args.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('；')}`, true)
+        try {
+          const task = await withCore((rpc) => rpc.call('sources.createTask', { id: conversationId, task: args.data }))
+          return text(`已新建任务「${task.title}」（${task.id}），会在执行 Agent 有空位时开始。之后由 Antumi 推进：检查通过后交给用户验收。`)
+        } catch (error) {
+          return text(`没有新建：${error instanceof Error ? error.message : String(error)}`, true)
+        }
+      }
     }
   ]
+  return tasks ? tools : tools.filter((tool) => tool.spec.name !== SOURCE_TASK_CREATE_TOOL)
 }

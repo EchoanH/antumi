@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import {
   AutoInvestigationConfig, AutoInvestigationRun, agentDescriptor, type AgentKind, type ChatPermissionMode,
-  type SourceTaskProposal, type SourceFixInfo, type UnattendedMode, type AutoInvestigationInfo, type AutoInvestigationSummary, type Conversation, type SourceIssue
+  type SourceTaskProposal, type SourceFixInfo, type Task, type UnattendedMode, type AutoInvestigationInfo, type AutoInvestigationSummary, type Conversation, type SourceIssue
 } from '@antumi/protocol'
 import { Rejection } from './rejection'
 import { SourceInvestigationStore, investigationInstance, type InvestigationRun, type InvestigationSettings } from './source-investigation-store'
@@ -21,7 +21,8 @@ type Deps = {
   launch(run: InvestigationRun): Promise<void>
   retry(run: InvestigationRun): Promise<void>
   resumeImages?(run: InvestigationRun): Promise<void>
-  validateTask?(proposal: SourceTaskProposal, run: InvestigationRun): Promise<void>
+  createTask?(proposal: SourceTaskProposal, run: InvestigationRun): Promise<Task>
+  // The user going on with a conversation themselves: stops a task core advances there.
   takeoverFix?(id: string): void
   changed(provider: string, instance: string, info: AutoInvestigationInfo, run?: AutoInvestigationRun): void
 }
@@ -189,14 +190,12 @@ export class SourceInvestigationService {
     return !!run && ACTIVE.has(run.status)
   }
   // Nobody watches an automatic run, so what its agent asks is answered for the user until they
-  // take it over: what only reads goes through, the rest is refused unless the run may do anything;
-  // a coordinator never carries out a plan. A question it waits on still counts, so an ask right
-  // after it is answered too.
+  // take it over: what only reads goes through, the rest is refused unless the run may do anything.
+  // A question it waits on still counts, so an ask right after it is answered too.
   unattended(id: string): { mode: UnattendedMode; permission: ChatPermissionMode; reads: 'allow' | 'only' } | null {
     const run = this.store.run(id)
     const config = run?.config
     if (!run || !config?.agent || !(ACTIVE.has(run.status) || (run.status === 'waiting-user' && run.reason === 'user-input'))) return null
-    if (config.autoFix?.enabled) return { mode: 'acceptEdits', permission: agentDescriptor(config.agent).readOnlyMode, reads: 'only' }
     return { mode: config.permissionMode === 'bypass' ? 'bypass' : 'acceptEdits', permission: investigationPermission(config.agent, config.permissionMode), reads: 'allow' }
   }
   managed(id: string): boolean {
@@ -265,19 +264,21 @@ export class SourceInvestigationService {
     if (!QUEUED.has(run.status)) throw new Rejection('invalid-params', '只能取消尚未开始的排查')
     return AutoInvestigationRun.parse(this.update(run, { status: 'cancelled', retryAt: null, canRetry: false }))
   }
-  async validateTask(id: string, proposal: SourceTaskProposal): Promise<void> {
-    // The agent submitting proves it went on, even before its answer's items reached a pass.
+  async createTask(id: string, proposal: SourceTaskProposal): Promise<Task> {
+    // The agent calling proves it went on, even before its answer's items reached a pass.
     const run = this.resume(this.require(id))
-    if (!ACTIVE.has(run.status) || !run.config?.autoFix?.enabled) throw new Rejection('invalid-configuration', '这个会话不在自动任务分流阶段')
-    await this.deps.validateTask?.(proposal, run)
+    if (!ACTIVE.has(run.status)) throw new Rejection('invalid-configuration', '这个会话已不是进行中的自动排查，不能新建任务')
+    if (!this.store.setting(run.provider, run.instance)?.config.autoFix?.enabled) throw new Rejection('invalid-configuration', '这个来源的自动排查不允许新建任务')
+    if (!this.deps.createTask) throw new Rejection('invalid-configuration', '新建任务尚未就绪')
+    return this.deps.createTask(proposal, run)
   }
-  fixCandidates(): InvestigationRun[] { return this.store.runs().filter((run) => run.status === 'completed' && !!run.config?.autoFix?.enabled) }
+  allowsTasks(provider: string, instance: string): boolean { return !!this.store.setting(provider, instance)?.config.autoFix?.enabled }
+  fixCandidates(): InvestigationRun[] { return this.store.runs() }
+  // A task once opened goes on whatever becomes of the investigation, while the source still allows it.
   fixAllowed(run: InvestigationRun): boolean {
     const setting = this.store.setting(run.provider, run.instance)
-    const current = this.store.run(run.id)
     const snapshot = this.deps.snapshot(run.provider, run.instance)
-    return !!setting?.config.enabled && !!setting.config.autoFix?.enabled && current?.status === 'completed' && snapshot?.healthy === true && snapshot.binding === run.binding && snapshot.scope === run.scope
-      && JSON.stringify(setting.config.autoFix) === JSON.stringify(run.config?.autoFix)
+    return !!setting?.config.enabled && !!setting.config.autoFix?.enabled && snapshot?.healthy === true && snapshot.binding === run.binding && snapshot.scope === run.scope
   }
   fixChanged(id: string, fix: SourceFixInfo): void {
     const run = this.store.run(id)

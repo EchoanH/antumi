@@ -1,5 +1,6 @@
 import { RESERVED_MCP_SERVER_NAME, isCommandTool, isPlanApproval, mcpToolParts, type ChatItem, type UnattendedMode } from '@antumi/protocol'
 import type { ChatAnswer } from './chat-driver'
+import { antumiReadTools } from './agent-command'
 import { readOnlyCommand } from './command-rules'
 
 export const UNATTENDED_DENIAL = '这是无人值守运行，当前模式不允许这一步，已自动拒绝。换一种在项目内完成的做法；做不到就跳过，并在最后的总结里写清楚需要我做什么。'
@@ -9,14 +10,16 @@ export const READ_ONLY_DENIAL = '这是无人值守的自动排查，只自动�
 const READ_TOOLS = new Set(['Read', 'Glob', 'Grep', 'LS', 'WebFetch', 'WebSearch', 'read', 'search', 'fetch', 'think'])
 
 // What a run nobody watches lets through when it may read: a tool that only reads, a command that
-// changes nothing (judged by its full text: an approval's title holds only its first line), and
-// the user's MCP tools, which a run that only reads is given only the read-only ones of. Antumi's
-// own that ask act (a browser page, a terminal), so they are not among them.
+// changes nothing (judged by its full text: an approval's title holds only its first line), the
+// user's MCP tools, which a run that only reads is given only the read-only ones of, and Antumi's
+// own that ask the user nothing anywhere (a planning Claude still asks for them). Antumi's that act
+// on a browser page or a terminal are not among them.
 function onlyReads(item: Extract<ChatItem, { kind: 'approval' }>, command: string | null): boolean {
   if (isCommandTool(item.tool)) return command !== null && readOnlyCommand(command)
   if (READ_TOOLS.has(item.tool)) return true
   const mcp = mcpToolParts(item.tool, null)
-  return !!mcp && mcp.server !== RESERVED_MCP_SERVER_NAME
+  if (!mcp) return false
+  return mcp.server !== RESERVED_MCP_SERVER_NAME || antumiReadTools(true).includes(mcp.name)
 }
 // How long a question waits for the user, notified as any question is, before it is answered for them.
 export const UNATTENDED_QUESTION_WAIT_MS = 10 * 60_000

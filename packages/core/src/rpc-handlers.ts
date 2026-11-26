@@ -971,13 +971,13 @@ export function createRpcHandlers(
     'sources.saveWriteback': ({ provider, instance, config, lanes, options }) => sources.saveWriteback(provider, instance, config, lanes, options),
     'sources.writebackPlan': ({ target, trigger }) => writer().plan(target, trigger),
     // A task's chat writes for the task, an investigation for itself.
-    'sources.saveReport': async ({ conversationId, text, ...result }) => {
+    'sources.saveReport': ({ conversationId, text, ...result }) => {
       const conversation = conversations.get(conversationId)
-      if (conversation.autoInvestigationId && result.fix?.decision === 'repair' && sources.automatic?.pending(conversation.id)?.config?.autoFix?.enabled) {
-        if (!result.fix.task) throw new Rejection('invalid-params', '请在 fix.task 中提交完整任务参数：标题、详情、执行 Agent 和项目')
-        await sources.automatic.validateTask(conversation.id, result.fix.task)
-      }
       return writer().saveReport(conversation.taskId ? { kind: 'task', id: conversation.taskId } : { kind: 'conversation', id: conversation.id }, text, result)
+    },
+    'sources.createTask': ({ id, task }) => {
+      if (!sources.automatic) throw new Rejection('invalid-configuration', '自动排查尚未就绪')
+      return sources.automatic.createTask(id, task)
     }
   }
 }

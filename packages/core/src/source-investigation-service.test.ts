@@ -26,7 +26,7 @@ describe('automatic source investigations', () => {
   let launched: InvestigationRun[]
   let retried: InvestigationRun[]
   let recoveredImages: string[]
-  const validateTask = vi.fn(async (_proposal: SourceTaskProposal, _run: InvestigationRun) => {})
+  const createTask = vi.fn(async (proposal: SourceTaskProposal, _run: InvestigationRun) => tasks.create(proposal.title))
   const snapshot = () => snapshots.get('demo/default')!
   function makeService() {
     service = new SourceInvestigationService(store, {
@@ -43,7 +43,7 @@ describe('automatic source investigations', () => {
       },
       retry: async (run) => { retried.push(run); edit(run.id, { preparing: { step: 'issue', error: null } }) },
       resumeImages: async (run) => { recoveredImages.push(run.id) },
-      validateTask,
+      createTask,
       changed: () => {}
     }, () => clock)
   }
@@ -70,14 +70,14 @@ describe('automatic source investigations', () => {
     clock = new Date(2026, 10, 11, 12).getTime()
     snapshots = new Map([['demo/default', { provider: 'demo', instance: 'default', binding: 'demo-account', scope: 'mine', issues: [issue('D-1')], handled: new Set(), healthy: true, refreshedAt: clock }]])
     conversations = new Map(); idle = new Set(); receipts = new Map(); capacity = true; availability = null; validation = null; launched = []; retried = []; recoveredImages = []
-    validateTask.mockClear()
+    createTask.mockClear()
     makeService()
     service.reconciled()
   })
   afterEach(async () => { await service.stop(); tasks.close(); rmSync(dir, { recursive: true, force: true }) })
 
   it('keeps repair policy when an older client edits investigation settings and can disable the source', async () => {
-    const autoFix = { enabled: true, typeIds: ['bug'], permissionMode: 'acceptEdits' as const, concurrency: 1, maxOpenTasks: 10 }
+    const autoFix = { enabled: true }
     await service.save('demo', 'default', { ...enabled, autoFix })
     await service.save('demo', 'default', { ...enabled, note: 'Changed by older client' })
     expect(service.info('demo', 'default').config.autoFix).toEqual(autoFix)
@@ -87,27 +87,36 @@ describe('automatic source investigations', () => {
 
   it('allows the coordinator to choose projects without a required project or type list', async () => {
     await expect(service.save('demo', 'default', { ...enabled, projectPaths: [] })).rejects.toThrow()
-    const autoFix = { enabled: true, typeIds: [], permissionMode: 'acceptEdits' as const, concurrency: 1, maxOpenTasks: 10 }
+    const autoFix = { enabled: true }
     await service.save('demo', 'default', { ...enabled, projectPaths: [], autoFix })
     await discover('D-1', 'D-2')
     expect(launched[0]?.config).toMatchObject({ projectPaths: [], autoFix })
   })
 
-  it('returns proposal validation errors to the active coordinator so it can correct them', async () => {
-    const autoFix = { enabled: true, typeIds: [], permissionMode: 'acceptEdits' as const, concurrency: 1, maxOpenTasks: 10 }
+  it('returns task creation errors to the active investigation so it can correct them', async () => {
+    const autoFix = { enabled: true }
     await service.save('demo', 'default', { ...enabled, autoFix })
     await discover('D-1', 'D-2')
     const id = launched[0]!.id
     await begin(id)
     const proposal: SourceTaskProposal = { title: 'Fix API', details: 'Repair and test.', agent: 'claude', model: 'missing-model', repos: [{ path: '/api' }] }
-    validateTask.mockRejectedValueOnce(new Error('Model unavailable'))
-    await expect(service.validateTask(id, proposal)).rejects.toThrow('Model unavailable')
+    createTask.mockRejectedValueOnce(new Error('Model unavailable'))
+    await expect(service.createTask(id, proposal)).rejects.toThrow('Model unavailable')
     const corrected = { ...proposal, model: 'available-model' }
-    await expect(service.validateTask(id, corrected)).resolves.toBeUndefined()
-    expect(validateTask).toHaveBeenLastCalledWith(corrected, expect.objectContaining({ id }))
+    await expect(service.createTask(id, corrected)).resolves.toMatchObject({ title: 'Fix API' })
+    expect(createTask).toHaveBeenLastCalledWith(corrected, expect.objectContaining({ id }))
     service.takeover(id)
-    await expect(service.validateTask(id, corrected)).rejects.toThrow()
-    expect(validateTask).toHaveBeenCalledTimes(2)
+    await expect(service.createTask(id, corrected)).rejects.toThrow()
+    expect(createTask).toHaveBeenCalledTimes(2)
+  })
+
+  it('opens no task where the source does not allow it', async () => {
+    await service.save('demo', 'default', enabled)
+    await discover('D-1', 'D-2')
+    const id = launched[0]!.id
+    await begin(id)
+    await expect(service.createTask(id, { title: 'Fix API', details: 'Repair and test.', agent: 'claude', repos: [{ path: '/api' }] })).rejects.toThrow('不允许新建任务')
+    expect(createTask).not.toHaveBeenCalled()
   })
 
   it('baselines raw existing issues, discovers once, and never recreates a deleted conversation', async () => {
@@ -171,7 +180,7 @@ describe('automatic source investigations', () => {
   })
 
   it('goes on after an approval, so the coordinator can still propose a task', async () => {
-    const autoFix = { enabled: true, typeIds: [], permissionMode: 'acceptEdits' as const, concurrency: 1, maxOpenTasks: 10 }
+    const autoFix = { enabled: true }
     await service.save('demo', 'default', { ...enabled, autoFix })
     await discover('D-1', 'D-2')
     const id = launched[0]!.id
@@ -186,14 +195,14 @@ describe('automatic source investigations', () => {
     service.answered(id)
     expect(store.run(id)).toMatchObject({ status: 'running', reason: null })
     const proposal: SourceTaskProposal = { title: 'Fix API', details: 'Repair and test.', agent: 'claude', repos: [{ path: '/api' }] }
-    await expect(service.validateTask(id, proposal)).resolves.toBeUndefined()
+    await expect(service.createTask(id, proposal)).resolves.toBeTruthy()
     idle.add(id); edit(id, { chat: { turn: 'idle' } })
     await service.tick()
     expect(store.run(id)?.status).toBe('completed')
   })
 
   it('takes the coordinator report before a pass has seen the answer, and finishes a denied request', async () => {
-    const autoFix = { enabled: true, typeIds: [], permissionMode: 'acceptEdits' as const, concurrency: 1, maxOpenTasks: 10 }
+    const autoFix = { enabled: true }
     await service.save('demo', 'default', { ...enabled, autoFix })
     await discover('D-1', 'D-2', 'D-3')
     const [first] = launched
@@ -201,7 +210,7 @@ describe('automatic source investigations', () => {
     edit(first!.id, { chat: { turn: 'awaiting' } })
     await service.tick()
     edit(first!.id, { chat: { turn: 'running' } })
-    await expect(service.validateTask(first!.id, { title: 'Fix API', details: 'Repair and test.', agent: 'claude', repos: [{ path: '/api' }] })).resolves.toBeUndefined()
+    await expect(service.createTask(first!.id, { title: 'Fix API', details: 'Repair and test.', agent: 'claude', repos: [{ path: '/api' }] })).resolves.toBeTruthy()
     expect(store.run(first!.id)?.status).toBe('running')
     // Denied: the agent ends its turn reporting it is blocked, which completes rather than hands over.
     edit(first!.id, { chat: { turn: 'awaiting' } })
@@ -230,17 +239,17 @@ describe('automatic source investigations', () => {
     expect(store.run(id)?.status).toBe('waiting-user')
   })
 
-  it('answers for the user while it owns the run, reading only when it coordinates repairs', async () => {
-    const autoFix = { enabled: true, typeIds: [], permissionMode: 'bypass' as const, concurrency: 1, maxOpenTasks: 10 }
+  it('answers for the user in the picked mode while it owns the run, whether or not it may open tasks', async () => {
+    const autoFix = { enabled: true }
     await service.save('demo', 'default', { ...enabled, autoFix })
     await discover('D-1', 'D-2')
     const id = launched[0]!.id
-    expect(service.unattended(id)).toMatchObject({ mode: 'acceptEdits', reads: 'only' })
+    expect(service.unattended(id)).toMatchObject({ mode: 'acceptEdits', reads: 'allow' })
     await begin(id)
     edit(id, { chat: { turn: 'awaiting' } })
     await service.tick()
     expect(store.run(id)?.status).toBe('waiting-user')
-    expect(service.unattended(id)).toMatchObject({ reads: 'only' })
+    expect(service.unattended(id)).toMatchObject({ reads: 'allow' })
     service.takeover(id)
     expect(service.unattended(id)).toBeNull()
     await service.save('demo', 'default', { ...enabled, permissionMode: 'bypass', autoFix: { ...autoFix, enabled: false } })

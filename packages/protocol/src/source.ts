@@ -1,9 +1,9 @@
 import { z } from 'zod'
 import { SourceCommentState } from './source-comments'
-import { TextTranslations } from './localization'
+import { TextTranslations, type UiLocale } from './localization'
 import { TaskImage } from './attachments'
 import { AgentKind } from './agent'
-import { UnattendedMode, ChatPermissionMode } from './chat'
+import { ChatPermissionMode } from './chat'
 import { SourceWritebackConfig, WritebackLane, WritebackOptions, WritebackRuleHints, WritebackType } from './source-writeback-rules'
 
 // Where tasks can come from besides being written by hand: an issue tracker, reached through a
@@ -95,15 +95,29 @@ export const CredentialStatus = z.object({
 })
 export type CredentialStatus = z.infer<typeof CredentialStatus>
 
-export const SourceFixConfig = z.object({
-  enabled: z.boolean(),
-  // Kept for older clients; the coordinator now decides what kind of work an issue needs.
-  typeIds: z.array(z.string().min(1).max(500)).max(50),
-  permissionMode: UnattendedMode,
-  concurrency: z.number().int().min(1).max(4),
-  maxOpenTasks: z.number().int().min(1).max(100)
-})
+// Whether the investigation may open a task for an issue (source_task_create). The task works in
+// its own worktree, in the user's unattended mode, and goes to review with a GitHub PR where it can.
+export const SourceFixConfig = z.object({ enabled: z.boolean() })
 export type SourceFixConfig = z.infer<typeof SourceFixConfig>
+
+// What an automatic investigation does when the user wrote nothing of their own. Antumi adds how to
+// open a task and report, so this says only what to do with each kind of issue.
+export const DEFAULT_INVESTIGATION_PROMPT = {
+  'zh-CN': [
+    '先判断事项是 bug、新功能还是 PR：',
+    '- bug：确定根因后新建任务修复；不能新建任务或根因不确定时，给出排查结论、修复方案或缺少的信息。',
+    '- 新功能：调研是否合理、能否实现，只给结论，不新建任务。',
+    '- PR：review 后给出结论，不新建任务。',
+    '中途缺少关键信息时停下来问我。'
+  ].join('\n'),
+  en: [
+    'First decide whether the issue is a bug, a feature request or a pull request:',
+    '- Bug: once the root cause is certain, open a task to fix it; where you cannot open one or the cause is uncertain, give your findings, a fix plan or what is missing.',
+    '- Feature request: research whether it is sensible and feasible, and give a conclusion only; do not open a task.',
+    '- Pull request: review it and give a conclusion; do not open a task.',
+    'Stop and ask me when key information is missing.'
+  ].join('\n')
+} satisfies Record<UiLocale, string>
 export const SourceFixInfo = z.object({
   taskId: z.string().uuid().nullable(),
   state: z.enum(['queued', 'preparing', 'working', 'checking', 'opening-pr', 'ready', 'waiting-user', 'failed', 'skipped', 'handed-over']),
@@ -121,6 +135,7 @@ export const AutoInvestigationConfig = z.object({
   modelProvider: z.string().min(1).max(100).optional(),
   // Left out, the agent's discussion mode: it only reads, as before the mode could be picked.
   permissionMode: ChatPermissionMode.optional(),
+  // What the investigation is told to do; empty, DEFAULT_INVESTIGATION_PROMPT.
   note: z.string().trim().max(100000).default(''),
   dailyLimit: z.number().int().min(1).max(100).default(10),
   autoFix: SourceFixConfig.optional()
