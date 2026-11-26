@@ -1,7 +1,8 @@
 import { AgentKind, ChatPermissionMode, LanguagePreference, TranslateLanguage } from '@antumi/protocol'
 import { z } from 'zod'
 import { create } from 'zustand'
-import { BACKDROPS } from './backdrops'
+import { BACKDROPS, BACKDROP_MODES, BACKDROP_SCOPES, BACKDROP_FITS } from './backdrops'
+import { WallpaperAsset } from '../../shared/wallpaper'
 import { PALETTES } from './palettes'
 import { PROJECT_COLORS } from './project-colors'
 import { MarkdownThemeLibrary, MarkdownThemeSelection } from './markdown-theme-packs'
@@ -37,8 +38,15 @@ const Preferences = z.object({
   projectNames: z.record(z.string(), z.string().max(MAX_PROJECT_NAME)).catch({}),
   markdownTheme: MarkdownThemeSelection.catch('default'),
   markdownThemePacks: MarkdownThemeLibrary,
-  // Experimental: the gradient behind the sidebar and status bar; none keeps the flat canvas.
-  backdrop: z.enum(['none', ...BACKDROPS]).catch('none'),
+  backdropMode: z.enum(BACKDROP_MODES).catch('none'),
+  backdropPreset: z.enum(BACKDROPS).catch('aurora'),
+  backdropScope: z.enum(BACKDROP_SCOPES).catch('full'),
+  backdropOpacity: z.number().int().min(5).max(100).catch(65),
+  backdropBlur: z.number().int().min(0).max(30).catch(0),
+  backdropSurfaceOpacity: z.number().int().min(30).max(95).catch(68),
+  backdropGlassBlur: z.number().int().min(0).max(24).catch(12),
+  backdropFit: z.enum(BACKDROP_FITS).catch('cover'),
+  wallpaper: WallpaperAsset.nullable().catch(null),
   petStyle: PetStylePreference,
   petLevel: PetLevelPreference,
   petSize: PetSizePreference,
@@ -165,15 +173,7 @@ export type Preferences = z.infer<typeof Preferences>
 const STORAGE_KEY = 'antumi.preferences'
 let islandChosen = false
 
-// Each field falls back on its own, so one bad or outdated value never resets the rest.
-function load(): Preferences {
-  let saved: unknown = {}
-  try {
-    saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}')
-  } catch {
-    // Unreadable storage: start from defaults.
-  }
-  const original = saved
+export function migratePreferencesRecord(saved: unknown): unknown {
   // 0.15.8 kept them as translateModels, before commit messages used them too.
   if (typeof saved === 'object' && saved !== null && 'translateModels' in saved && !('quickModels' in saved)) {
     saved = { ...saved, quickModels: saved.translateModels }
@@ -199,6 +199,33 @@ function load(): Preferences {
       conversationListWidth: Math.round(Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, width - COLLAPSED_NAVIGATION_WIDTH)))
     }
   }
+  if (typeof saved === 'object' && saved !== null && 'backdrop' in saved && !('backdropMode' in saved)) {
+    const preset = z.enum(BACKDROPS).safeParse(saved.backdrop)
+    const { backdrop: _legacyBackdrop, ...rest } = saved
+    saved = {
+      ...rest,
+      backdropMode: preset.success ? 'preset' : 'none',
+      ...(preset.success ? { backdropPreset: preset.data } : {})
+    }
+  }
+  return saved
+}
+
+export function parsePreferences(saved: unknown): Preferences {
+  const parsed = Preferences.safeParse(migratePreferencesRecord(saved))
+  return parsed.success ? parsed.data : Preferences.parse({})
+}
+
+// Each field falls back on its own, so one bad or outdated value never resets the rest.
+function load(): Preferences {
+  let saved: unknown = {}
+  try {
+    saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}')
+  } catch {
+    // Unreadable storage: start from defaults.
+  }
+  const original = saved
+  saved = migratePreferencesRecord(saved)
   // Windows write only what they change, so what was carried over is stored now, or the carrying
   // over would run again on old fields and undo a later change.
   if (saved !== original) {
@@ -209,8 +236,7 @@ function load(): Preferences {
     }
   }
   islandChosen = typeof saved === 'object' && saved !== null && 'island' in saved && IslandPreference.safeParse(saved.island).success
-  const parsed = Preferences.safeParse(saved)
-  return parsed.success ? parsed.data : Preferences.parse({})
+  return parsePreferences(saved)
 }
 
 // What each preference is before the user changes it, for a setting's 恢复默认.

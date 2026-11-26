@@ -21,7 +21,7 @@
 :root .app[data-framed] .workspace > .side-panel-separator { margin-top: 0; }
 
 /* On a backdrop the sidebar takes the frame's ink; the list is on the card, in the window's own. */
-:root[data-backdrop] .app[data-framed] .sidebar-conversations {
+:root[data-backdrop][data-backdrop-scope='frame']:not([data-window='request-popup']) .app[data-framed] .sidebar-conversations {
   color-scheme: var(--root-scheme);
   color: var(--text);
   --bg: var(--root-bg);
@@ -88,10 +88,16 @@
   cursor: pointer;
 }
 .title-bar-activity:hover { border-color: var(--border-2); }
-.title-bar-activity .working-stack > svg { background: var(--bg); box-shadow: 0 0 0 1.5px var(--bg); }
+.title-bar-activity .working-stack > svg { background: var(--palette-bg); box-shadow: 0 0 0 1.5px var(--palette-bg); }
 .title-bar-activity-divider { width: 1px; height: 14px; background: var(--border-2); }
 
 /* A panel's count rides on its icon's corner, so the switches keep one width and one spacing. */
 .title-bar .tool-button { position: relative; }
 .title-bar .tool-button > .count { position: absolute; top: -1px; right: -3px; min-width: 14px; padding: 0 3px; border-radius: 7px; background: var(--fill-2); color: var(--text-muted); font-size: 10px; line-height: 14px; text-align: center; }
 .title-bar .tool-button[data-active='true'] svg { color: var(--status-running); }
+
+/* Full glass keeps the outer frame clear; only the conversation card paints a wash. */
+:root[data-backdrop][data-backdrop-scope='full']:not([data-window='request-popup']) .app[data-framed] { background: var(--palette-bg); }
+:root[data-backdrop][data-backdrop-scope='full']:not([data-window='request-popup']) .app[data-framed] :is(.sidebar, .statusbar, .title-bar) { background: transparent; border-color: transparent; backdrop-filter: none; }
+:root[data-backdrop][data-backdrop-scope='full']:not([data-window='request-popup']) .app[data-framed] .sidebar-conversations { background: var(--bg); backdrop-filter: blur(var(--backdrop-glass-blur, 12px)); }
+:where(:root[data-backdrop][data-backdrop-scope='full']:not([data-window='request-popup']) .app[data-framed] .workspace > :not(.sidebar, .side-panel-separator)) { background: transparent; }

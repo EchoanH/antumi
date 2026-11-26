@@ -1,4 +1,5 @@
 import { t } from './i18n'
+import { MAX_WALLPAPER_BYTES, WallpaperAsset, WallpaperResult } from '../../shared/wallpaper'
 import { z } from 'zod'
 import { AgentKind, BookmarkFields, type PluginPageFiles } from '@antumi/protocol'
 import type { ActionableTarget, Notice } from './attention'
@@ -16,6 +17,11 @@ declare global {
       getCoreEndpoint(): Promise<unknown>
       // Absent from a main older than the renderer.
       appVersion?(): Promise<unknown>
+      wallpaperGet?(): Promise<unknown>
+      wallpaperPick?(): Promise<unknown>
+      wallpaperSetFile?(path: string): Promise<unknown>
+      wallpaperSetBytes?(bytes: Uint8Array): Promise<unknown>
+      wallpaperClear?(): Promise<unknown>
       visualizationCreate?(document: string): Promise<unknown>
       visualizationRemove?(url: string): Promise<unknown>
       // A plugin page's files, served to its frame as antumi-plugin://<id>/<entry>; absent from an older main.
@@ -481,4 +487,40 @@ export function forwardPanelShortcut(shortcut: { action: ShortcutAction; address
 
 export function onPanelShortcut(listener: (shortcut: unknown) => void): () => void {
   return window.antumi?.onPanelShortcut?.(listener) ?? (() => {})
+}
+
+export function canManageWallpaper(): boolean {
+  return window.antumi?.wallpaperPick !== undefined && window.antumi?.wallpaperGet !== undefined
+}
+
+export async function getWallpaper(): Promise<WallpaperAsset | null> {
+  try {
+    const parsed = WallpaperAsset.nullable().safeParse(await window.antumi?.wallpaperGet?.())
+    return parsed.success ? parsed.data : null
+  } catch { return null }
+}
+
+export async function pickWallpaper(): Promise<WallpaperResult> {
+  try {
+    const parsed = WallpaperResult.safeParse(await window.antumi?.wallpaperPick?.())
+    return parsed.success ? parsed.data : { ok: false, reason: 'read-failed' }
+  } catch { return { ok: false, reason: 'read-failed' } }
+}
+
+export async function setWallpaperFromDrop(file: File): Promise<WallpaperResult> {
+  if (file.size <= 0) return { ok: false, reason: 'invalid-file' }
+  if (file.size > MAX_WALLPAPER_BYTES) return { ok: false, reason: 'too-large' }
+  try {
+    const local = window.antumi?.localPathForFile?.(file)
+    let result: unknown
+    if (local && window.antumi?.wallpaperSetFile) result = await window.antumi.wallpaperSetFile(local)
+    else if (window.antumi?.wallpaperSetBytes) result = await window.antumi.wallpaperSetBytes(new Uint8Array(await file.arrayBuffer()))
+    else return { ok: false, reason: 'read-failed' }
+    const parsed = WallpaperResult.safeParse(result)
+    return parsed.success ? parsed.data : { ok: false, reason: 'read-failed' }
+  } catch { return { ok: false, reason: 'read-failed' } }
+}
+
+export async function clearWallpaper(): Promise<boolean> {
+  try { return await window.antumi?.wallpaperClear?.() === true } catch { return false }
 }
