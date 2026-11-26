@@ -123,7 +123,7 @@ export function RequestPopup() {
   const shorten = useMemo(() => pathShortener(roots), [roots, getLocale()])
   const surface = useMemo(() => (entry ? popupSurface(entry, conversation) : null), [entry, conversation, getLocale()])
 
-  useEffect(() => (error ? scheduleErrorToastDismiss(dismissError) : undefined), [error])
+  useEffect(() => (error ? scheduleErrorToastDismiss(dismissError).cancel : undefined), [error])
 
   // Up once there is something to answer; once up, kept while the next chat's items load, so
   // answering one chat does not flash the window down and up again on its way to the next. An

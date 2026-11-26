@@ -101,6 +101,19 @@ describe('ChatHost', () => {
     expect(recorded.offsets.at(-1)).toBe(daemon.sessions.get(sessionId)?.output.length)
   })
 
+  it('accepts a stop arriving after the turn has already ended', async () => {
+    const { host, sessionId } = await started()
+    await host.send(STAGE.conversationId, 'hello')
+    await flushMicrotasks()
+    expect(host.activity(STAGE.conversationId)).toBe('idle')
+    const sent = daemon.written(sessionId).length
+    await expect(host.interrupt(STAGE.conversationId)).resolves.toBeUndefined()
+    expect(daemon.written(sessionId)).toHaveLength(sent)
+    await host.send(STAGE.conversationId, 'next')
+    await flushMicrotasks()
+    expect(host.items(STAGE).filter((item) => item.kind === 'user')).toHaveLength(2)
+  })
+
   it('picks a stage up after a restart without reading or sending anything twice', async () => {
     const first = recordingSink()
     const { host, sessionId } = await started(first.sink)

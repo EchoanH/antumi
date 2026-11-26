@@ -474,7 +474,15 @@ export class ChatHost {
       this.flush(live)
       return
     }
-    const sent = live.driver.interrupt().map((frame) => this.write(live, frame))
+    let frames: unknown[]
+    try {
+      frames = live.driver.interrupt()
+    } catch (error) {
+      // The turn can finish while a stop request is on its way from the client.
+      if (error instanceof Rejection && error.reason === 'chat-idle') return
+      throw error
+    }
+    const sent = frames.map((frame) => this.write(live, frame))
     this.flush(live)
     await Promise.all(sent)
   }

@@ -19,9 +19,26 @@ it('dismisses an error toast without user interaction', () => {
 it('cancels dismissal when a toast is replaced', () => {
   vi.useFakeTimers()
   const dismiss = vi.fn()
-  const cancel = scheduleErrorToastDismiss(dismiss)
+  const countdown = scheduleErrorToastDismiss(dismiss)
 
-  cancel()
+  countdown.cancel()
   vi.advanceTimersByTime(ERROR_TOAST_DURATION_MS)
   expect(dismiss).not.toHaveBeenCalled()
+})
+
+it('resumes the remaining time after interaction instead of restarting it', () => {
+  vi.useFakeTimers()
+  const dismiss = vi.fn()
+  const countdown = scheduleErrorToastDismiss(dismiss)
+  vi.advanceTimersByTime(2_000)
+  countdown.pause()
+  countdown.pause()
+  vi.advanceTimersByTime(10_000)
+  expect(dismiss).not.toHaveBeenCalled()
+  countdown.resume()
+  countdown.resume()
+  vi.advanceTimersByTime(999)
+  expect(dismiss).not.toHaveBeenCalled()
+  vi.advanceTimersByTime(1)
+  expect(dismiss).toHaveBeenCalledOnce()
 })
