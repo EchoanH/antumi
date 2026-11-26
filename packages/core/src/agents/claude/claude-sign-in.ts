@@ -1,3 +1,4 @@
+import { refreshActiveAgentProxy, buildActiveAgentChildEnv } from '../../agent-proxy'
 import { execFile } from 'node:child_process'
 import os from 'node:os'
 import { promisify } from 'node:util'
@@ -45,10 +46,11 @@ export async function readClaudeAuthentication(home?: string): Promise<AgentAuth
   return agentCliAccess.use('claude', async () => {
     // The account's copy of settings.json is otherwise only refreshed when it launches.
     if (home) await copyClaudeSettings(home)
-    const env = home ? { ...process.env, ...claudeAccounts.env(home) } : process.env
+    const env = home ? claudeAccounts.env(home) : {}
     const cwd = os.homedir()
     try {
-      const launch = planLaunch('claude', ['auth', 'status'], cwd, env)
+      await refreshActiveAgentProxy()
+      const launch = planLaunch('claude', ['auth', 'status'], cwd, buildActiveAgentChildEnv('claude', env))
       const { stdout } = await execute(launch.file, launch.args, { cwd, env: launch.env, timeout: STATUS_TIMEOUT_MS, maxBuffer: 64 * 1024, windowsHide: true })
       return parseClaudeAuthentication(0, stdout)
     } catch (error) {

@@ -1,3 +1,4 @@
+import { refreshActiveAgentProxy, buildActiveAgentChildEnv } from '../../agent-proxy'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { AgentCliInstallation, ChatCatalog } from '@antumi/protocol'
@@ -19,7 +20,8 @@ export function kimiCompatible(version: string | null): boolean {
 }
 
 async function kimiVersion(command: string): Promise<string | null> {
-  const launch = launchFile(command, ['--version'], process.env)
+  await refreshActiveAgentProxy()
+  const launch = launchFile(command, ['--version'], buildActiveAgentChildEnv('kimi'))
   const result = await execute(launch.file, launch.args, { env: launch.env, timeout: 10_000, maxBuffer: 1024 * 1024, windowsHide: true }).catch(() => null)
   return parseVersion(result?.stdout ?? '')
 }
@@ -43,7 +45,7 @@ export async function requireKimi(): Promise<string> {
 
 // Session creation lists configured models without sending anything to the model or signing in.
 export async function kimiCatalog(cwd: string): Promise<ChatCatalog | null> {
-  return probeChatCatalog(new AcpDriver(kimiDialect, 'catalog', { cwd, extraDirs: [], resume: null }), { command: await requireKimi(), args: ['acp'] }, cwd)
+  return probeChatCatalog(new AcpDriver(kimiDialect, 'catalog', { cwd, extraDirs: [], resume: null }), { command: await requireKimi(), args: ['acp'] }, cwd, undefined, 'kimi')
 }
 
 export function kimiInstallation(platform: NodeJS.Platform): AgentCliInstallation {

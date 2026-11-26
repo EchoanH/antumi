@@ -1,3 +1,4 @@
+import { applyActiveAgentProxy, blankProxyUnset, refreshActiveAgentProxy } from './agent-proxy'
 import { randomUUID } from 'node:crypto'
 import { stat } from 'node:fs/promises'
 import os from 'node:os'
@@ -157,11 +158,13 @@ export class TerminalService {
   }
 
   // A user-started installer is a finite command, retained just like an agent's command.
-  installCli(installation: AgentCliInstallation): Promise<Terminal> {
+  async installCli(installation: AgentCliInstallation): Promise<Terminal> {
     const shell = installation.shell === 'powershell'
       ? { command: 'powershell.exe', args: ['-NoLogo', '-NoProfile', '-Command', `$ErrorActionPreference = 'Stop'; ${installation.command}`] }
       : { command: '/bin/bash', args: ['-o', 'pipefail', '-c', installation.command] }
-    return this.runFinite(shell, `安装 ${agentDescriptor(installation.agent).label} CLI`, installation.command)
+    await refreshActiveAgentProxy()
+    const proxy = applyActiveAgentProxy(installation.agent)
+    return this.runFinite(shell, `安装 ${agentDescriptor(installation.agent).label} CLI`, installation.command, proxy.env, installation.agent, undefined, proxy.unsetEnv)
   }
 
   // An agent's CLI signing in to an account: its own argv, no shell, pointed at the account's folder.
@@ -171,7 +174,10 @@ export class TerminalService {
 
   async upgradeCli(agent: AgentKind, upgradeId: string, argv: { command: string; args: string[] }): Promise<Terminal> {
     const cwd = os.homedir()
-    const { sessionId } = await this.daemon.request('spawnCliUpgrade', { ...argv, agent, upgradeId, cwd, env: { ...terminalEnv(), ...ownedBy({ kind: 'terminal', id: upgradeId }) }, cols: 120, rows: 32 })
+    await refreshActiveAgentProxy()
+    let proxy = applyActiveAgentProxy(agent, { ...terminalEnv(), ...ownedBy({ kind: 'terminal', id: upgradeId }) })
+    if (proxy.unsetEnv.length && !(await this.daemon.request('info', {})).features?.includes('unset-env')) proxy = blankProxyUnset(proxy)
+    const { sessionId } = await this.daemon.request('spawnCliUpgrade', { ...argv, agent, upgradeId, cwd, ...proxy, cols: 120, rows: 32 })
     return this.adoptUpgrade(agent, upgradeId, sessionId, [argv.command, ...argv.args].join(' '))
   }
 
@@ -190,7 +196,8 @@ export class TerminalService {
   private async runFinite(argv: { command: string; args: string[] }, title: string, command: string, env: Record<string, string> = {}, agent?: AgentKind, cwd = os.homedir(), unsetEnv?: readonly string[]): Promise<Terminal> {
     const id = randomUUID()
     if (unsetEnv?.length && !(await this.daemon.request('info', {})).features?.includes('unset-env')) {
-      throw new Rejection('daemon-outdated', '当前运行的 Antumi 后台版本过旧，无法安全隔离环境变量，请重启后台后重试')
+      ({ env, unsetEnv } = blankProxyUnset({ env, unsetEnv }))
+      if (unsetEnv.length) throw new Rejection('daemon-outdated', '当前运行的 Antumi 后台版本过旧，无法安全隔离环境变量，请重启后台后重试')
     }
     const { sessionId } = await this.daemon.request('spawn', { ...argv, agent, cwd, env: { ...terminalEnv(), ...env, ...ownedBy({ kind: 'terminal', id }) }, ...(unsetEnv?.length ? { unsetEnv: [...unsetEnv] } : {}), cols: 120, rows: 32 })
     const terminal = { id, sessionId, cwd, title, createdAt: this.now(), command }

@@ -1,3 +1,4 @@
+import { refreshActiveAgentProxy, buildActiveAgentChildEnv } from '../../agent-proxy'
 import { randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { mkdir, readFile, realpath, stat, writeFile, rename, rm, access, constants } from 'node:fs/promises'
@@ -109,7 +110,8 @@ export async function detectAgyCli(pathEnv = process.env.PATH ?? '', platform = 
       pending = (async () => {
         const probe = async (args: string[]) => {
           try {
-            const launch = launchFile(candidate, args, process.env, { ...nodeLaunchHost, platform })
+            await refreshActiveAgentProxy()
+            const launch = launchFile(candidate, args, buildActiveAgentChildEnv('antigravity'), { ...nodeLaunchHost, platform })
             const result = await exec(launch.file, launch.args, { env: launch.env, timeout: 5000, windowsHide: true })
             return result.stdout + '\n' + result.stderr
           } catch { return '' }

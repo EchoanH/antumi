@@ -5,16 +5,20 @@ import { describe, expect, it, vi } from 'vitest'
 import type { DaemonEvent } from '@antumi/protocol/node'
 
 const callbacks = vi.hoisted(() => ({
+  env: new Map<string, string | undefined>(),
   data: (_text: string) => {},
   exit: (_event: { exitCode: number }) => {}
 }))
 
 vi.mock('node-pty', () => ({
-  spawn: () => ({
-    onData: (handler: (text: string) => void) => { callbacks.data = handler },
-    onExit: (handler: (event: { exitCode: number }) => void) => { callbacks.exit = handler },
-    write: () => {}, resize: () => {}, kill: () => {}
-  })
+  spawn: (_file: string, _args: string[], options: { env?: NodeJS.ProcessEnv }) => {
+    callbacks.env = new Map(Object.entries(options.env ?? {}))
+    return {
+      onData: (handler: (text: string) => void) => { callbacks.data = handler },
+      onExit: (handler: (event: { exitCode: number }) => void) => { callbacks.exit = handler },
+      write: () => {}, resize: () => {}, kill: () => {}
+    }
+  }
 }))
 
 import { createSessionHost } from './session-host'
@@ -244,5 +248,38 @@ describe('CLI upgrade admission', () => {
       callbacks.exit({ exitCode: 143 })
       expect(host.handlers.attach(upgrade).exited).toBe(true)
     } finally { vi.useRealTimers() }
+  })
+})
+
+const proxyKeys = ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy', 'npm_config_proxy', 'npm_config_https_proxy', 'npm_config_noproxy', 'NPM_CONFIG_PROXY', 'NPM_CONFIG_HTTPS_PROXY', 'NPM_CONFIG_NOPROXY']
+describe('proxy launch environment', () => {
+  it.each(['spawnPipe', 'spawnPipeClean'] as const)('%s clears inherited overrides before injecting canonical proxy variables', async (method) => {
+    const { host, until, stdout, exited } = pipeHost()
+    const script = 'process.stdout.write(JSON.stringify(Object.fromEntries(' + JSON.stringify(proxyKeys) + '.map(key => [key, process.env[key] ?? null]))))'
+    const env = { HTTP_PROXY: 'http://proxy:7897', HTTPS_PROXY: 'http://proxy:7897', NO_PROXY: 'localhost,127.0.0.1,::1' }
+    const { sessionId } = host.handlers[method]({ command: process.execPath, args: ['-e', script], cwd: process.cwd(), env, unsetEnv: proxyKeys, agent: 'codex' })
+    await until(() => exited(sessionId))
+    const result = JSON.parse(stdout(sessionId).map((event) => event.data).join(''))
+    expect(result).toMatchObject(env)
+    expect(result.ALL_PROXY).toBeNull()
+    expect(result.npm_config_proxy).toBeNull()
+    if (process.platform !== 'win32') expect(result.http_proxy).toBeNull()
+    host.handlers.release({ sessionId })
+    const direct = host.handlers[method]({ command: process.execPath, args: ['-e', script], cwd: process.cwd(), env: {}, unsetEnv: proxyKeys, agent: 'codex' }).sessionId
+    await until(() => exited(direct))
+    expect(Object.values(JSON.parse(stdout(direct).map((event) => event.data).join(''))).every((value) => value === null)).toBe(true)
+    host.handlers.release({ sessionId: direct })
+  })
+  it.each(['spawn', 'spawnCliUpgrade'] as const)('%s strips proxy overrides and allows explicit env to replace them', (method) => {
+    const host = createSessionHost(() => {})
+    const launch = { command: process.execPath, args: [], cwd: process.cwd(), env: { HTTP_PROXY: 'http://proxy:7897', NO_PROXY: 'localhost,127.0.0.1,::1' }, unsetEnv: proxyKeys, cols: 80, rows: 24, agent: 'codex' as const, upgradeId: 'proxy-upgrade' }
+    if (method === 'spawn') host.handlers.spawn(launch)
+    else host.handlers.spawnCliUpgrade(launch)
+    expect(callbacks.env.get('HTTP_PROXY')).toBe('http://proxy:7897')
+    expect(callbacks.env.get('NO_PROXY')).toBe('localhost,127.0.0.1,::1')
+    expect(callbacks.env.has('HTTPS_PROXY')).toBe(false)
+    expect(callbacks.env.has('npm_config_proxy')).toBe(false)
+    if (process.platform !== 'win32') expect(callbacks.env.has('http_proxy')).toBe(false)
+    callbacks.exit({ exitCode: 0 })
   })
 })

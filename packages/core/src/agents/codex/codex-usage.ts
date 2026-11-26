@@ -156,7 +156,7 @@ async function supplementResetCredits(
     return known
   }
   try {
-    return parseResetCredits(await fetchUsageJson(RESET_CREDITS_URL, headers)) ?? known ?? null
+    return parseResetCredits(await fetchUsageJson(RESET_CREDITS_URL, headers, undefined, undefined, 'codex')) ?? known ?? null
   } catch {
     return known ?? null
   }
@@ -196,7 +196,7 @@ export async function readCodexUsage(home?: string): Promise<UsageReading> {
   }
   if (auth.type === 'api-key') return { signedIn: true, windows: [], plan: null }
   const headers = codexHeaders(auth.tokens)
-  const usage = parseCodexUsage(await fetchUsageJson(USAGE_URL, headers))
+  const usage = parseCodexUsage(await fetchUsageJson(USAGE_URL, headers, undefined, undefined, 'codex'))
   return { signedIn: true, ...usage, resetCredits: await supplementResetCredits(usage.resetCredits, headers) }
 }
 
@@ -219,5 +219,5 @@ export async function useCodexResetCredit(requestId: string, creditId?: string, 
     throw new Error('Codex 没有登录')
   }
   const headers = { ...codexHeaders(tokens), 'Content-Type': 'application/json' }
-  return parseConsumeOutcome(await fetchUsageJson(CONSUME_URL, headers, JSON.stringify(consumeRequest(requestId, creditId)), CONSUME_TIMEOUT_MS))
+  return parseConsumeOutcome(await fetchUsageJson(CONSUME_URL, headers, JSON.stringify(consumeRequest(requestId, creditId)), CONSUME_TIMEOUT_MS, 'codex'))
 }

@@ -82,7 +82,7 @@ export type AccountSupport = {
 export type AgentDetection = Omit<EnvironmentCheck, 'tool'>
 
 // A one-off request: the prompt on stdin or in argv, and the answer on stdout or in a file.
-export type QuickCommand = { command: string; args: string[]; stdin: string | null; output: 'stdout' | 'file'; env?: Record<string, string> }
+export type QuickCommand = { command: string; args: string[]; stdin: string | null; output: 'stdout' | 'file'; env?: Record<string, string>; unsetEnv?: readonly string[] }
 
 // How long an agent is given to obey a cancel, then a TERM, before it is stopped harder.
 export type CancelGrace = { cancelGraceMs: number; termGraceMs: number }

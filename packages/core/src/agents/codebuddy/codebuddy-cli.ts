@@ -1,3 +1,4 @@
+import { refreshActiveAgentProxy, buildActiveAgentChildEnv } from '../../agent-proxy'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { AgentCliInstallation, ChatCatalog } from '@antumi/protocol'
@@ -12,7 +13,8 @@ import { codebuddyDialect } from './codebuddy-dialect'
 const execute = promisify(execFile)
 
 async function codebuddyVersion(command: string): Promise<string | null> {
-  const launch = launchFile(command, ['--version'], process.env)
+  await refreshActiveAgentProxy()
+  const launch = launchFile(command, ['--version'], buildActiveAgentChildEnv('codebuddy'))
   const result = await execute(launch.file, launch.args, { env: launch.env, timeout: 10_000, maxBuffer: 1024 * 1024, windowsHide: true }).catch(() => null)
   return parseVersion(result?.stdout ?? '')
 }
@@ -32,7 +34,7 @@ export async function requireCodebuddy(): Promise<string> {
 }
 
 export async function codebuddyCatalog(cwd: string): Promise<ChatCatalog | null> {
-  return probeChatCatalog(new AcpDriver(codebuddyDialect, 'catalog', { cwd, extraDirs: [], resume: null }), { command: await requireCodebuddy(), args: ['--acp'] }, cwd)
+  return probeChatCatalog(new AcpDriver(codebuddyDialect, 'catalog', { cwd, extraDirs: [], resume: null }), { command: await requireCodebuddy(), args: ['--acp'] }, cwd, undefined, 'codebuddy')
 }
 
 export function codebuddyInstallation(platform: NodeJS.Platform): AgentCliInstallation {

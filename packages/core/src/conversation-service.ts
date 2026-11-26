@@ -1,3 +1,4 @@
+import { applyActiveAgentProxy, blankProxyUnset, refreshActiveAgentProxy } from './agent-proxy'
 import type { ChatReference, AgentProfile, SkillRef } from '@antumi/protocol'
 import { agentCliAccess } from './agent-cli-access'
 import { limitChatPage } from './chat-page-limit'
@@ -1445,9 +1446,14 @@ export class ConversationService {
         if (prepared.env) env = { ...env, ...prepared.env }
         if (prepared.unsetEnv?.length) unsetEnv = [...new Set([...unsetEnv, ...prepared.unsetEnv])]
       }
+      await refreshActiveAgentProxy()
+      const proxy = applyActiveAgentProxy(agent, env, unsetEnv, Boolean(locked))
+      env = proxy.env
+      unsetEnv = proxy.unsetEnv
       this.wire?.record(id, stage.id, [{ dir: 'spawn', text: JSON.stringify({ command: command.command, args: command.args, cwd: current.workspacePath }) }])
       if (unsetEnv.length && !(await this.daemon.request('info', {})).features?.includes('unset-env')) {
-        throw new Rejection('daemon-outdated', '当前运行的 Antumi 后台版本过旧，无法安全隔离环境变量，请重启后台后重试')
+        ({ env, unsetEnv } = blankProxyUnset({ env, unsetEnv }))
+        if (unsetEnv.length) throw new Rejection('daemon-outdated', '当前运行的 Antumi 后台版本过旧，无法安全隔离环境变量，请重启后台后重试')
       }
       // Locked down, it gets none of the daemon's own environment either (the user's keys and tokens).
       const spawned = await agentCliAccess.use(agent, () => this.daemon.request(locked ? 'spawnPipeClean' : 'spawnPipe', { agent, command: command.command, args: command.args, cwd: current.workspacePath, env: { ...env, [PROCESS_OWNER_ENV]: processOwner({ kind: 'conversation', id }) }, ...(unsetEnv.length ? { unsetEnv } : {}) }))
@@ -1822,7 +1828,7 @@ export class ConversationService {
     return probeChatCatalog(
       adapter.createDriver('catalog', { cwd: this.sessionsRoot, extraDirs: [], resume: null, ...(backend ? { backend } : {}) }),
       chatCommand(agent, null, false, null, [], { ...(backend ? { backend } : {}), ...(account?.env ? { account: { id: account.id, env: account.env } } : {}) }),
-      this.sessionsRoot
+      this.sessionsRoot, undefined, agent
     )
   }
 

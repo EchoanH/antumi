@@ -1,3 +1,4 @@
+import { AgentProxyService, setActiveAgentProxy } from './agent-proxy'
 import { SourceFixService, fixSnapshot } from './source-fix-service'
 import { SourceFixStore } from './source-fix-store'
 import { git as readGit, gitOrNull } from './git-changes'
@@ -656,6 +657,11 @@ function chooseBackends(settings: ChatSettings): void {
   void usage.refresh()
 }
 const chatSettings = new ChatSettingsStore(paths.chatSettings, (settings) => {
+  if (JSON.stringify(settings.agentProxy) !== agentProxySettingsKey) {
+    agentProxySettingsKey = JSON.stringify(settings.agentProxy)
+    void agentProxy.updateSettings(settings.agentProxy).then(() => { for (const agent of AGENT_KINDS) conversations.invalidateCli(agent) })
+    for (const agent of AGENT_KINDS) conversations.invalidateCli(agent)
+  }
   chooseBackends(settings)
   conversations.setPromptSuggestions(settings.promptSuggestions)
   conversations.setTitleNaming(settings.titleNaming ?? 'off')
@@ -670,6 +676,10 @@ const chatSettings = new ChatSettingsStore(paths.chatSettings, (settings) => {
   server?.broadcast('system.chatSettingsChanged', { settings })
 })
 const initialChatSettings = await chatSettings.load(freshInstall)
+const agentProxy = new AgentProxyService(initialChatSettings.agentProxy)
+let agentProxySettingsKey = JSON.stringify(initialChatSettings.agentProxy)
+await agentProxy.start()
+setActiveAgentProxy(agentProxy)
 chooseBackends(initialChatSettings)
 await accounts.load()
 conversations.setAccounts(accounts)
@@ -985,7 +995,7 @@ server = await startRpcServer({
     uploads: new AttachmentUploads(attachments),
     sweeper: attachmentSweeper
   }, terminals, worktrees, browser, awake, terminalCommands, limits, runs, turns, chatSettings, environment, schedules, chatCommands, routines, discussions, wire, () => { server?.broadcast('git.changed', {}); profiles.tick() }, squads, todos, plugins, skills, mcpServers, smallModels, projectConfigs, modelProviders, sessionImports, accounts, cliMaintenance, analytics, automation, pets, new ProjectStar(sources), profiles, bookmarks, browserHistory, sourceUpdates,
-    { store: pullRequestStore, changed: (taskId, links) => server?.broadcast('pullRequests.changed', { taskId, links }), ready: (service) => { pullRequests.current = service } }, browserSites, mobile, channels, squadCalls, writeback)
+    { store: pullRequestStore, changed: (taskId, links) => server?.broadcast('pullRequests.changed', { taskId, links }), ready: (service) => { pullRequests.current = service } }, browserSites, mobile, channels, squadCalls, writeback, agentProxy)
 })
 await writeCoreEndpoint({ port: server.port, token, pid: process.pid, protocolVersion: PROTOCOL_VERSION, version: packageJson.version })
 mobile.seed(conversations.list(true, true, true))
@@ -1032,6 +1042,8 @@ async function shutdown(): Promise<void> {
   await schedules.stop()
   await automation.close()
   await usage.stop()
+  setActiveAgentProxy(null)
+  await agentProxy.close()
   await analytics.close()
   routines.stop()
   autoArchive.stop()

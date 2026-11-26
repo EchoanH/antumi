@@ -1,8 +1,8 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { AGENT_KINDS, ChatSettings, knowledgeBaseKind } from '@antumi/protocol'
+import { AGENT_KINDS, AgentProxySettings, DEFAULT_AGENT_PROXY_SETTINGS, ChatSettings, knowledgeBaseKind } from '@antumi/protocol'
 import { ChatSettingsStore } from './chat-settings'
 
 const defaultConcurrency = Object.fromEntries(AGENT_KINDS.map((kind) => [kind, 6]))
@@ -22,17 +22,17 @@ describe('ChatSettingsStore', () => {
 
   it('suggests the next message and lets scheduled runs edit, unless the user changed that, and keeps it', async () => {
     const store = new ChatSettingsStore(file, (settings) => changes.push(settings))
-    expect(await store.load()).toEqual({ promptSuggestions: true, titleNaming: 'first', titleModels: {}, unattendedMode: 'acceptEdits', maxConcurrentAgents: 20, agentConcurrency: defaultConcurrency, wireLog: false, userBrowser: true, readHistory: true, userTodos: true, knowledgeBase: null, autoArchiveDays: null, worktreeCleanDays: 7, resetAnnouncements: true, disabledAgents: [], pullRequestAutoAccept: false, agentBackends: {} })
+    expect(await store.load()).toEqual({ promptSuggestions: true, titleNaming: 'first', titleModels: {}, unattendedMode: 'acceptEdits', maxConcurrentAgents: 20, agentConcurrency: defaultConcurrency, wireLog: false, userBrowser: true, readHistory: true, userTodos: true, knowledgeBase: null, autoArchiveDays: null, worktreeCleanDays: 7, resetAnnouncements: true, disabledAgents: [], pullRequestAutoAccept: false, agentBackends: {}, agentProxy: DEFAULT_AGENT_PROXY_SETTINGS })
 
     await store.update({ promptSuggestions: false })
     await store.update({ unattendedMode: 'bypass' })
     expect(changes).toEqual([
-      { promptSuggestions: false, titleNaming: 'first', titleModels: {}, unattendedMode: 'acceptEdits', maxConcurrentAgents: 20, agentConcurrency: defaultConcurrency, wireLog: false, userBrowser: true, readHistory: true, userTodos: true, knowledgeBase: null, autoArchiveDays: null, worktreeCleanDays: 7, resetAnnouncements: true, disabledAgents: [], pullRequestAutoAccept: false, agentBackends: {} },
-      { promptSuggestions: false, titleNaming: 'first', titleModels: {}, unattendedMode: 'bypass', maxConcurrentAgents: 20, agentConcurrency: defaultConcurrency, wireLog: false, userBrowser: true, readHistory: true, userTodos: true, knowledgeBase: null, autoArchiveDays: null, worktreeCleanDays: 7, resetAnnouncements: true, disabledAgents: [], pullRequestAutoAccept: false, agentBackends: {} }
+      { promptSuggestions: false, titleNaming: 'first', titleModels: {}, unattendedMode: 'acceptEdits', maxConcurrentAgents: 20, agentConcurrency: defaultConcurrency, wireLog: false, userBrowser: true, readHistory: true, userTodos: true, knowledgeBase: null, autoArchiveDays: null, worktreeCleanDays: 7, resetAnnouncements: true, disabledAgents: [], pullRequestAutoAccept: false, agentBackends: {}, agentProxy: DEFAULT_AGENT_PROXY_SETTINGS },
+      { promptSuggestions: false, titleNaming: 'first', titleModels: {}, unattendedMode: 'bypass', maxConcurrentAgents: 20, agentConcurrency: defaultConcurrency, wireLog: false, userBrowser: true, readHistory: true, userTodos: true, knowledgeBase: null, autoArchiveDays: null, worktreeCleanDays: 7, resetAnnouncements: true, disabledAgents: [], pullRequestAutoAccept: false, agentBackends: {}, agentProxy: DEFAULT_AGENT_PROXY_SETTINGS }
     ])
 
     const reopened = new ChatSettingsStore(file, () => {})
-    expect(await reopened.load()).toEqual({ promptSuggestions: false, titleNaming: 'first', titleModels: {}, unattendedMode: 'bypass', maxConcurrentAgents: 20, agentConcurrency: defaultConcurrency, wireLog: false, userBrowser: true, readHistory: true, userTodos: true, knowledgeBase: null, autoArchiveDays: null, worktreeCleanDays: 7, resetAnnouncements: true, disabledAgents: [], pullRequestAutoAccept: false, agentBackends: {} })
+    expect(await reopened.load()).toEqual({ promptSuggestions: false, titleNaming: 'first', titleModels: {}, unattendedMode: 'bypass', maxConcurrentAgents: 20, agentConcurrency: defaultConcurrency, wireLog: false, userBrowser: true, readHistory: true, userTodos: true, knowledgeBase: null, autoArchiveDays: null, worktreeCleanDays: 7, resetAnnouncements: true, disabledAgents: [], pullRequestAutoAccept: false, agentBackends: {}, agentProxy: DEFAULT_AGENT_PROXY_SETTINGS })
   })
 
   it('lets a new install\'s scheduled runs allow everything, and keeps what an older one had, file or not', async () => {
@@ -47,9 +47,9 @@ describe('ChatSettingsStore', () => {
 
   it('falls back to the default for a file it cannot read', async () => {
     writeFileSync(file, '{"promptSuggestions": "nope", "unattendedMode": "yolo"}')
-    expect(await new ChatSettingsStore(file, () => {}).load()).toEqual({ promptSuggestions: true, titleNaming: 'first', titleModels: {}, unattendedMode: 'acceptEdits', maxConcurrentAgents: 20, agentConcurrency: defaultConcurrency, wireLog: false, userBrowser: true, readHistory: true, userTodos: true, knowledgeBase: null, autoArchiveDays: null, worktreeCleanDays: 7, resetAnnouncements: true, disabledAgents: [], pullRequestAutoAccept: false, agentBackends: {} })
+    expect(await new ChatSettingsStore(file, () => {}).load()).toEqual({ promptSuggestions: true, titleNaming: 'first', titleModels: {}, unattendedMode: 'acceptEdits', maxConcurrentAgents: 20, agentConcurrency: defaultConcurrency, wireLog: false, userBrowser: true, readHistory: true, userTodos: true, knowledgeBase: null, autoArchiveDays: null, worktreeCleanDays: 7, resetAnnouncements: true, disabledAgents: [], pullRequestAutoAccept: false, agentBackends: {}, agentProxy: DEFAULT_AGENT_PROXY_SETTINGS })
     writeFileSync(file, 'not json')
-    expect(await new ChatSettingsStore(file, () => {}).load()).toEqual({ promptSuggestions: true, titleNaming: 'first', titleModels: {}, unattendedMode: 'acceptEdits', maxConcurrentAgents: 20, agentConcurrency: defaultConcurrency, wireLog: false, userBrowser: true, readHistory: true, userTodos: true, knowledgeBase: null, autoArchiveDays: null, worktreeCleanDays: 7, resetAnnouncements: true, disabledAgents: [], pullRequestAutoAccept: false, agentBackends: {} })
+    expect(await new ChatSettingsStore(file, () => {}).load()).toEqual({ promptSuggestions: true, titleNaming: 'first', titleModels: {}, unattendedMode: 'acceptEdits', maxConcurrentAgents: 20, agentConcurrency: defaultConcurrency, wireLog: false, userBrowser: true, readHistory: true, userTodos: true, knowledgeBase: null, autoArchiveDays: null, worktreeCleanDays: 7, resetAnnouncements: true, disabledAgents: [], pullRequestAutoAccept: false, agentBackends: {}, agentProxy: DEFAULT_AGENT_PROXY_SETTINGS })
   })
 
   it('keeps per-agent limits when another agent changes, and rejects invalid limits', async () => {
@@ -125,6 +125,35 @@ describe('ChatSettingsStore', () => {
     expect(() => ChatSettings.partial().parse({ titleNaming: 'sometimes' })).toThrow()
     writeFileSync(file, JSON.stringify({ titleNaming: 'invalid', promptSuggestions: false }))
     expect(await new ChatSettingsStore(file, () => {}).load()).toMatchObject({ titleNaming: 'first', promptSuggestions: false })
+  })
+
+  it('persists proxy settings privately and defaults legacy or invalid values', async () => {
+    writeFileSync(file, JSON.stringify({ promptSuggestions: false }))
+    const store = new ChatSettingsStore(file, () => {})
+    expect((await store.load()).agentProxy).toEqual(DEFAULT_AGENT_PROXY_SETTINGS)
+    const agentProxy = AgentProxySettings.parse({ mode: 'manual', manual: { url: 'http://user:secret@localhost:7897' }, agents: { codex: 'noProxy' } })
+    await store.update({ agentProxy })
+    if (process.platform !== 'win32') expect(statSync(file).mode & 0o777).toBe(0o600)
+    expect((await new ChatSettingsStore(file, () => {}).load()).agentProxy).toEqual(agentProxy)
+    await expect(store.update({ agentProxy: { ...agentProxy, manual: { ...agentProxy.manual, url: 'ftp://host:80' } } })).rejects.toMatchObject({ reason: 'unsupported-protocol' })
+    await expect(store.update({ agentProxy: { ...agentProxy, manual: { ...agentProxy.manual, url: 'bad' } } })).rejects.toMatchObject({ reason: 'invalid-proxy-url' })
+    expect(store.current().agentProxy).toEqual(agentProxy)
+    writeFileSync(file, JSON.stringify({ agentProxy: { mode: 'manual', manual: { url: 'bad' } }, promptSuggestions: false }))
+    expect(await new ChatSettingsStore(file, () => {}).load()).toMatchObject({ agentProxy: DEFAULT_AGENT_PROXY_SETTINGS, promptSuggestions: false })
+  })
+
+  it('saves mode and manual-field switches despite dormant invalid URLs', async () => {
+    const store = new ChatSettingsStore(file, () => {})
+    await store.load()
+    for (const agentProxy of [
+      AgentProxySettings.parse({ mode: 'none', manual: { url: 'bad', httpProxy: 'ftp://host:21' } }),
+      AgentProxySettings.parse({ mode: 'system', manual: { url: 'bad', allProxy: 'ftp://host:21' } }),
+      AgentProxySettings.parse({ mode: 'manual', manual: { url: 'http://valid:80', httpProxy: 'bad', allProxy: 'ftp://host:21' } }),
+      AgentProxySettings.parse({ mode: 'manual', manual: { advanced: true, url: 'bad', httpProxy: 'http://valid:80' } })
+    ]) {
+      await store.update({ agentProxy })
+      expect((await new ChatSettingsStore(file, () => {}).load()).agentProxy).toEqual(agentProxy)
+    }
   })
 
   it('loads the existing knowledge base as Obsidian', async () => {
