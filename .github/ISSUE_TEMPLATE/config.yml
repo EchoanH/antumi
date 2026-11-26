@@ -1,0 +1,2 @@
+# Older app versions and integration requests still prefill a plain issue body.
+blank_issues_enabled: true

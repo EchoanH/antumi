@@ -1,0 +1,83 @@
+name: 问题反馈 / Bug report
+description: 报告异常、错误或不符合预期的行为 / Report a problem with Antumi
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！请提供以下信息，帮助我们定位问题。不确定的项目可以选择「不清楚」。
+        Thanks for reporting a problem. Choose “Not sure” when you do not know a detail.
+
+        请勿公开 API Key、Token、密码或公司内部地址；截图、日志也请先脱敏。
+        Remove credentials and private company addresses from screenshots and logs before sharing.
+  - type: textarea
+    id: problem
+    attributes:
+      label: 问题描述 / What happened?
+      description: 实际发生了什么？你原本希望怎样？ / Describe the actual and expected behavior.
+      placeholder: |
+        实际行为 / Actual behavior:
+
+        预期行为 / Expected behavior:
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现步骤 / Steps to reproduce
+      description: 偶发问题可填写「偶发，暂无法复现」，并描述当时的操作。 / For intermittent issues, describe what you were doing.
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 版本、系统与错误信息 / Version, OS and error
+      description: 从应用内反馈时自动填写。请保留 Antumi 版本、操作系统，补充系统版本（如 macOS 15）。 / Prefilled by the app; include your Antumi and OS versions.
+      placeholder: |
+        Antumi: 0.x.x
+        OS: macOS / Windows / Linux + version
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: 涉及的 Agent / Agent involved
+      options:
+        - Claude Code
+        - Codex
+        - OpenCode
+        - Cursor
+        - Gemini CLI
+        - 其他 / Other
+        - 不涉及 Agent / Not applicable
+        - 不清楚 / Not sure
+    validations:
+      required: true
+  - type: input
+    id: cli-version
+    attributes:
+      label: Agent CLI 版本 / Agent CLI version
+      description: 如知道请填写；不涉及或不清楚可留空。 / Leave blank if unknown or not applicable.
+      placeholder: "例如 / e.g. Claude Code 2.1.330"
+  - type: dropdown
+    id: connection
+    attributes:
+      label: 接入方式 / Connection type
+      options:
+        - 官方账号登录 / Official account
+        - 官方 API Key / Official API key
+        - 第三方服务 / Third-party provider
+        - 公司网关 / Company gateway
+        - 不涉及 / Not applicable
+        - 不清楚 / Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: attachments
+    attributes:
+      label: 截图、日志与补充说明 / Screenshots, logs and other details
+      description: 选填，可粘贴截图或拖入附件。请先隐藏凭证和内部地址。 / Optional; paste screenshots or attach redacted logs.

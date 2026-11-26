@@ -1,6 +1,5 @@
 import { localized, t, tr } from '../i18n'
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
-import { PROJECT_GITHUB_URL } from '@antumi/protocol'
 import { openGuide, setAwakeMode, setSchedulesOpen, setSettingsOpen, setWorktreesOpen, toggleBrowserPanel, toggleGitPanel, toggleFilesPanel, togglePortsPanel, toggleTerminalPanel, useAwakeSupported, useFilesScope, useBrowserSupported, useCore, useSchedulesOpen, useSchedulesSupported, useWorktreesSupported, type ConnectionState } from '../core-store'
 import { ALL_TABS, useBrowserTabs } from '../browser-state'
 import { formatBytes, worktreeRows, worktreeSummary } from '../worktree-groups'
@@ -19,6 +18,7 @@ import { ContextMenu, MenuItem, type MenuPoint } from './ContextMenu'
 import { useOccludesBrowser } from '../browser-occlusion'
 import wechatGroup from '../assets/wechat-group.png'
 import { contactAuthor } from '../contact-author'
+import { useSupportIssueUrl } from './ContactAuthor'
 
 type ConnectionIssue = Exclude<ConnectionState, 'connected'>
 
@@ -126,6 +126,7 @@ function WechatGroupDialog({ onClose }: { onClose: () => void }) {
 
 // Always in sight at the far end, with community and issue-reporting paths in one place.
 function FeedbackButton() {
+  const issueUrl = useSupportIssueUrl()
   const trigger = useRef<HTMLButtonElement>(null)
   const [at, setAt] = useState<MenuPoint | null>(null)
   const [communityOpen, setCommunityOpen] = useState(false)
@@ -152,7 +153,7 @@ function FeedbackButton() {
       </button>
       {at && <ContextMenu at={at} align="end" above trigger={trigger.current} label={t('StatusBar.feedback')} onClose={closeMenu}>
         <MenuItem icon={<ChatIcon />} label={t('StatusBar.joinCommunity')} onSelect={() => { closeMenu(); setCommunityOpen(true) }} />
-        <a className="menu-item feedback-issue-link" role="menuitem" href={`${PROJECT_GITHUB_URL}/issues/new`} target="_blank" rel="noreferrer" onClick={closeMenu}>
+        <a className="menu-item feedback-issue-link" role="menuitem" href={issueUrl} target="_blank" rel="noreferrer" onClick={closeMenu}>
           <span className="menu-item-icon"><BugIcon /></span><span className="menu-item-title">{t('StatusBar.submitGitHubIssue')}</span>
         </a>
       </ContextMenu>}

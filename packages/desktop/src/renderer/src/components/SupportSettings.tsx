@@ -5,9 +5,10 @@ import { ProjectStarSettings } from './ProjectStarSettings'
 import { SettingsRow } from './SettingsControls'
 import { CheckIcon, CopyIcon } from './icons'
 import wechatContact from '../assets/wechat-contact.jpg'
-import { SupportActions } from './ContactAuthor'
+import { SupportActions, useSupportIssueUrl } from './ContactAuthor'
 
 export function SupportSettings() {
+  const issueUrl = useSupportIssueUrl()
   const [result, setResult] = useState<'idle' | 'success' | 'error'>('idle')
   const [copiedAt, setCopiedAt] = useState<number | null>(null)
   const [copying, setCopying] = useState(false)
@@ -51,7 +52,7 @@ export function SupportSettings() {
       <a className="settings-project-link" href={PROJECT_GITHUB_URL} target="_blank" rel="noreferrer">{PROJECT_GITHUB_URL}</a>
     )} />
     <SettingsRow label={t('SupportSettings.feedback')} description={t('SupportSettings.feedbackDescription')} control={() => (
-      <a className="button support-feedback-link" href={`${PROJECT_GITHUB_URL}/issues/new`} target="_blank" rel="noreferrer">{t('SupportSettings.openFeedback')}</a>
+      <a className="button support-feedback-link" href={issueUrl} target="_blank" rel="noreferrer">{t('SupportSettings.openFeedback')}</a>
     )} />
     <SettingsRow label={t('SupportSettings.name')} description={t('SupportSettings.nameDescription')} control={() => null} />
     <SettingsRow label={t('SupportSettings.community')} description={t('SupportSettings.communityDescription')} control={() => (

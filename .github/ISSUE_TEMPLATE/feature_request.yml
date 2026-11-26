@@ -1,0 +1,27 @@
+name: 功能建议 / Feature request
+description: 描述使用中的困难或希望新增的能力 / Suggest an improvement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请描述实际使用场景，帮助我们理解这个功能能解决什么问题。
+        Tell us about your use case and the problem this feature would solve.
+  - type: textarea
+    id: problem
+    attributes:
+      label: 遇到什么困难？ / What problem are you facing?
+      description: 在什么场景下，哪一步不方便或无法完成？ / Describe the situation and what gets in your way.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: 希望怎样解决？ / What would you like to happen?
+      description: 描述希望实现的效果，不需要提供技术方案。 / Describe the outcome; no technical solution is needed.
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: 现在怎么处理？ / How do you handle it today?
+      description: 选填，目前的替代方法、参考产品或截图。 / Optional workarounds, examples or screenshots.

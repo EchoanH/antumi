@@ -34,15 +34,16 @@ export function supportReport(error: string, version: string | null, platform: s
 export function githubIssueUrl(report: string, error: string, locale: string): string {
   const zh = locale === 'zh-CN'
   const summary = Array.from(supportError(error).split('\n')[0]?.trim() ?? '').slice(0, 100).join('')
-  const title = summary || (zh ? '问题反馈' : 'Bug report')
-  const intro = zh
-    ? '## 问题描述\n<!-- 请描述你遇到的问题。 -->\n\n## 复现步骤\n1. \n\n## 预期行为\n\n## 环境与错误\n\n'
-    : '## What happened\n<!-- Describe the problem you encountered. -->\n\n## Steps to reproduce\n1. \n\n## Expected behavior\n\n## Environment and error\n\n'
   const chars = Array.from(supportError(report))
   const urlFor = (length: number) => {
     const truncated = length < chars.length ? (zh ? '\n\n（错误信息已截短，可从 Antumi 复制完整问题信息后补充。）' : '\n\n(Error shortened. Copy the full problem details from Antumi to add them here.)') : ''
-    const body = intro + chars.slice(0, length).join('').split('\n').map((line) => `    ${line}`).join('\n') + truncated
-    return `${PROJECT_GITHUB_URL}/issues/new?${new URLSearchParams({ title, body })}`
+    // This field's id belongs to bug_report.yml; GitHub passes it through the chooser too.
+    const params = new URLSearchParams({ environment: chars.slice(0, length).join('') + truncated })
+    if (error) {
+      params.set('template', 'bug_report.yml')
+      params.set('title', summary || (zh ? '问题反馈' : 'Bug report'))
+    }
+    return `${PROJECT_GITHUB_URL}/issues/new${error ? '' : '/choose'}?${params}`
   }
   const full = urlFor(chars.length)
   if (full.length <= 7_500) return full

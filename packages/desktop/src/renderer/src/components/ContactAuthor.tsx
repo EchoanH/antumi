@@ -7,11 +7,15 @@ import { githubIssueUrl, supportReport } from '../support-report'
 import wechatContact from '../assets/wechat-contact.jpg'
 import { CloseIcon } from './icons'
 
-export function SupportActions({ error = '' }: { error?: string }) {
+export function useSupportIssueUrl(error = ''): string {
   const version = useContactAuthor((state) => state.version)
   const locale = useLocale((state) => state.locale)
   const platform = typeof window !== 'undefined' ? window.antumi?.platform ?? navigator.platform : 'unknown'
-  const issueUrl = useMemo(() => githubIssueUrl(supportReport(error, version, platform, locale), error, locale), [error, version, platform, locale])
+  return useMemo(() => githubIssueUrl(supportReport(error, version, platform, locale), error, locale), [error, version, platform, locale])
+}
+
+export function SupportActions({ error = '' }: { error?: string }) {
+  const issueUrl = useSupportIssueUrl(error)
   return <span className="support-actions">
     <button type="button" className="link-button" onClick={() => contactAuthor(error)}>{t('ContactAuthor.title')}</button>
     <a className="link-button" href={issueUrl} target="_blank" rel="noopener noreferrer" aria-label={t('ContactAuthor.createIssue')}>GitHub Issue</a>
