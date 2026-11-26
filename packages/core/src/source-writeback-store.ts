@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { SourceReport, SourceWrite, type SourceUpdateTarget } from '@antumi/protocol'
 import type { TaskWriteLink } from './task-store'
 
+const SUSPENDED_AT = Number.MAX_SAFE_INTEGER
 const JsonRow = z.object({ data: z.string() })
 const targetKey = (target: SourceUpdateTarget) => `${target.kind}:${target.id}`
 export const itemKey = (write: Pick<SourceWrite, 'provider' | 'instance' | 'key'>) => `${write.provider}/${write.instance}/${write.key}`
@@ -75,17 +76,26 @@ export class SourceWritebackStore {
   }
   // Oldest first, so a task's stages are written back in the order it went through them.
   dueIntents(now: number): StoredIntent[] {
-    return this.db.prepare('SELECT id, task_id, next_at, data FROM source_intents WHERE next_at<=? ORDER BY id').all(now).map((raw) => {
+    return this.db.prepare('SELECT id, task_id, next_at, data FROM source_intents WHERE next_at<=? AND next_at < ? ORDER BY id').all(now, SUSPENDED_AT).map((raw) => {
       const row = IntentRow.parse(raw)
       return { ...SourceIntent.parse(JSON.parse(row.data)), id: row.id, taskId: row.task_id, nextAt: row.next_at }
     })
   }
+  intent(id: number): StoredIntent | undefined {
+    const raw = this.db.prepare('SELECT id, task_id, next_at, data FROM source_intents WHERE id=?').get(id)
+    if (!raw) return undefined
+    const row = IntentRow.parse(raw)
+    return { ...SourceIntent.parse(JSON.parse(row.data)), id: row.id, taskId: row.task_id, nextAt: row.next_at }
+  }
   nextIntentAt(): number | null {
-    const at = this.db.prepare('SELECT MIN(next_at) AS at FROM source_intents').get()?.at
+    const at = this.db.prepare('SELECT MIN(next_at) AS at FROM source_intents WHERE next_at < ?').get(SUSPENDED_AT)?.at
     return typeof at === 'number' ? at : null
   }
   saveIntent({ id, taskId: _taskId, nextAt, ...intent }: StoredIntent): void {
     this.db.prepare('UPDATE source_intents SET next_at=?, data=? WHERE id=?').run(nextAt, JSON.stringify(SourceIntent.parse(intent)), id)
+  }
+  suspendIntent(intent: StoredIntent): void {
+    this.saveIntent({ ...intent, nextAt: SUSPENDED_AT })
   }
   dropIntent(id: number): void {
     this.db.prepare('DELETE FROM source_intents WHERE id=?').run(id)

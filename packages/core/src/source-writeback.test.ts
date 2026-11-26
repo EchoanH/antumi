@@ -12,7 +12,7 @@ const source: TaskSource = { provider: 'demo', instance: 'default', key: 'D-1', 
 const target: SourceUpdateTarget = { kind: 'task', id: 'task-1' }
 const task = (status: Task['status']) => Task.parse({ id: 'task-1', title: 'Fix login', details: '', status, repos: [], dependsOn: [], agent: null, source, createdAt: 1, updatedAt: 1 })
 const open: SourceTransitions = {
-  status: 'Open', statusCategory: 'todo',
+  status: 'Open', statusCategory: 'todo', type: { id: 'work', name: 'Work' },
   options: [{ id: '21', name: 'In Progress', action: 'Start', category: 'doing' }, { id: '31', name: 'In Review', category: 'doing' }, { id: '41', name: 'Done', category: 'done' }]
 }
 
@@ -47,6 +47,7 @@ describe('source writeback', () => {
   let options: WritebackOptions
   let connected: boolean
   let transitionFailures: number
+  let currentStatus: Task['status'] | undefined
 
   const writer = {
     comments: true,
@@ -67,11 +68,11 @@ describe('source writeback', () => {
   // The source's side as SourceService gives it: the lane for what the issue is, and the options.
   const sources = {
     writer: () => (connected ? writer : null),
-    writebackFor: (_id: string, _instance: string, issue: Pick<SourceTransitions, 'type' | 'scope'>) => ({ ...resolveLane(rules, lanes, [], issue), options }),
+    writebackFor: (_id: string, _instance: string, issue: Pick<SourceTransitions, 'type' | 'scope'>) => ({ ...resolveLane({ ...EMPTY_WRITEBACK, guidance: rules.guidance }, [{ typeId: 'work', name: 'Work', mode: 'on', start: rules.start, review: rules.review, done: rules.done }, ...lanes], [], issue), options }),
     writebackWanted: () => true
   }
   const make = () => new SourceWriteback(store, sources, {
-    owner: (ref) => (ref.kind === 'task' && ref.id === 'task-1' ? { target: ref, source, conversationId: 'chat-1' } : null),
+    owner: (ref) => (ref.kind === 'task' && ref.id === 'task-1' ? { target: ref, source, conversationId: 'chat-1', ...(currentStatus ? { status: currentStatus } : {}) } : null),
     lastReply: () => reply,
     sanitize: (_owner, text) => text.replaceAll('/Users/ann', '~'),
     changed: () => {}
@@ -99,9 +100,10 @@ describe('source writeback', () => {
     options = NO_WRITEBACK_OPTIONS
     connected = true
     transitionFailures = 0
+    currentStatus = undefined
     writeback = make()
   })
-  afterEach(() => { store.close(); tasks.close(); rmSync(root, { recursive: true, force: true }) })
+  afterEach(() => { writeback.close(); store.close(); tasks.close(); rmSync(root, { recursive: true, force: true }) })
 
   it('moves the issue by hand to a status it offers, and refuses one it no longer does', async () => {
     const write = await writeback.transition(target, '21')
@@ -148,7 +150,7 @@ describe('source writeback', () => {
     await settled()
     expect(writeback.view(target).writes[0]).toMatchObject({ state: 'skipped', reason: expect.stringContaining('Doing') })
     rules = { ...EMPTY_WRITEBACK, review: { status: 'In Progress', comment: false } }
-    transitions = { status: 'Done', statusCategory: 'done', options: [{ id: '21', name: 'In Progress', category: 'doing' }] }
+    transitions = { type: { id: 'work', name: 'Work' }, status: 'Done', statusCategory: 'done', options: [{ id: '21', name: 'In Progress', category: 'doing' }] }
     moved(task('running'), task('review'))
     await settled()
     expect(moves).toEqual([])
@@ -234,7 +236,7 @@ describe('source writeback', () => {
   it('skips a rule’s comment, and refuses one by hand, where the tracker takes none', async () => {
     rules = { ...EMPTY_WRITEBACK, review: { status: '', comment: true } }
     const statusOnly = new SourceWriteback(store, { ...sources, writer: () => ({ ...writer, comments: false }) }, {
-      owner: (ref) => ({ target: ref, source, conversationId: 'chat-1' }), lastReply: () => reply, changed: () => {}
+      owner: (ref) => ({ target: ref, source, conversationId: 'chat-1', ...(currentStatus ? { status: currentStatus } : {}) }), lastReply: () => reply, changed: () => {}
     }, () => now++)
     expect(statusOnly.view(target).comments).toBe(false)
     expect(() => statusOnly.comment(target, 'hello')).toThrow(Rejection)
@@ -285,7 +287,7 @@ describe('source writeback', () => {
       transitions = { ...open, ...facts }
       writeback.taskMoved()
       await settled()
-      expect(writeback.view(target).writes[0]).toMatchObject({ state: 'sent', guard, lane: '*' })
+      expect(writeback.view(target).writes[0]).toMatchObject({ state: 'sent', guard, lane: 'work' })
     }
     expect(moves).toEqual(['31', '31', '31'])
   })
@@ -407,7 +409,7 @@ describe('source writeback', () => {
     rules = handIn
     transitions = { ...open, viewer: me, assignees: [me] }
     expect(await writeback.plan(target, 'review')).toMatchObject({
-      ownership: 'sole', lane: '*', off: false, dryRun: false, status: 'Open',
+      ownership: 'sole', lane: 'work', off: false, dryRun: false, status: 'Open',
       actions: [{ kind: 'status', detail: 'In Review', will: true, reason: null }, { kind: 'comment', detail: '', will: true, reason: expect.stringContaining('最后一条回复') }]
     })
     writeback.saveReport(target, 'Fixed the redirect.')
@@ -434,4 +436,139 @@ describe('source writeback', () => {
     expect(restarted).toBeDefined()
     expect(store.write('6f1d3a0e-5d0c-4c1f-8f3a-2f2b8f0b6c11')).toMatchObject({ state: 'uncertain' })
   })
+  it('does not let an old start retry overwrite a successful review, including after restart', async () => {
+    rules = handIn
+    currentStatus = 'running'
+    transitionFailures = 1
+    moved(task('pending'), task('running'))
+    await settled()
+    currentStatus = 'review'
+    moved(task('running'), task('review'))
+    await settled()
+    expect(transitions.status).toBe('In Review')
+    writeback.close()
+    writeback = make()
+    now += 60_000
+    await writeback.drain()
+    expect(moves).toEqual(['31'])
+    expect(store.dueIntents(Number.MAX_SAFE_INTEGER)).toEqual([])
+    expect(writeback.view(target).writes.find((write) => write.trigger === 'start')).toMatchObject({ state: 'skipped' })
+  })
+
+  it('does not deliver a delayed stage after the task was abandoned', async () => {
+    rules = handIn
+    currentStatus = 'abandoned'
+    store.addIntent('task-1', 'review', now++)
+    await writeback.drain()
+    expect(moves).toEqual([])
+    expect(comments).toEqual([])
+  })
+
+  it('checks ownership again when a transition hands the issue to QA', async () => {
+    rules = handIn
+    transitions = { ...open, viewer: me, assignees: [me] }
+    writeback.saveReport(target, 'Fixed the redirect.')
+    const original = writer.transition
+    writer.transition = async (id) => {
+      const result = await original(id)
+      transitions = { ...transitions, assignees: [qa] }
+      return result
+    }
+    try {
+      moved(task('running'), task('review'))
+      await settled()
+      expect(moves).toEqual(['31'])
+      expect(comments).toEqual([])
+      expect(writeback.view(target).writes[0]).toMatchObject({ kind: 'comment', state: 'skipped', guard: 'other' })
+    } finally { writer.transition = original }
+  })
+
+  it('checks ownership after condensing the last reply', async () => {
+    rules = { ...EMPTY_WRITEBACK, review: { status: '', comment: true } }
+    transitions = { ...open, viewer: me, assignees: [me] }
+    writeback.setCondenser(async () => {
+      transitions = { ...transitions, assignees: [qa] }
+      return 'Fixed the redirect.'
+    })
+    moved(task('running'), task('review'))
+    await settled()
+    expect(comments).toEqual([])
+    expect(writeback.view(target).writes[0]).toMatchObject({ state: 'skipped', guard: 'other' })
+  })
+
+  it.each([false, true])('can resume an exhausted outage after restart (comment only: %s)', async (commentOnly) => {
+    rules = { ...EMPTY_WRITEBACK, review: { status: commentOnly ? '' : 'In Review', comment: true } }
+    writeback.saveReport(target, 'Fixed the redirect.')
+    connected = false
+    moved(task('running'), task('review'))
+    await settled()
+    for (const wait of [60_000, 5 * 60_000, 15 * 60_000]) { now += wait; await writeback.drain() }
+    const failed = writeback.view(target).writes.find((write) => write.state === 'failed')!
+    expect(failed.intentId).toBeDefined()
+    expect(store.nextIntentAt()).toBeNull()
+    expect(store.dueIntents(Number.MAX_SAFE_INTEGER)).toEqual([])
+    writeback.close()
+    writeback = make()
+    connected = true
+    await writeback.retry(failed.id)
+    expect(moves).toEqual(commentOnly ? [] : ['31'])
+    expect(comments.map((comment) => comment.markdown)).toEqual(['Fixed the redirect.'])
+    expect(store.intent(failed.intentId!)).toBeUndefined()
+  })
+
+  it('keeps the review summary when acceptance overtakes its queued delivery', async () => {
+    rules = handIn
+    currentStatus = 'done'
+    writeback.saveReport(target, 'Fixed the redirect.')
+    store.addIntent('task-1', 'review', now++)
+    await writeback.drain()
+    expect(moves).toEqual([])
+    expect(comments.map((comment) => comment.markdown)).toEqual(['Fixed the redirect.'])
+  })
+
+  it('keeps the successful status when the ownership refresh fails before a comment', async () => {
+    rules = handIn
+    writeback.saveReport(target, 'Fixed the redirect.')
+    const original = writer.transitions
+    let reads = 0
+    writer.transitions = async () => {
+      if (++reads === 2) throw new Error('socket hang up')
+      return transitions
+    }
+    try {
+      moved(task('running'), task('review'))
+      await settled()
+      expect(moves).toEqual(['31'])
+      expect(comments).toEqual([])
+      expect(store.dueIntents(Number.MAX_SAFE_INTEGER)[0]).toMatchObject({ statusDone: true, commentDone: false })
+      now += 60_000
+      await writeback.drain()
+      expect(moves).toEqual(['31'])
+      expect(comments).toHaveLength(1)
+    } finally { writer.transitions = original }
+  })
+
+  it('stores the investigation proposal with the source report', () => {
+    const fix = { decision: 'repair' as const, evidence: 'A failing redirect test', plan: 'Preserve the URL' }
+    writeback.saveReport(target, 'Located the defect.', { fix })
+    expect(writeback.view(target).report?.fix).toEqual(fix)
+  })
+
+  it('holds hand-in writes until automatic repair has completed delivery', async () => {
+    rules = handIn
+    writeback.close()
+    let delivering = true
+    writeback = new SourceWriteback(store, sources, {
+      owner: (ref) => ({ target: ref, source, conversationId: 'chat-1' }), lastReply: () => reply, changed: () => {},
+      defer: () => delivering
+    }, () => now++)
+    writeback.saveReport(target, 'Fixed the redirect.')
+    moved(task('running'), task('review'))
+    await settled()
+    expect(moves).toEqual([]); expect(comments).toEqual([])
+    delivering = false; now += 60_000
+    await writeback.drain()
+    expect(moves).toEqual(['31']); expect(comments).toHaveLength(1)
+  })
+
 })

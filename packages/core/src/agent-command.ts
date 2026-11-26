@@ -1,4 +1,4 @@
-import { AGENT_CALL_TOOLS, BROWSER_BOOKMARKS_TOOL, browserToolName, HISTORY_TOOLS, historyToolName, MANAGEMENT_READ_TOOLS, SHOW_PREVIEW_TOOL, SOURCE_REPORT_TOOL, SQUAD_TOOL_NAMES, SQUAD_CALL_TOOLS, terminalToolName, TODO_TOOLS, todoToolName } from '@antumi/protocol'
+import { AGENT_CALL_TOOLS, BROWSER_BOOKMARKS_TOOL, browserToolName, HISTORY_TOOLS, historyToolName, MANAGEMENT_READ_TOOLS, SHOW_PREVIEW_TOOL, SOURCE_REPORT_TOOL, SOURCE_TASK_READ_TOOLS, SQUAD_TOOL_NAMES, SQUAD_CALL_TOOLS, terminalToolName, TODO_TOOLS, todoToolName } from '@antumi/protocol'
 
 // env is added to what the agent runs with, for an agent configured through its environment.
 export type AgentCommand = { command: string; args: string[]; env?: Record<string, string> }
@@ -21,5 +21,5 @@ export const BROWSER_READ_TOOLS: readonly string[] = [...(['snapshot', 'screensh
 // issue summary a task's agent drafts for Antumi to post. Running a
 // command in a terminal, or acting on a page, is left out.
 export function antumiReadTools(todos: boolean): string[] {
-  return [...Object.values(AGENT_CALL_TOOLS), ...Object.values(SQUAD_TOOL_NAMES), ...Object.values(SQUAD_CALL_TOOLS), ...MANAGEMENT_READ_TOOLS, SHOW_PREVIEW_TOOL, ...BROWSER_READ_TOOLS, terminalToolName('read'), terminalToolName('stop'), ...HISTORY_TOOLS.map(historyToolName), ...(todos ? TODO_TOOLS.map(todoToolName) : []), SOURCE_REPORT_TOOL]
+  return [...Object.values(AGENT_CALL_TOOLS), ...Object.values(SQUAD_TOOL_NAMES), ...Object.values(SQUAD_CALL_TOOLS), ...MANAGEMENT_READ_TOOLS, SHOW_PREVIEW_TOOL, ...BROWSER_READ_TOOLS, terminalToolName('read'), terminalToolName('stop'), ...HISTORY_TOOLS.map(historyToolName), ...(todos ? TODO_TOOLS.map(todoToolName) : []), SOURCE_REPORT_TOOL, ...SOURCE_TASK_READ_TOOLS]
 }

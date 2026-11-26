@@ -1,3 +1,4 @@
+import { SourceFixStatus } from './SourceFixStatus'
 import { SupportActions } from './ContactAuthor'
 import { AutoInvestigationSummary, AutoInvestigationHistory, autoInvestigationStatus, autoInvestigationReason } from './AutoInvestigationSettings'
 import { SourceCommentBadge } from './SourceUpdatesPanel'
@@ -37,6 +38,7 @@ function IssueRow({ issue, name, busy, investigating = false, selected = false, 
           </span>
           {issue.updatedAt !== null && <span>{tr('SourceInboxView.updated', { value1: updatedOn(issue.updatedAt) })}</span>}
           {issue.conversationId && <SourceCommentBadge target={{ kind: 'conversation', id: issue.conversationId }} />}
+          {issue.autoInvestigation?.fix && <SourceFixStatus info={issue.autoInvestigation.fix} />}
           {issue.autoInvestigation && <span className="inbox-investigating" data-auto-state={issue.autoInvestigation.status} title={autoInvestigationReason(issue.autoInvestigation.reason, issue.autoInvestigation.message) ?? undefined}>{autoInvestigationStatus(issue.autoInvestigation.status)}</span>}
           {investigating && !issue.autoInvestigation && <span className="inbox-investigating">{t('SourceInboxView.investigating')}</span>}
         </div>

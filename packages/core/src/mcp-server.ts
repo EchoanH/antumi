@@ -317,7 +317,7 @@ export async function serveMcp(home: string | undefined, conversationId?: string
       ? await rpc.call('sources.writeback', { target }).catch(() => null)
       : null
     // The summary is drafted to be posted, so a tracker that takes no comments gets no tool for it.
-    const writeback = view?.supported === true && view.comments
+    const writeback = (view?.supported === true && (view.comments || rpc.features.includes('source-auto-fix'))) || (!!conversation.autoInvestigationId && rpc.features.includes('source-auto-fix'))
     return { ...conversationToolLimits(conversation), run, features: rpc.features, writeback, delegate: rpc.features.includes('agent-profiles') && canDelegate(conversation, Boolean(run)) }
   }) : null
   const attachments = new AttachmentStore(antumiPaths(home).attachments)

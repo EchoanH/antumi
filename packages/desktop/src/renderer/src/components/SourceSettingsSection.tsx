@@ -8,6 +8,8 @@ import { perform, startLogin, useCore } from '../core-store'
 import { inboxKey } from '../source-inboxes'
 import { sourceProblemText } from '../labels'
 import { Toggle } from './SettingsControls'
+import { ChatPicker } from './ChatPicker'
+import { ChevronRightIcon, PlugIcon } from './icons'
 
 function FieldInput({
   field,
@@ -37,14 +39,10 @@ function FieldInput({
     )
   }
   if (field.type === 'select') {
+    const options = (field.options ?? []).map((option) => ({ value: option.value, label: translatedText(option, getLocale()).label }))
+    if (value && !options.some((option) => option.value === value)) options.push({ value, label: value })
     return (
-      <select id={id} className={className} value={value} onChange={(e) => onChange(e.target.value)}>
-        {(field.options ?? []).map((option) => (
-          <option key={option.value} value={option.value}>
-            {translatedText(option, getLocale()).label}
-          </option>
-        ))}
-      </select>
+      <ChatPicker id={id} label={field.label} size="field" placement="below" value={value} placeholder={field.placeholder ?? field.label} options={options} onChange={onChange} />
     )
   }
   return (
@@ -121,62 +119,67 @@ export function SourceSettingsSection({ source }: { source: SourceDescriptor }) 
       : t('SourceLoginDialog.signedIn', { value1: credential.account ?? t('SourceSettingsSection.unknownAccount') })
 
   return (
-    <form className="settings-form" onSubmit={onSubmit}>
-      {source.settings.map((original) => {
-        const field = translatedText(original, getLocale())
-        return (
-        <div key={field.key} className="settings-field">
-          <label className="settings-field-label" htmlFor={`${ids}-${field.key}`}>
-            {field.label}
-          </label>
-          <FieldInput
-            field={field}
-            id={`${ids}-${field.key}`}
-            value={values[field.key] ?? ''}
-            onChange={(value) => setValues((current) => ({ ...current, [field.key]: value }))}
-          />
-          {field.hint && <p className="settings-field-hint">{field.hint}</p>}
-          {field.bindsCredential && credential.source === 'store' && (
-            <p className="settings-field-hint">{t('SourceSettingsSection.changingThisRequiresSigningInAgainSavedCredentials')}</p>
-          )}
-        </div>
-      )})}
-
-      <div className="source-account">
-        <div className="source-account-text">
-          <span className="settings-field-label">{t('SourceSettingsSection.account')}</span>
-          <span className="source-account-status" data-connected={credential.configured || undefined}>
-            {status}
-          </span>
-          {credential.configured && inbox?.problem && (
-            <span className="settings-status" role="status">{tr('SourceSettingsSection.syncFailed', { value1: sourceProblemText(inbox.problem) })}<SupportActions error={sourceProblemText(inbox.problem)} /></span>
-          )}
-        </div>
-        {credential.source === 'store' && (
-          <button type="button" className="button ghost" onClick={disconnect}>{t('SourceSettingsSection.signOut')}</button>
-        )}
-        {credential.source !== 'env' && (
-          <button type="button" className="button" disabled={busy} onClick={() => void connect()}>
-            {credential.configured ? t('SourceSettingsSection.signInAgain') : t('SettingsPage.signIn')}
-          </button>
-        )}
-      </div>
-
-      <div className="settings-form-footer">
-        {hasSaved && (
-          <div className="source-enabled">
-            <Toggle labelId={`${ids}-enabled`} checked={instance.enabled} onChange={setEnabled} />
-            <span id={`${ids}-enabled`}>{t('SourceSettingsSection.syncToInbox')}</span>
+    <div className="source-settings">
+      <details className="source-connection-section" open={!credential.configured ? true : undefined}>
+        <summary><PlugIcon /><span className="source-settings-title">{t('SourceSettingsSection.connection')}</span><span className="source-connection-summary">{status}</span><ChevronRightIcon /></summary>
+      <form className="settings-form source-connection-settings" onSubmit={onSubmit}>
+        {source.settings.map((original) => {
+          const field = translatedText(original, getLocale())
+          return (
+          <div key={field.key} className="settings-field">
+            <label className="settings-field-label" htmlFor={`${ids}-${field.key}`}>
+              {field.label}
+            </label>
+            <FieldInput
+              field={field}
+              id={`${ids}-${field.key}`}
+              value={values[field.key] ?? ''}
+              onChange={(value) => setValues((current) => ({ ...current, [field.key]: value }))}
+            />
+            {field.hint && <p className="settings-field-hint">{field.hint}</p>}
+            {field.bindsCredential && credential.source === 'store' && (
+              <p className="settings-field-hint">{t('SourceSettingsSection.changingThisRequiresSigningInAgainSavedCredentials')}</p>
+            )}
           </div>
-        )}
-        <button type="submit" className="button primary" disabled={busy || !dirty}>
-          {busy ? t('SourceSettingsSection.saving') : t('SourceSettingsSection.saveSettings')}
-        </button>
-      </div>
+        )})}
+
+        <div className="source-account">
+          <div className="source-account-text">
+            <span className="settings-field-label">{t('SourceSettingsSection.account')}</span>
+            <span className="source-account-status" data-connected={credential.configured || undefined}>
+              {status}
+            </span>
+            {credential.configured && inbox?.problem && (
+              <span className="settings-status" role="status">{tr('SourceSettingsSection.syncFailed', { value1: sourceProblemText(inbox.problem) })}<SupportActions error={sourceProblemText(inbox.problem)} /></span>
+            )}
+          </div>
+          {credential.source === 'store' && (
+            <button type="button" className="button ghost" onClick={disconnect}>{t('SourceSettingsSection.signOut')}</button>
+          )}
+          {credential.source !== 'env' && (
+            <button type="button" className="button" disabled={busy} onClick={() => void connect()}>
+              {credential.configured ? t('SourceSettingsSection.signInAgain') : t('SettingsPage.signIn')}
+            </button>
+          )}
+        </div>
+
+        <div className="settings-form-footer">
+          {hasSaved && (
+            <div className="source-enabled">
+              <Toggle labelId={`${ids}-enabled`} checked={instance.enabled} onChange={setEnabled} />
+              <span id={`${ids}-enabled`}>{t('SourceSettingsSection.syncToInbox')}</span>
+            </div>
+          )}
+          <button type="submit" className="button" disabled={busy || !dirty}>
+            {busy ? t('SourceSettingsSection.saving') : t('SourceSettingsSection.saveSettings')}
+          </button>
+        </div>
+      </form>
+      </details>
       <AutoInvestigationSettings provider={source.provider} instance={DEFAULT_INSTANCE} info={instance.autoInvestigation} connected={instance.enabled && credential.configured} />
       {source.writeback && <SourceWritebackSettings provider={source.provider} instance={DEFAULT_INSTANCE} config={instance.writeback} hints={source.writebackRules} comments={source.writebackComments}
         lanes={instance.writebackLanes} options={instance.writebackOptions} types={laneTypes(source, inbox?.items ?? [])} />}
-    </form>
+    </div>
   )
 }
 

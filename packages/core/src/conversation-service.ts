@@ -1004,11 +1004,12 @@ export class ConversationService {
     agent: AgentKind,
     projectPaths: readonly string[],
     allowBypass: boolean | undefined,
-    start: { permissionMode?: string; model?: string; effort?: string; worktree?: boolean; branch?: string; modelProvider?: string },
+    start: { readOnly?: boolean; permissionMode?: string; model?: string; effort?: string; worktree?: boolean; branch?: string; modelProvider?: string },
     issue: { source: TaskSource; title: string; automaticId?: string }
   ): Promise<Conversation> {
     if (issue.automaticId && this.store.get(issue.automaticId)) {
       const existing = this.get(issue.automaticId)
+      if (start.readOnly) this.store.setWorkspaceReadOnly(existing.id, true)
       if (!existing.sessionId && this.store.stages(existing.id).length === 0) {
         await this.validateStartOptions(agent, start, start.modelProvider)
         this.store.setModelProvider(existing.id, start.modelProvider ?? null)

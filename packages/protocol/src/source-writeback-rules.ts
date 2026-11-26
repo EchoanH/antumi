@@ -10,6 +10,7 @@ export type WritebackStage = typeof WRITEBACK_STAGES[number]
 const StatusNames = z.string().trim().max(500).default('')
 const StartRule = z.object({ status: StatusNames })
 const StageRule = z.object({ status: StatusNames, comment: z.boolean().default(false) })
+// Source-level stages remain on the wire for older clients; only a lane executes them.
 export const SourceWritebackConfig = z.object({
   start: StartRule.default({ status: '' }),
   review: StageRule.default({ status: '', comment: false }),
@@ -54,7 +55,7 @@ export function applicableWriteback(config: SourceWritebackConfig, hints: Writeb
 }
 
 // A source takes issues of several types, each with a workflow of its own: a lane is the rules for
-// one type, each stage left out following the source's own. off writes nothing back for the type.
+// one type, with an omitted stage left alone. off writes nothing back for the type.
 const Id = z.string().min(1).max(500)
 export const WritebackLane = z.object({
   typeId: Id,
@@ -87,20 +88,20 @@ export type WritebackType = z.infer<typeof WritebackType>
 export const WILDCARD_LANE = '*'
 
 // The rules for an issue of this type in this scope: the lane naming both, else the one naming the
-// type, else the source's own. off when the lane, or failing one the type itself, says so.
+// type. Without a configured lane nothing is written, even for a newly discovered type.
 export function resolveLane(
   config: SourceWritebackConfig,
   lanes: readonly WritebackLane[],
-  types: readonly WritebackType[],
+  _types: readonly WritebackType[],
   issue: { type?: { id: string } | undefined; scope?: { id: string } | undefined }
 ): { lane: string; off: boolean; rules: SourceWritebackConfig } {
   const typeId = issue.type?.id
   const matching = typeId ? lanes.filter((lane) => lane.typeId === typeId) : []
   const lane = matching.find((each) => each.scopeId !== undefined && each.scopeId === issue.scope?.id) ?? matching.find((each) => each.scopeId === undefined)
-  if (!lane) return { lane: WILDCARD_LANE, off: types.find((type) => type.id === typeId)?.mode === 'off', rules: config }
+  if (!lane) return { lane: WILDCARD_LANE, off: true, rules: { ...EMPTY_WRITEBACK, guidance: config.guidance } }
   return {
     lane: lane.typeId,
     off: lane.mode === 'off',
-    rules: { start: lane.start ?? config.start, review: lane.review ?? config.review, done: lane.done ?? config.done, guidance: config.guidance }
+    rules: { start: lane.start ?? EMPTY_WRITEBACK.start, review: lane.review ?? EMPTY_WRITEBACK.review, done: lane.done ?? EMPTY_WRITEBACK.done, guidance: config.guidance }
   }
 }

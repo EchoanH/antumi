@@ -1,3 +1,5 @@
+import { AgentKind } from './agent'
+import { ModelProviderId } from './model-provider-id'
 import { z } from 'zod'
 import { ISSUE_STATUS_CATEGORIES, SourceId, SourceKey } from './source'
 import { SourceUpdateTarget } from './source-comments'
@@ -7,6 +9,7 @@ import { SourceUpdateTarget } from './source-comments'
 
 // The agent's tool for drafting the summary; it writes to Antumi only, so it asks the user nothing.
 export const SOURCE_REPORT_TOOL = 'source_report'
+export const SOURCE_TASK_READ_TOOLS = ['source_task_options', 'source_task_catalog'] as const
 
 export const MAX_WRITEBACK_COMMENT = 20_000
 export const MAX_SOURCE_REPORT = 8_000
@@ -102,7 +105,9 @@ export const SourceWrite = z.object({
   // A dry run: detail is what would have been written, and nothing was.
   planned: z.boolean().optional(),
   // How many times a status move was tried before this record of it.
-  attempts: z.number().int().nonnegative().optional()
+  attempts: z.number().int().nonnegative().optional(),
+  // An undelivered rule to resume when the user retries after a source outage.
+  intentId: z.number().int().positive().optional()
 })
 export type SourceWrite = z.infer<typeof SourceWrite>
 
@@ -114,12 +119,37 @@ export type SourceOutcome = z.infer<typeof SourceOutcome>
 
 // The summary the agent drafted for the issue; Antumi posts it, never the agent. verification is
 // for whoever checks the work next: how to, and what it touches.
+export const SourceTaskProposal = z.object({
+  title: z.string().trim().min(1).max(200),
+  details: z.string().trim().min(1).max(100000),
+  agent: AgentKind,
+  model: z.string().trim().min(1).max(200).nullable().optional(),
+  effort: z.string().trim().min(1).max(200).nullable().optional(),
+  modelProvider: ModelProviderId.nullable().optional(),
+  dependsOn: z.array(z.string().uuid()).max(50).optional(),
+  repos: z.array(z.object({
+    path: z.string().trim().min(1).max(4000),
+    reference: z.boolean().optional(),
+    startRef: z.string().trim().min(1).max(500).nullable().optional()
+  }).strict()).min(1).max(10)
+}).strict()
+export type SourceTaskProposal = z.infer<typeof SourceTaskProposal>
+
+export const SourceFixProposal = z.object({
+  decision: z.enum(['repair', 'needs_input', 'no_fix']),
+  evidence: z.string().trim().min(1).max(2000),
+  plan: z.string().trim().min(1).max(4000),
+  task: SourceTaskProposal.optional()
+})
+export type SourceFixProposal = z.infer<typeof SourceFixProposal>
+
 export const SourceReport = z.object({
   text: z.string().max(MAX_SOURCE_REPORT), updatedAt: z.number(),
   outcome: SourceOutcome.optional(),
   verification: z.string().max(SOURCE_REPORT_LIMIT).optional(),
   question: z.string().max(SOURCE_REPORT_LIMIT).optional(),
-  blocker: z.string().max(SOURCE_REPORT_LIMIT).optional()
+  blocker: z.string().max(SOURCE_REPORT_LIMIT).optional(),
+  fix: SourceFixProposal.optional()
 })
 export type SourceReport = z.infer<typeof SourceReport>
 

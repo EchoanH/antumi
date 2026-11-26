@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import {
   AutoInvestigationConfig, AutoInvestigationRun, agentDescriptor, type AgentKind, type ChatPermissionMode,
-  type AutoInvestigationInfo, type AutoInvestigationSummary, type Conversation, type SourceIssue
+  type SourceTaskProposal, type SourceFixInfo, type AutoInvestigationInfo, type AutoInvestigationSummary, type Conversation, type SourceIssue
 } from '@antumi/protocol'
 import { Rejection } from './rejection'
 import { SourceInvestigationStore, investigationInstance, type InvestigationRun, type InvestigationSettings } from './source-investigation-store'
@@ -21,6 +21,8 @@ type Deps = {
   launch(run: InvestigationRun): Promise<void>
   retry(run: InvestigationRun): Promise<void>
   resumeImages?(run: InvestigationRun): Promise<void>
+  validateTask?(proposal: SourceTaskProposal, run: InvestigationRun): Promise<void>
+  takeoverFix?(id: string): void
   changed(provider: string, instance: string, info: AutoInvestigationInfo, run?: AutoInvestigationRun): void
 }
 const BACKOFF = [60_000, 5 * 60_000, 15 * 60_000]
@@ -94,11 +96,13 @@ export class SourceInvestigationService {
     return { items, nextCursor: offset + items.length < runs.length ? items.at(-1)?.id ?? null : null }
   }
   async save(provider: string, instance: string, config: AutoInvestigationConfig): Promise<void> {
+    const previous = this.store.setting(provider, instance)
+    // Older clients cannot edit repair policy; saving their investigation fields must keep it.
+    if (config.autoFix === undefined && previous?.config.autoFix) config = { ...config, autoFix: previous.config.autoFix }
     if (config.enabled) {
-      if (!config.agent || config.projectPaths.length === 0) throw new Rejection('invalid-params', '请选择排查项目和 Agent')
+      if (!config.agent || (!config.projectPaths.length && !config.autoFix?.enabled)) throw new Rejection('invalid-params', '请选择排查项目和 Agent')
       await this.deps.validate(config)
     }
-    const previous = this.store.setting(provider, instance)
     this.store.transaction(() => {
       this.store.saveSetting({ provider, instance, config, binding: previous?.binding ?? null, scope: previous?.scope ?? null,
         baselineReady: config.enabled && previous?.config.enabled ? previous.baselineReady : false,
@@ -194,6 +198,7 @@ export class SourceInvestigationService {
   }
   pending(id: string): InvestigationRun | null { return this.store.run(id) }
   takeover(id: string): void {
+    this.deps.takeoverFix?.(id)
     const run = this.store.run(id)
     if (run?.conversationId && run.status !== 'handed-over') {
       this.update(run, { status: 'handed-over', canRetry: false, retryAt: null })
@@ -242,6 +247,23 @@ export class SourceInvestigationService {
     const run = this.require(id)
     if (!QUEUED.has(run.status)) throw new Rejection('invalid-params', '只能取消尚未开始的排查')
     return AutoInvestigationRun.parse(this.update(run, { status: 'cancelled', retryAt: null, canRetry: false }))
+  }
+  async validateTask(id: string, proposal: SourceTaskProposal): Promise<void> {
+    const run = this.require(id)
+    if (!ACTIVE.has(run.status) || !run.config?.autoFix?.enabled) throw new Rejection('invalid-configuration', '这个会话不在自动任务分流阶段')
+    await this.deps.validateTask?.(proposal, run)
+  }
+  fixCandidates(): InvestigationRun[] { return this.store.runs().filter((run) => run.status === 'completed' && !!run.config?.autoFix?.enabled) }
+  fixAllowed(run: InvestigationRun): boolean {
+    const setting = this.store.setting(run.provider, run.instance)
+    const current = this.store.run(run.id)
+    const snapshot = this.deps.snapshot(run.provider, run.instance)
+    return !!setting?.config.enabled && !!setting.config.autoFix?.enabled && current?.status === 'completed' && snapshot?.healthy === true && snapshot.binding === run.binding && snapshot.scope === run.scope
+      && JSON.stringify(setting.config.autoFix) === JSON.stringify(run.config?.autoFix)
+  }
+  fixChanged(id: string, fix: SourceFixInfo): void {
+    const run = this.store.run(id)
+    if (run && JSON.stringify(run.fix) !== JSON.stringify(fix)) this.update(run, { fix })
   }
   changed(): void { void this.tick() }
   tick(): Promise<void> {

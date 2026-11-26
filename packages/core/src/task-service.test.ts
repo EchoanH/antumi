@@ -1,3 +1,4 @@
+import { SourceFixStore } from './source-fix-store'
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
@@ -80,6 +81,34 @@ describe('TaskService', () => {
       if (event.type === 'changed') { if (!event.sourceOnly) schedules?.taskChanged(event.task) }
       else schedules?.taskDeleted(event.id)
     }, attachments, conversations, runs)
+  })
+
+  it('starts two source-linked repair tasks in separate managed worktrees', async () => {
+    const repo = initRepo('repair-repo')
+    const before = git(repo, 'rev-parse', 'HEAD')
+    const branch = git(repo, 'branch', '--show-current')
+    const fixes = new SourceFixStore(path.join(dir, 'antumi.db'))
+    try {
+      const started: Task[] = []
+      for (const key of ['D-1', 'D-2']) {
+        const source = { provider: 'demo', instance: 'default', key, name: 'Demo', url: `https://demo.test/${key}` }
+        const record = fixes.save({ id: randomUUID(), taskId: null, state: 'queued', urls: [], message: null, attempts: 0, revision: null })
+        const task = await service.createLinkedTask({ title: `Repair ${key}`, details: 'Repair the defect and commit.', agent: 'claude', squadId: null,
+          source, sourceSnapshot: { markdown: 'External issue data', images: [], fetchedAt: 1 },
+          repos: [{ path: repo, branch: null, worktreePath: null, startRef: null, start: null }] }, fixes.taskLink(record, source))
+        expect(fixes.get(record.id)?.taskId).toBe(task.id)
+        const running = await service.start(task.id, true, 'bypass')
+        expect(running.source).toEqual(source)
+        expect(running.repos[0]?.worktreePath).not.toBe(repo)
+        expect(daemon.spawns.at(-1)?.cwd).toBe(realpathSync(running.repos[0]?.worktreePath ?? ''))
+        started.push(running)
+      }
+      expect(started[0]?.repos[0]?.worktreePath).not.toBe(started[1]?.repos[0]?.worktreePath)
+      expect(started[0]?.repos[0]?.branch).not.toBe(started[1]?.repos[0]?.branch)
+      expect(git(repo, 'rev-parse', 'HEAD')).toBe(before)
+      expect(git(repo, 'branch', '--show-current')).toBe(branch)
+      expect(git(repo, 'status', '--porcelain')).toBe('')
+    } finally { fixes.close() }
   })
 
   it('marks background source snapshots as data-only without changing the task status', () => {

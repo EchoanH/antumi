@@ -182,7 +182,7 @@ ANTUMI_HOME=~/.antumi-demo pnpm dev
 
 | | |
 |---|---|
-| **使用** | [使用指南](docs/GETTING-STARTED.md) · [新问题自动排查](docs/SOURCE-AUTO-INVESTIGATION.md) · [用量账本](docs/USAGE-ANALYTICS.md) · [Markdown 主题](docs/MARKDOWN-THEMES.md) · [Antigravity](docs/ANTIGRAVITY.md) · [DeepSeek Harness](docs/DEEPSEEK.md) · [ZCode](docs/ZCODE.md) · [Kimi Code](docs/KIMI.md) · [Gemini CLI](docs/GEMINI.md) |
+| **使用** | [使用指南](docs/GETTING-STARTED.md) · [事项自动化](docs/SOURCE-AUTO-INVESTIGATION.md) · [用量账本](docs/USAGE-ANALYTICS.md) · [Markdown 主题](docs/MARKDOWN-THEMES.md) · [Antigravity](docs/ANTIGRAVITY.md) · [DeepSeek Harness](docs/DEEPSEEK.md) · [ZCode](docs/ZCODE.md) · [Kimi Code](docs/KIMI.md) · [Gemini CLI](docs/GEMINI.md) |
 | **扩展** | [任务来源插件](docs/PLUGINS.md)：GitHub、Jira、Linear、禅道，或自己写一个 |
 | **开发** | [技术架构](docs/ARCHITECTURE.md) · [聊天平台接入](docs/CHANNELS.md) · [手机端](docs/MOBILE.md) · [WSL](docs/WSL.md) · [AGENTS.md](AGENTS.md) · [DESIGN.md](DESIGN.md) |
 | **发布** | [发版与打包](docs/RELEASING.md) · [更新日志](CHANGELOG.md) |

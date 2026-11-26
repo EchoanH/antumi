@@ -21,20 +21,20 @@ it('acts on no status where the tracker has none and no comment where it takes n
   expect(applicableWriteback(EMPTY_WRITEBACK, { start: false, review: false, done: false }, false)).toEqual(EMPTY_WRITEBACK)
 })
 
-it('takes the rules of the lane that names the type, the one naming its scope first, and the source’s own otherwise', () => {
+it('takes the rules of the lane that names the type, the one naming its scope first, without inheriting a source rule', () => {
   const lanes = [
     WritebackLane.parse({ typeId: 'bug', review: { status: 'Resolved', comment: true } }),
     WritebackLane.parse({ typeId: 'bug', scopeId: 'APP', review: { status: 'Ready for QA' } }),
     WritebackLane.parse({ typeId: 'epic', mode: 'off' })
   ]
   const bug = { type: { id: 'bug' } }
-  expect(resolveLane(saved, lanes, [], bug)).toEqual({ lane: 'bug', off: false, rules: { ...saved, review: { status: 'Resolved', comment: true } } })
+  expect(resolveLane(saved, lanes, [], bug)).toEqual({ lane: 'bug', off: false, rules: { ...EMPTY_WRITEBACK, guidance: saved.guidance, review: { status: 'Resolved', comment: true } } })
   expect(resolveLane(saved, lanes, [], { ...bug, scope: { id: 'APP' } }).rules.review).toEqual({ status: 'Ready for QA', comment: false })
   expect(resolveLane(saved, lanes, [], { ...bug, scope: { id: 'WEB' } }).rules.review.status).toBe('Resolved')
-  // A stage the lane leaves out follows the source's rule; a type with no lane, and an issue of no known type, all of them.
-  expect(resolveLane(saved, lanes, [], bug).rules.start).toEqual(saved.start)
-  expect(resolveLane(saved, lanes, [], { type: { id: 'story' } })).toEqual({ lane: '*', off: false, rules: saved })
-  expect(resolveLane(saved, lanes, [], {})).toEqual({ lane: '*', off: false, rules: saved })
+  // Omitted stages are empty; new types and unknown types never inherit the old common rule.
+  expect(resolveLane(saved, lanes, [], bug).rules.start).toEqual(EMPTY_WRITEBACK.start)
+  expect(resolveLane(saved, lanes, [], { type: { id: 'story' } })).toEqual({ lane: '*', off: true, rules: { ...EMPTY_WRITEBACK, guidance: saved.guidance } })
+  expect(resolveLane(saved, lanes, [], {})).toEqual({ lane: '*', off: true, rules: { ...EMPTY_WRITEBACK, guidance: saved.guidance } })
   expect(resolveLane(saved, lanes, [], { type: { id: 'epic' } }).off).toBe(true)
 })
 

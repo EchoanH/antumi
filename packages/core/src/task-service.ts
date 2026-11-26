@@ -168,7 +168,7 @@ export class TaskService {
 
   private workspaceStarts: (taskId: string) => ReadonlyMap<string, string> = () => new Map()
   setWorkspaceStarts(starts: (taskId: string) => ReadonlyMap<string, string>): void { this.workspaceStarts = starts }
-  async createLinkedTask(fields: Pick<Task, 'title' | 'details' | 'repos' | 'agent' | 'squadId'> & { images?: string[] }, link: TaskCreationLink): Promise<Task> {
+  async createLinkedTask(fields: Pick<Task, 'title' | 'details' | 'repos' | 'agent' | 'squadId'> & { images?: string[]; source?: Task['source']; sourceSnapshot?: Task['sourceSnapshot']; launch?: Task['launch']; dependsOn?: string[] }, link: TaskCreationLink): Promise<Task> {
     const images = await this.resolveImages((fields.images ?? []).map((id) => ({ id, name: 'image' })))
     const task = this.store.create(fields.title, { ...fields, images }, link)
     this.projects.remember(fields.repos.map((repo) => repo.path))

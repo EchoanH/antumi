@@ -139,7 +139,7 @@ export function createRpcHandlers(
     if (!mobile) throw new Rejection('mobile-unavailable')
     return mobile
   }
-  const hello = () => ({ protocolVersion: PROTOCOL_VERSION, serverVersion: packageJson.version, home: { path: homedir(), windows: process.platform === 'win32' }, features: CORE_FEATURES.filter((feature) => (feature !== 'agent-profiles' || Boolean(profiles)) && (feature !== 'project-star' || Boolean(projectStar)) && (feature !== 'bookmarks' || Boolean(bookmarks)) && (feature !== 'browser-history' || Boolean(browserHistory)) && (feature !== 'browser-sites' || Boolean(browserSites)) && (feature !== 'pets' || Boolean(pets)) && (feature !== 'squads' || Boolean(squads)) && (feature !== 'squad-calls' || Boolean(squadCalls)) && (!['plugins', 'plugin-recommendations', 'plugin-packages', 'plugin-pages'].includes(feature) || Boolean(plugins)) && (!['skills-library', 'skills-search', 'skills-activation'].includes(feature) || Boolean(skills)) && (feature !== 'mcp-servers' || Boolean(mcpServers)) && (feature !== 'small-model-stats' || Boolean(smallModels)) && (!['model-providers', 'model-provider-models', 'cc-switch-import'].includes(feature) || Boolean(modelProviders)) && (feature !== 'agent-accounts' || Boolean(accounts)) && (feature !== 'pull-requests' || Boolean(pullRequests)) && (feature !== 'mobile' || Boolean(mobile)) && (!['channels', 'channel-readiness', 'channel-tasks'].includes(feature) || Boolean(channels)) && (feature !== 'attachment-sweep' || Boolean(attachments.sweeper)) && (!['source-writeback', 'source-writeback-lanes'].includes(feature) || Boolean(writeback))) })
+  const hello = () => ({ protocolVersion: PROTOCOL_VERSION, serverVersion: packageJson.version, home: { path: homedir(), windows: process.platform === 'win32' }, features: CORE_FEATURES.filter((feature) => (feature !== 'agent-profiles' || Boolean(profiles)) && (feature !== 'project-star' || Boolean(projectStar)) && (feature !== 'bookmarks' || Boolean(bookmarks)) && (feature !== 'browser-history' || Boolean(browserHistory)) && (feature !== 'browser-sites' || Boolean(browserSites)) && (feature !== 'pets' || Boolean(pets)) && (feature !== 'squads' || Boolean(squads)) && (feature !== 'squad-calls' || Boolean(squadCalls)) && (!['plugins', 'plugin-recommendations', 'plugin-packages', 'plugin-pages'].includes(feature) || Boolean(plugins)) && (!['skills-library', 'skills-search', 'skills-activation'].includes(feature) || Boolean(skills)) && (feature !== 'mcp-servers' || Boolean(mcpServers)) && (feature !== 'small-model-stats' || Boolean(smallModels)) && (!['model-providers', 'model-provider-models', 'cc-switch-import'].includes(feature) || Boolean(modelProviders)) && (feature !== 'agent-accounts' || Boolean(accounts)) && (feature !== 'pull-requests' || Boolean(pullRequests)) && (feature !== 'mobile' || Boolean(mobile)) && (!['channels', 'channel-readiness', 'channel-tasks'].includes(feature) || Boolean(channels)) && (feature !== 'attachment-sweep' || Boolean(attachments.sweeper)) && (!['source-writeback', 'source-writeback-lanes', 'source-writeback-per-type'].includes(feature) || Boolean(writeback))) })
   const channelService = (): ChannelService => {
     if (!channels) throw new Rejection('channels-unavailable')
     return channels
@@ -254,6 +254,12 @@ export function createRpcHandlers(
   // A page of chat items as clients see them: a usage limit with what core means to do about it.
   const page = (result: { items: ChatItem[]; before: string | null; truncated?: boolean }) => ({ ...result, items: limits.decorate(smallModels?.decorate(result.items) ?? result.items) })
   // The user going on with a conversation themselves: core no longer continues it after a limit.
+  const userTask = <T>(id: string, act: () => T): T => {
+    sources.automatic?.takeover(id)
+    const conversationId = service.get(id).conversationId
+    if (conversationId) sources.automatic?.takeover(conversationId)
+    return act()
+  }
   const userActed = async <T>(id: string, act: () => Promise<T>): Promise<T> => {
     conversations.attend(id)
     const since = limits.mark()
@@ -532,23 +538,23 @@ export function createRpcHandlers(
       requireRecentForPhone(connection, params.repos ?? [])
       return service.createTask(params)
     },
-    'tasks.update': (params) => service.update(params),
+    'tasks.update': (params) => userTask(params.id, () => service.update(params)),
     'tasks.startOptions': ({ id }) => service.startOptions(id),
     'tasks.move': async ({ id, status }) => {
       if (service.isLaunching(id)) throw new Rejection('run-in-progress')
       if (service.get(id).squadId && status === 'done') await squads?.cancel(id)
-      return service.move(id, status)
+      return userTask(id, () => service.move(id, status))
     },
-    'tasks.redo': ({ id, reason }) => service.redo(id, reason),
-    'tasks.cancel': ({ id, reason }) => service.cancel(id, reason),
-    'tasks.reopen': ({ id }) => service.reopen(id),
-    'tasks.start': ({ id, allowBypass, ...options }) => service.start(id, allowBypass, undefined, options),
+    'tasks.redo': ({ id, reason }) => userTask(id, () => service.redo(id, reason)),
+    'tasks.cancel': ({ id, reason }) => userTask(id, () => service.cancel(id, reason)),
+    'tasks.reopen': ({ id }) => userTask(id, () => service.reopen(id)),
+    'tasks.start': ({ id, allowBypass, ...options }) => userTask(id, () => service.start(id, allowBypass, undefined, options)),
     // Going on by hand in a task's chat is the user acting there, as in a free conversation.
     'tasks.resumeChat': ({ id, allowBypass }) => {
       const { conversationId } = service.get(id)
       return conversationId ? userActed(conversationId, () => service.resumeChat(id, allowBypass)) : service.resumeChat(id, allowBypass)
     },
-    'tasks.submit': ({ id }) => service.submitChecked(id),
+    'tasks.submit': ({ id }) => userTask(id, () => service.submitChecked(id)),
     'tasks.handoff': ({ id, agent, note, allowBypass, permissionMode, model, effort, references, images }) => service.handoff(id, agent, note, allowBypass, { permissionMode, model, effort, references, images }),
     'tasks.savePlan': ({ id, stageId, requestId }) => service.savePlan(id, stageId, requestId),
     'tasks.delete': async ({ id }) => {
@@ -887,6 +893,7 @@ export function createRpcHandlers(
     'discussions.delete': async ({ id }) => { await discussions.delete(id); return OK },
     'sources.list': () => sources.list(),
     'sources.saveAutoInvestigation': ({ provider, instance, config }) => sources.saveAutoInvestigation(provider, instance, config),
+    'sources.fix': ({ id }) => sources.automatic?.pending(id)?.fix ?? null,
     'sources.autoInvestigations': ({ provider, instance, cursor, limit }) => {
       if (!sources.automatic) throw new Rejection('source-investigate-unavailable')
       return sources.automatic.list(provider, instance, cursor, limit)
@@ -944,8 +951,12 @@ export function createRpcHandlers(
     'sources.saveWriteback': ({ provider, instance, config, lanes, options }) => sources.saveWriteback(provider, instance, config, lanes, options),
     'sources.writebackPlan': ({ target, trigger }) => writer().plan(target, trigger),
     // A task's chat writes for the task, an investigation for itself.
-    'sources.saveReport': ({ conversationId, text, ...result }) => {
+    'sources.saveReport': async ({ conversationId, text, ...result }) => {
       const conversation = conversations.get(conversationId)
+      if (conversation.autoInvestigationId && result.fix?.decision === 'repair' && sources.automatic?.pending(conversation.id)?.config?.autoFix?.enabled) {
+        if (!result.fix.task) throw new Rejection('invalid-params', '请在 fix.task 中提交完整任务参数：标题、详情、执行 Agent 和项目')
+        await sources.automatic.validateTask(conversation.id, result.fix.task)
+      }
       return writer().saveReport(conversation.taskId ? { kind: 'task', id: conversation.taskId } : { kind: 'conversation', id: conversation.id }, text, result)
     }
   }

@@ -460,7 +460,8 @@ export const MIGRATIONS = [
   // A task's status change still to be written back to its issue (docs/SOURCE-AUTOMATION.md), put
   // here in the change's own transaction and gone once delivered. next_at: when to try, or try again.
   `CREATE TABLE source_intents (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, next_at INTEGER NOT NULL DEFAULT 0, data TEXT NOT NULL);
-   CREATE INDEX source_intents_due ON source_intents(next_at);`
+   CREATE INDEX source_intents_due ON source_intents(next_at);`,
+  `CREATE TABLE source_fixes (id TEXT PRIMARY KEY, task_id TEXT UNIQUE, data TEXT NOT NULL);`
 ]
 
 
@@ -733,16 +734,17 @@ export class TaskStore {
     return this.many(`${SELECT} WHERE json_extract(channel_source, '$.channelId') = ? AND json_extract(channel_source, '$.tenant') = ? AND json_extract(channel_source, '$.place') = ? AND json_extract(channel_source, '$.messageId') = ?`, source.channelId, source.tenant, source.place, source.messageId)[0] ?? null
   }
 
-  create(title: string, initial: Pick<TaskPatch, 'details' | 'repos' | 'channelSource' | 'images' | 'agent' | 'squadId'> = {}, link?: TaskCreationLink): Task {
+  create(title: string, initial: Pick<TaskPatch, 'details' | 'repos' | 'channelSource' | 'images' | 'agent' | 'squadId' | 'source' | 'sourceSnapshot' | 'launch' | 'dependsOn'> = {}, link?: TaskCreationLink): Task {
     const id = link?.id ?? randomUUID()
     const at = this.now()
     this.transaction(() => {
-      this.db.prepare(`INSERT INTO tasks (id, title, details, channel_source, status, created_at, updated_at, agent, squad_id, images)
-        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)`).run(id, title, initial.details ?? '', initial.channelSource ? JSON.stringify(initial.channelSource) : null, at, at, initial.agent ?? null, initial.squadId ?? null, JSON.stringify(initial.images ?? []))
+      this.db.prepare(`INSERT INTO tasks (id, title, details, channel_source, status, created_at, updated_at, agent, squad_id, images, source, source_snapshot, launch)
+        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, title, initial.details ?? '', initial.channelSource ? JSON.stringify(initial.channelSource) : null, at, at, initial.agent ?? null, initial.squadId ?? null, JSON.stringify(initial.images ?? []), initial.source ? JSON.stringify(initial.source) : null, initial.sourceSnapshot ? JSON.stringify(initial.sourceSnapshot) : null, JSON.stringify(initial.launch ?? {}))
       for (const [position, repo] of (initial.repos ?? []).entries()) {
         this.db.prepare('INSERT INTO task_repos (task_id, position, path, worktree_path, branch, start_ref, is_reference) VALUES (?, ?, ?, ?, ?, ?, ?)')
           .run(id, position, repo.path, repo.worktreePath, repo.branch, repo.startRef, repo.reference ? 1 : 0)
       }
+      for (const dependency of initial.dependsOn ?? []) this.db.prepare('INSERT INTO task_dependencies(task_id,depends_on) VALUES (?,?)').run(id, dependency)
       link?.write(this.db)
     })
     return this.require(id)

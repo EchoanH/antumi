@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AutoInvestigationConfig, Conversation, type SourceIssue } from '@antumi/protocol'
+import { AutoInvestigationConfig, Conversation, type SourceIssue, type SourceTaskProposal } from '@antumi/protocol'
 import { TaskStore } from './task-store'
 import { SourceInvestigationStore, type InvestigationRun } from './source-investigation-store'
 import { SourceInvestigationService, investigationPermission, type InvestigationSnapshot } from './source-investigation-service'
@@ -26,6 +26,7 @@ describe('automatic source investigations', () => {
   let launched: InvestigationRun[]
   let retried: InvestigationRun[]
   let recoveredImages: string[]
+  const validateTask = vi.fn(async (_proposal: SourceTaskProposal, _run: InvestigationRun) => {})
   const snapshot = () => snapshots.get('demo/default')!
   function makeService() {
     service = new SourceInvestigationService(store, {
@@ -42,6 +43,7 @@ describe('automatic source investigations', () => {
       },
       retry: async (run) => { retried.push(run); edit(run.id, { preparing: { step: 'issue', error: null } }) },
       resumeImages: async (run) => { recoveredImages.push(run.id) },
+      validateTask,
       changed: () => {}
     }, () => clock)
   }
@@ -68,10 +70,45 @@ describe('automatic source investigations', () => {
     clock = new Date(2026, 10, 11, 12).getTime()
     snapshots = new Map([['demo/default', { provider: 'demo', instance: 'default', binding: 'demo-account', scope: 'mine', issues: [issue('D-1')], handled: new Set(), healthy: true, refreshedAt: clock }]])
     conversations = new Map(); idle = new Set(); receipts = new Map(); capacity = true; availability = null; validation = null; launched = []; retried = []; recoveredImages = []
+    validateTask.mockClear()
     makeService()
     service.reconciled()
   })
   afterEach(async () => { await service.stop(); tasks.close(); rmSync(dir, { recursive: true, force: true }) })
+
+  it('keeps repair policy when an older client edits investigation settings and can disable the source', async () => {
+    const autoFix = { enabled: true, typeIds: ['bug'], permissionMode: 'acceptEdits' as const, concurrency: 1, maxOpenTasks: 10 }
+    await service.save('demo', 'default', { ...enabled, autoFix })
+    await service.save('demo', 'default', { ...enabled, note: 'Changed by older client' })
+    expect(service.info('demo', 'default').config.autoFix).toEqual(autoFix)
+    await service.save('demo', 'default', { ...enabled, enabled: false })
+    expect(service.info('demo', 'default').config.enabled).toBe(false)
+  })
+
+  it('allows the coordinator to choose projects without a required project or type list', async () => {
+    await expect(service.save('demo', 'default', { ...enabled, projectPaths: [] })).rejects.toThrow()
+    const autoFix = { enabled: true, typeIds: [], permissionMode: 'acceptEdits' as const, concurrency: 1, maxOpenTasks: 10 }
+    await service.save('demo', 'default', { ...enabled, projectPaths: [], autoFix })
+    await discover('D-1', 'D-2')
+    expect(launched[0]?.config).toMatchObject({ projectPaths: [], autoFix })
+  })
+
+  it('returns proposal validation errors to the active coordinator so it can correct them', async () => {
+    const autoFix = { enabled: true, typeIds: [], permissionMode: 'acceptEdits' as const, concurrency: 1, maxOpenTasks: 10 }
+    await service.save('demo', 'default', { ...enabled, autoFix })
+    await discover('D-1', 'D-2')
+    const id = launched[0]!.id
+    await begin(id)
+    const proposal: SourceTaskProposal = { title: 'Fix API', details: 'Repair and test.', agent: 'claude', model: 'missing-model', repos: [{ path: '/api' }] }
+    validateTask.mockRejectedValueOnce(new Error('Model unavailable'))
+    await expect(service.validateTask(id, proposal)).rejects.toThrow('Model unavailable')
+    const corrected = { ...proposal, model: 'available-model' }
+    await expect(service.validateTask(id, corrected)).resolves.toBeUndefined()
+    expect(validateTask).toHaveBeenLastCalledWith(corrected, expect.objectContaining({ id }))
+    service.takeover(id)
+    await expect(service.validateTask(id, corrected)).rejects.toThrow()
+    expect(validateTask).toHaveBeenCalledTimes(2)
+  })
 
   it('baselines raw existing issues, discovers once, and never recreates a deleted conversation', async () => {
     await service.save('demo', 'default', enabled)

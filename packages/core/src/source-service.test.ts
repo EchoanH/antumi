@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { AutoInvestigationConfig, Conversation, type SourceDescriptor, type SourceInbox, type SourceIssue } from '@antumi/protocol'
+import { agentDescriptor, AutoInvestigationConfig, Conversation, type SourceDescriptor, type SourceInbox, type SourceIssue } from '@antumi/protocol'
 import { AttachmentStore } from './attachment-store'
 import { CredentialStore } from './credential-store'
 import { fakeConnection, until, type FakeConnection } from './fake-connection'
@@ -180,9 +180,9 @@ describe('SourceService', () => {
     demo.comment = async () => ({ id: '7', url: null })
     const descriptor = await service.saveWriteback('demo', 'default', { start: { status: 'Doing' }, review: { status: '', comment: true }, done: { status: '', comment: false }, guidance: '' })
     expect(descriptor.writeback).toBe(true)
-    expect(descriptor.instances[0]?.writeback?.start.status).toBe('Doing')
+    expect(descriptor.instances[0]?.writeback?.start.status).toBe('')
     await service.saveSettings({ provider: 'demo', instance: 'default', settings: { site: 'https://demo.test', query: 'all' } })
-    expect(service.writebackRules('demo', 'default').review.comment).toBe(true)
+    expect(service.writebackRules('demo', 'default').review.comment).toBe(false)
     const writer = service.writer(source)
     // An answer that does not fit, an empty id here, is refused like any other.
     await expect(writer?.transitions()).rejects.toThrow()
@@ -208,12 +208,41 @@ describe('SourceService', () => {
     expect(service.writebackFor('demo', 'default', { type: { id: 'bug', name: 'Bug' } })).toMatchObject({
       lane: 'bug', off: false, options: { dryRun: true },
       // The bug's lane, held to what the tracker says a bug can do: no closing stage.
-      rules: { start: { status: 'Started' }, review: { status: 'Resolved', comment: true }, done: { status: '', comment: false } }
+      rules: { start: { status: '' }, review: { status: 'Resolved', comment: true }, done: { status: '', comment: false } }
     })
     expect(service.writebackFor('demo', 'default', { type: { id: 'pr', name: 'Pull Request' } }).off).toBe(true)
-    expect(service.writebackFor('demo', 'default', {})).toMatchObject({ lane: '*', off: false, rules: { done: { status: 'Closed' } } })
-    expect(service.writebackWanted('demo', 'default', 'start')).toBe(true)
+    expect(service.writebackFor('demo', 'default', {})).toMatchObject({ lane: '*', off: true, rules: { done: { status: '' } } })
+    expect(service.writebackWanted('demo', 'default', 'start')).toBe(false)
     await expect(service.saveWriteback('demo', 'default', own, [...lanes, ...lanes])).rejects.toThrow()
+  })
+
+  it('persists independent type rules and leaves unconfigured types off after reloading', async () => {
+    await service.saveSettings({ provider: 'demo', instance: 'default', settings: { site: 'https://demo.test' } })
+    Object.assign(demo, { writeback: 1 })
+    demo.transitions = async () => ({ status: 'Open', statusCategory: 'todo', options: [] })
+    demo.transition = async () => ({ status: 'Done', statusCategory: 'done' })
+    demo.comment = async () => ({ id: '7', url: null })
+    const common = { start: { status: 'Old common' }, review: { status: 'Old close', comment: true }, done: { status: '', comment: false }, guidance: 'Include verification' }
+    await service.saveWriteback('demo', 'default', common, [
+      { typeId: 'bug', name: 'Bug', mode: 'on', review: { status: 'Resolved', comment: true } },
+      { typeId: 'task', name: 'Task', mode: 'on', review: { status: 'Done', comment: true } }
+    ])
+    await config.load()
+    expect(config.get('demo', 'default')?.writeback).toEqual({ start: { status: '' }, review: { status: '', comment: false }, done: { status: '', comment: false }, guidance: 'Include verification' })
+    expect(service.writebackFor('demo', 'default', { type: { id: 'bug', name: 'Bug' } }).rules.review.status).toBe('Resolved')
+    expect(service.writebackFor('demo', 'default', { type: { id: 'task', name: 'Task' } }).rules.review.status).toBe('Done')
+    expect(service.writebackFor('demo', 'default', { type: { id: 'story', name: 'Story' } }).off).toBe(true)
+    expect(service.writebackWanted('demo', 'default', 'review')).toBe(true)
+    expect(service.writebackWanted('demo', 'default', 'start')).toBe(false)
+  })
+
+  it('never executes old common rules, even for known or newly discovered types', async () => {
+    await config.save({ provider: 'demo', instance: 'default', enabled: true, settings: { site: 'https://demo.test' },
+      writeback: { start: { status: 'Doing' }, review: { status: 'Done', comment: true }, done: { status: 'Closed', comment: true }, guidance: 'Keep the verification steps' } })
+    expect(service.writebackWanted('demo', 'default', 'review')).toBe(false)
+    for (const facts of [{}, { type: { id: 'bug', name: 'Bug' } }, { type: { id: 'new-type', name: 'New type' } }]) {
+      expect(service.writebackFor('demo', 'default', facts)).toMatchObject({ off: true, rules: { start: { status: '' }, review: { status: '', comment: false }, guidance: 'Keep the verification steps' } })
+    }
   })
 
   it('applies what the plugin says of its stages: no status where it has none, no comment where it takes none', async () => {
@@ -225,8 +254,8 @@ describe('SourceService', () => {
     const descriptor = await service.saveWriteback('demo', 'default', { start: { status: 'In Progress' }, review: { status: '', comment: true }, done: { status: 'completed', comment: true }, guidance: '' })
     expect(descriptor.writebackComments).toBe(false)
     expect(descriptor.writebackRules?.start).toBe(false)
-    expect(descriptor.instances[0]?.writeback).toEqual({ start: { status: '' }, review: { status: '', comment: false }, done: { status: 'completed', comment: false }, guidance: '' })
-    expect(service.writebackRules('demo', 'default').done.status).toBe('completed')
+    expect(descriptor.instances[0]?.writeback).toEqual({ start: { status: '' }, review: { status: '', comment: false }, done: { status: '', comment: false }, guidance: '' })
+    expect(service.writebackRules('demo', 'default').done.status).toBe('')
     expect(service.writer({ provider: 'demo', instance: 'default', name: 'Demo', key: 'D-1', url: 'https://demo.test/issues/D-1' })?.comments).toBe(false)
   })
 
@@ -785,6 +814,20 @@ describe('SourceService', () => {
     await automatic.tick()
     return fixture
   }
+
+  it('keeps an automatic repair coordinator read-only and asks it for a proposal', async () => {
+    const fixture = await automaticSetup()
+    await service.saveAutoInvestigation('demo', 'default', AutoInvestigationConfig.parse({ enabled: true, agent: 'cursor', projectPaths: ['/code/app'], permissionMode: 'bypass', autoFix: { enabled: true, typeIds: ['bug'], permissionMode: 'bypass', concurrency: 1, maxOpenTasks: 10 } }))
+    demo.issues.push(issue('D-4'))
+    clock += 15 * 60_000
+    await service.refresh('demo', 'default')
+    await automatic!.tick()
+    await until(() => fixture.begun[0])
+    expect(fixture.opened[0]?.start).toMatchObject({ readOnly: true, permissionMode: agentDescriptor('cursor').readOnlyMode })
+    expect(fixture.begun[0]?.note).toContain('source_report')
+    expect(fixture.begun[0]?.note).toContain('不创建或委派任务')
+    expect(store.list()).toEqual([])
+  })
 
   it('automatically starts only newly discovered raw issues with a stable conversation and instruction reference', async () => {
     const fixture = await automaticSetup()

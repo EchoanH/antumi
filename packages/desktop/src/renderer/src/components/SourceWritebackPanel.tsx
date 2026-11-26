@@ -1,3 +1,4 @@
+import { ConversationSourceFix } from './SourceFixStatus'
 import { useEffect, useId, useState } from 'react'
 import { MAX_WRITEBACK_COMMENT, type SourceTransitions, type SourceUpdateTarget, type SourceWrite, type SourceWritePlan, type TaskStatus } from '@antumi/protocol'
 import { perform, useCore } from '../core-store'
@@ -79,6 +80,7 @@ export function SourceWritebackPanel({ target }: { target: SourceUpdateTarget })
   const report = view.report
 
   return <section className="source-writeback" aria-label={t('SourceWriteback.title', { source: source.name })}>
+    {target.kind === 'conversation' && <ConversationSourceFix id={target.id} />}
     <header className="source-writeback-header">
       <span className="settings-field-label">{t('SourceWriteback.title', { source: source.name })}</span>
       {transitions && <span className="source-writeback-status">{t('SourceWriteback.current', { status: transitions.status })}</span>}

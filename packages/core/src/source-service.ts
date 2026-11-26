@@ -31,6 +31,7 @@ import {
   type SourceProblem,
   type SourceSnapshot,
   type SourceWritebackConfig,
+  type SourceTransitions as Transitions,
   type WritebackLane,
   type WritebackOptions,
   type WritebackStage,
@@ -80,7 +81,7 @@ export type SourceConversations = {
     agent: AgentKind,
     projectPaths: readonly string[],
     allowBypass: boolean | undefined,
-    start: { permissionMode?: string; model?: string; effort?: string; worktree?: boolean; branch?: string; modelProvider?: string },
+    start: { readOnly?: boolean; permissionMode?: string; model?: string; effort?: string; worktree?: boolean; branch?: string; modelProvider?: string },
     issue: { source: TaskSource; title: string; automaticId?: string }
   ): Promise<Conversation>
   setPreparing(id: string, step: 'issue' | 'images', error?: { reason: string; message: string } | null): void
@@ -476,6 +477,20 @@ export class SourceService {
     })
   }
 
+  async fixContext(source: TaskSource): Promise<{ source: TaskSource; snapshot: SourceSnapshot; facts: Transitions; dryRun: boolean }> {
+    const check = this.guard(source.provider, source.instance)
+    const writer = this.writer(source)
+    if (!writer) throw new Rejection('source-writeback-unavailable', '来源无法提供事项类型和归属，不能自动修复')
+    const facts = await writer.transitions()
+    const detail = await this.fetch(this.requireReady(source.provider, source.instance), source.key, this.state(source.provider, source.instance).controller.signal)
+    check()
+    return { source: { ...source, key: detail.issue.key, url: detail.issue.url }, snapshot: detail.snapshot, facts, dryRun: this.writebackFor(source.provider, source.instance, facts).options.dryRun }
+  }
+  fixLinked(task: Task): void {
+    if (task.source && task.sourceSnapshot) this.updateSink?.({ kind: 'task', id: task.id }, task.source, task.sourceSnapshot)
+    if (task.source) this.emitInbox(task.source.provider, task.source.instance)
+  }
+
   import(id: string, instance: string, rawKey: string, agent: AgentKind | null): Promise<Task> {
     return this.track(id, () => this.importInner(id, instance, rawKey, agent))
   }
@@ -545,9 +560,10 @@ export class SourceService {
     }
     check()
     // Unless asked otherwise, it only reads: a finding first, then the user decides on a fix.
-    const permissionMode = start.permissionMode ?? agentDescriptor(agent).discussionMode
+    const repairCoordinator = automaticId && this.automatic?.pending(automaticId)?.config?.autoFix?.enabled
+    const permissionMode = repairCoordinator ? agentDescriptor(agent).readOnlyMode : start.permissionMode ?? agentDescriptor(agent).discussionMode
     if (automaticId) this.checkAutomatic(id, instance, automaticId)
-    const conversation = await conversations.openInvestigation(agent, projectPaths, allowBypass, { ...start, permissionMode }, { source, title: known.title.trim() || known.key, ...(automaticId ? { automaticId } : {}) })
+    const conversation = await conversations.openInvestigation(agent, projectPaths, repairCoordinator ? false : allowBypass, { ...start, permissionMode, ...(repairCoordinator ? { readOnly: true } : {}) }, { source, title: known.title.trim() || known.key, ...(automaticId ? { automaticId } : {}) })
     this.investigating.set(conversation.id, { note: note?.trim() || null, ...(references ? { references } : {}), images: imageIds, running: true })
     this.emitInbox(id, instance)
     void this.track(id, () => this.prepare(conversation.id, source, first)).catch(() => {})
@@ -616,7 +632,7 @@ export class SourceService {
         title,
         brief: investigationBrief(source, snapshot, images, later ? text.deferred : 0, Boolean(auto && this.automatic?.owns(conversationId))),
         readable: images.flatMap((image) => (image.path ? [image.path] : []))
-      }, (pending?.note ?? auto?.config?.note.trim()) || `排查 ${source.name} ${source.key}：${title}`, pending?.references, pending?.images, auto ? investigationRef(auto.id) : undefined)
+      }, [(pending?.note ?? auto?.config?.note.trim()) || `排查 ${source.name} ${source.key}：${title}`, auto?.config?.autoFix?.enabled ? '你是此事项的排查与分流会话，只读项目，不修改代码，不创建或委派任务。先用 source_task_options 查询已登记项目、可用执行 Agent 和服务商，再用 source_task_catalog 查询模型与推理强度。结合事项所属项目、仓库地址和项目文档自行判断处理方式与项目，无须用户配置项目映射。结束前调用 source_report，fix 中提交 decision（repair / needs_input / no_fix）、evidence 和 plan；decision 为 repair 时，task 必须给出你决定的完整任务参数：title、details（任务目标和验收标准，并要求检查、提交和 source_report 交付）、agent、repos（path、可选 reference 和 startRef），以及可选 model、effort、modelProvider、dependsOn。不指定模型等参数表示使用所选执行 Agent 的默认值，不沿用排查配置。core 只校验可执行性，权限按用户策略执行，不要在 task 中设置权限。提交参数被退回时根据具体错误修正再提交。确实缺少必要信息时选择 needs_input，不猜测。' : ''].filter(Boolean).join('\n\n'), pending?.references, pending?.images, auto ? investigationRef(auto.id) : undefined)
       if (auto) this.automatic?.submitted(auto.id)
       this.investigating.delete(conversationId)
       this.emitInbox(source.provider, source.instance)
@@ -899,12 +915,11 @@ export class SourceService {
 
   writebackRules(id: string, instance: string): SourceWritebackConfig {
     const provider = this.providers.find((entry) => entry.id === id)
-    const saved = this.config.get(id, instance)?.writeback ?? EMPTY_WRITEBACK
+    const saved = { ...EMPTY_WRITEBACK, guidance: this.config.get(id, instance)?.writeback?.guidance ?? '' }
     return provider ? applicableWriteback(saved, provider.writebackRules, !!provider.comment) : saved
   }
 
-  // The rules for one issue, from what the tracker says it is: its type's lane, or the source's
-  // own, held to what the tracker can do for that type.
+  // Only an explicitly configured type can write back; plugin hints still limit its actions.
   writebackFor(id: string, instance: string, issue: Pick<SourceTransitions, 'type' | 'scope'>): { lane: string; off: boolean; rules: SourceWritebackConfig; options: WritebackOptions } {
     const provider = this.providers.find((entry) => entry.id === id)
     const saved = this.config.get(id, instance)
@@ -914,12 +929,12 @@ export class SourceService {
     return { ...found, rules: provider ? applicableWriteback(found.rules, hints, !!provider.comment) : found.rules, options: saved?.writebackOptions ?? NO_WRITEBACK_OPTIONS }
   }
 
-  // Whether any rule, the source's own or a lane's, asks for something at this stage: asked before
+  // Whether a type's rule asks for something at this stage: asked before
   // the tracker is, so a source with no rules costs no call.
   writebackWanted(id: string, instance: string, stage: WritebackStage): boolean {
     const saved = this.config.get(id, instance)
     const wants = (rule: { status: string; comment?: boolean } | undefined) => !!rule && (!!rule.status || !!rule.comment)
-    return wants(saved?.writeback?.[stage]) || (saved?.writebackLanes ?? []).some((lane) => lane.mode === 'on' && wants(lane[stage]))
+    return (saved?.writebackLanes ?? []).some((lane) => lane.mode === 'on' && wants(lane[stage]))
   }
 
   // lanes and options left out stay as saved: a client from before them sends neither.
@@ -937,7 +952,7 @@ export class SourceService {
     }
     await this.config.save({
       ...previous, provider: id, instance, enabled: configured.enabled, settings: { ...configured.settings },
-      writeback: applicableWriteback(writeback, provider.writebackRules, !!provider.comment),
+      writeback: { ...EMPTY_WRITEBACK, guidance: writeback.guidance },
       ...(lanes ? { writebackLanes: [...lanes] } : {}),
       ...(options ? { writebackOptions: options } : {})
     })

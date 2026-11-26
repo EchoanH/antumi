@@ -200,6 +200,14 @@ describe('PullRequestService', () => {
     expect((await service.check(task.id))[0]).toMatchObject({ blocker: 'existing-pr', existing: expect.objectContaining({ number: 5, status: expect.objectContaining({ state: 'merged' }) }) })
   })
 
+  it('rechecks automatic delivery authorization before any push or PR write', async () => {
+    await expect(service.create({ taskId: task.id, repoPath: repo, base: 'main', title: 'T', body: '', draft: false, from: 'antumi/abc' }, {
+      verify: async () => { throw new Error('Task was taken over') }
+    })).rejects.toThrow('Task was taken over')
+    expect(calls.filter((call) => call.method === 'POST')).toEqual([])
+    expect(() => git(remote, 'show-ref', '--verify', 'refs/heads/antumi/abc')).toThrow()
+  })
+
   it('pushes the branch, then opens the pull request, and refuses a branch that moved', async () => {
     reply = (call) => call.method === 'POST' ? Response.json(pull({ number: 9, html_url: 'https://github.com/flyhero/antumi/pull/9', draft: false, head: { sha: git(worktree, 'rev-parse', 'HEAD'), ref: 'antumi/abc', repo: { owner: { login: 'flyhero' } } } })) : Response.json([])
     await expect(service.create({ taskId: task.id, repoPath: repo, base: 'main', title: 'Add PRs', body: 'Why.', draft: false, from: 'antumi/other' })).rejects.toMatchObject({ reason: 'git-branch-changed' })

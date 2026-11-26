@@ -1,16 +1,16 @@
 # 来源事项自动化闭环（设计）
 
-> 状态：第一期（地基）实现中，其余各期是设计。实现到哪一步见文末「分期」。
+> 状态：回写地基及「中枢选择任务参数 → 独立任务修复 → 检查 → GitHub PR → 待验收」已实现；平台问答、自动改派与多周期返工仍为设计。具体流程见 SOURCE-AUTO-INVESTIGATION.md。
 
 事项进入范围后，Antumi 自己接单、处理、在平台上提问并等回复、交付并交接给下游，被打回时自己返工；用户只在需要决策时出现。硬约束：**平台上不属于用户本人的操作一律不做**——缺陷只走到「提测 / 已解决」，验证和关闭留给 QA。
 
-它建在三块已有的东西上：[来源回写](SOURCE-WRITEBACK.md)（改状态、发评论）、[来源评论同步](SOURCE-COMMENTS.md)、[新问题自动排查](SOURCE-AUTO-INVESTIGATION.md)（接单队列）。参考过 Linear 给智能体的建议（按状态类型推进，等输入和完成是不同的状态）、Multica（完成留给人，反馈去重）、GitLab 的 Jira 集成（按类别找下一个状态；同一状态在不同类型的工作流里 ID 不同）、orca（拿不准就不动）、codeg（结构化的完成结果）。
+它建在三块已有的东西上：[来源回写](SOURCE-WRITEBACK.md)（改状态、发评论）、[来源评论同步](SOURCE-COMMENTS.md)、[事项自动化](SOURCE-AUTO-INVESTIGATION.md)（接单队列）。参考过 Linear 给智能体的建议（按状态类型推进，等输入和完成是不同的状态）、Multica（完成留给人，反馈去重）、GitLab 的 Jira 集成（按类别找下一个状态；同一状态在不同类型的工作流里 ID 不同）、orca（拿不准就不动）、codeg（结构化的完成结果）。
 
 ## 原则
 
 1. **只在事项归我时动它。** 每次自动写入前现取处理人，由 core 判定归属；不归我就不写。不靠提示词。
 2. **Agent 只提交结果，core 执行写入。** Agent 读过不受信的原文，拿不到任何写平台的工具。
-3. **运行时确定、可解释。** 改成哪个状态由策略和守卫决定，模型只在配置时帮忙起草；每一步做了什么、为什么跳过都有记录。
+3. **任务决策交给中枢，执行边界由 core 守住。** 中枢选择任务标题、详情、项目、Agent、模型及推理强度；core 校验并执行，不猜测或替换参数。平台状态仍由用户的类型规则和归属守卫决定，每一步都有记录。
 4. **意图先落库，再外发。** 任务状态变化和「要回写」的意图同一事务提交；投递时再现取上下文、过守卫、重试。
 5. **默认保守，逐级放开。** 默认不进完成类状态；演练模式只记不写；任何时候可接管。
 6. **只加不改。** 协议、插件、MCP 工具、配置文件都只加可选字段；旧插件、旧 core、旧数据照常工作。
@@ -51,8 +51,8 @@
 
 一个来源同时接任务、缺陷、需求、PR，各自的工作流不同。
 
-- 原有规则（`SourceWritebackConfig`，三个阶段的状态名和是否发评论）原样保留，作为通配泳道。
-- 新增可选的 `writebackLanes`：按事项类型覆盖。`WritebackLane { match: { typeId, scopeId? }, mode: 'on' | 'off', start, review, done }`，没写的阶段沿用通配。`resolveLane()` 取最具体的一条：类型和范围都对上的，优先于只对上类型的，再到通配。
+- 不设通用规则或通配泳道：只执行用户明确配置的类型规则，未配置或无法识别类型时不自动回写。`SourceWritebackConfig` 为兼容旧协议保留字段，来源级只使用总结要求。
+- `writebackLanes` 按事项类型独立配置。`WritebackLane { typeId, scopeId?, mode: 'on' | 'off', start, review, done }`，没写的阶段不做操作。`resolveLane()` 优先取类型和范围都匹配的规则，否则取该类型无范围限制的规则；两者都没有就不回写。复制另一类型的规则后，两份配置独立，不建立继承关系。
 - 阶段的目标是联合类型 `{ names } | { statusId, name }`：现在用状态名（`A|B`，取第一个此刻能流转到的），有了状态目录后存平台的状态 ID。
 - `writebackOptions { dryRun, sharedCounts }`：演练模式；多人处理时是否算作归我。
 - 都存在 `sources.json` 的同一条实例配置里，文件版本号不变（改版本号会让旧 core 把整个文件当成无效而覆盖）。
@@ -82,10 +82,13 @@
 { summary, outcome?: 'delivered' | 'answered' | 'needs_input' | 'blocked',
   verification?,   // 给验证人的说明：怎么验、影响范围
   question?,       // needs_input 时的一个具体问题
-  blocker? }
+  blocker?,
+  fix?: { decision: 'repair' | 'needs_input' | 'no_fix', evidence, plan,
+    task?: { title, details, agent, repos: [{ path, reference?, startRef? }],
+      model?, effort?, modelProvider?, dependsOn? } } }
 ```
 
-第一期只存储和展示，并把 `verification` 作为单独一段带进交接评论。第三期起 `needs_input` 和 `blocked` 驱动提问和上报。归属不由 Agent 判断，所以没有「不归我」这种结果。
+`fix.task` 用于自动修复，先保存完整提案，再由 core 校验和创建任务；任务权限只取用户策略。`verification` 作为单独一段带进交接评论。`needs_input` 和 `blocked` 的平台提问和上报仍待第三期。归属不由 Agent 判断，所以没有「不归我」这种结果。
 
 发往平台的评论，凡是来自总结或最后一条回复的，先过 `channel-output.ts` 的 `redact` 和 `withoutMachinePaths`（密钥、主目录路径）；用户亲手写的不动。
 
@@ -139,7 +142,7 @@
 | 禅道 | account 对 `assignedTo`（多人任务取不到 → `unknown`） | Bug「解决」后平台自动指回创建人；任务「完成」 | 关闭 |
 | GitHub | user id 对 `assignees[]`（PR 看作者） | 开 PR 带 `Refs/Fixes #n`，评论总结 | 关 Issue、合并或关闭 PR |
 | Linear | `viewer.id` 对 `assignee.id` | In Review（团队有才改）；完成交给 PR 合并 | Done |
-| 飞书项目 | 当前节点负责人里有我（第五期） | 完成我的节点 | 别人的节点 |
+| 飞书项目 | 当前负责人或节点 owners 的稳定用户 ID；身份完整时核验 | 完成我独自负责的进行中节点 | 别人的节点、无法核验归属的节点 |
 
 ## 安全
 

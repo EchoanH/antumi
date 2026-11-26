@@ -236,17 +236,19 @@ export class PullRequestService {
   }
 
   // byAgent: the task's own agent asked, through Antumi's tools, from within its turn.
-  async create(fields: CreateFields, { byAgent = false }: { byAgent?: boolean } = {}): Promise<PullRequestLink> {
+  async create(fields: CreateFields, { byAgent = false, verify }: { byAgent?: boolean; verify?: () => Promise<void> } = {}): Promise<PullRequestLink> {
     const task = this.tasks.get(fields.taskId)
     const repo = this.writableRepos(task, fields.repoPath)[0]
     if (!repo) throw new Rejection('repo-not-found')
     const eligibility = await this.checkRepo(task, repo, fields.base)
+    await verify?.()
     if (eligibility.blocker === 'existing-pr' && eligibility.existing) return eligibility.existing
     if (eligibility.blocker) throw new Rejection(`pull-request-${eligibility.blocker}`)
     if (!eligibility.repo || !eligibility.headBranch || !eligibility.base) throw new Rejection('pull-request-not-github')
     if (eligibility.headBranch !== fields.from) throw new Rejection('git-branch-changed', `当前分支已经是 ${eligibility.headBranch}，不是对话框里的 ${fields.from}。请刷新后再试。`)
     const target: GitTarget = { kind: 'task', id: task.id, project: repo.path }
     if (eligibility.needsPush) await this.git.execute(target, { kind: 'push', from: fields.from }, { ownTurn: byAgent })
+    await verify?.()
     let pull: GitHubPull
     try {
       pull = await this.client.createPull(eligibility.repo, { title: fields.title, body: fields.body, head: eligibility.headBranch, base: eligibility.base, draft: fields.draft })

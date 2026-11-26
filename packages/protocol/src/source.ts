@@ -3,7 +3,7 @@ import { SourceCommentState } from './source-comments'
 import { TextTranslations } from './localization'
 import { TaskImage } from './attachments'
 import { AgentKind } from './agent'
-import { ChatPermissionMode } from './chat'
+import { UnattendedMode, ChatPermissionMode } from './chat'
 import { SourceWritebackConfig, WritebackLane, WritebackOptions, WritebackRuleHints, WritebackType } from './source-writeback-rules'
 
 // Where tasks can come from besides being written by hand: an issue tracker, reached through a
@@ -95,6 +95,23 @@ export const CredentialStatus = z.object({
 })
 export type CredentialStatus = z.infer<typeof CredentialStatus>
 
+export const SourceFixConfig = z.object({
+  enabled: z.boolean(),
+  // Kept for older clients; the coordinator now decides what kind of work an issue needs.
+  typeIds: z.array(z.string().min(1).max(500)).max(50),
+  permissionMode: UnattendedMode,
+  concurrency: z.number().int().min(1).max(4),
+  maxOpenTasks: z.number().int().min(1).max(100)
+})
+export type SourceFixConfig = z.infer<typeof SourceFixConfig>
+export const SourceFixInfo = z.object({
+  taskId: z.string().uuid().nullable(),
+  state: z.enum(['queued', 'preparing', 'working', 'checking', 'opening-pr', 'ready', 'waiting-user', 'failed', 'skipped', 'handed-over']),
+  urls: z.array(z.string().max(4000)).max(10),
+  message: z.string().nullable()
+})
+export type SourceFixInfo = z.infer<typeof SourceFixInfo>
+
 export const AutoInvestigationConfig = z.object({
   enabled: z.boolean().default(false),
   projectPaths: z.array(z.string().trim().min(1)).max(10).default([]),
@@ -105,7 +122,8 @@ export const AutoInvestigationConfig = z.object({
   // Left out, the agent's discussion mode: it only reads, as before the mode could be picked.
   permissionMode: ChatPermissionMode.optional(),
   note: z.string().trim().max(100000).default(''),
-  dailyLimit: z.number().int().min(1).max(100).default(10)
+  dailyLimit: z.number().int().min(1).max(100).default(10),
+  autoFix: SourceFixConfig.optional()
 })
 export type AutoInvestigationConfig = z.infer<typeof AutoInvestigationConfig>
 
@@ -117,7 +135,8 @@ export const AutoInvestigationRun = z.object({
   reason: z.string().nullable(), message: z.string().nullable(),
   attempts: z.number().int().nonnegative(), retryAt: z.number().nullable(),
   createdAt: z.number(), updatedAt: z.number(), startedAt: z.number().nullable(),
-  canRetry: z.boolean()
+  canRetry: z.boolean(),
+  fix: SourceFixInfo.optional()
 })
 export type AutoInvestigationRun = z.infer<typeof AutoInvestigationRun>
 export const AutoInvestigationSummary = z.object({

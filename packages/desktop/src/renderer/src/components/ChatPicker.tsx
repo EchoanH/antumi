@@ -18,7 +18,8 @@ export function modelMeta(model: Pick<ChatModel, 'contextWindow' | 'costRate'>):
 // A choice in the composer's toolbar: its value as a small button as wide as its words, and a menu
 // above it. A native select is as wide as its longest option, which left most values far from their
 // arrow.
-function PickerShell({ label, spoken, tone, disabled, title, align, placement = 'above', size, iconOnly = false, value, onClose, children }: {
+function PickerShell({ id, label, spoken, tone, disabled, title, align, placement = 'above', size, iconOnly = false, value, onClose, children }: {
+  id?: string
   label: string
   // The button's name for a screen reader, which cannot see the value's colour or suffix.
   spoken: string
@@ -50,6 +51,7 @@ function PickerShell({ label, spoken, tone, disabled, title, align, placement = 
   return (
     <>
       <button
+        id={id}
         ref={button}
         type="button"
         className={iconOnly ? 'tool-button' : 'chat-picker'}
@@ -98,7 +100,8 @@ export function PickerItem({ option, checked, onSelect }: { option: PickerOption
 }
 
 // One setting: its options listed with what each means, the current one checked.
-export function ChatPicker({ label, value, placeholder, options, onChange, disabled = false, title, tone, align = 'start', placement, size, iconOnly = false, search, footer }: {
+export function ChatPicker({ id, label, value, placeholder, options, onChange, disabled = false, title, tone, align = 'start', placement, size, iconOnly = false, search, footer }: {
+  id?: string
   label: string
   value: string | null
   placeholder: string
@@ -121,7 +124,7 @@ export function ChatPicker({ label, value, placeholder, options, onChange, disab
   const current = picked?.label ?? placeholder
   const shown = iconOnly ? picked?.icon : picked?.icon ? <><span className="chat-picker-icon" aria-hidden="true">{picked.icon}</span>{current}</> : current
   return (
-    <PickerShell label={label} spoken={`${label}：${current}`} tone={tone} disabled={disabled} title={title} align={align} placement={placement} size={size} iconOnly={iconOnly} value={shown}>
+    <PickerShell id={id} label={label} spoken={`${label}：${current}`} tone={tone} disabled={disabled} title={title} align={align} placement={placement} size={size} iconOnly={iconOnly} value={shown}>
       {(close) => (
         <>
           <div className="chat-picker-heading">{label}</div>
