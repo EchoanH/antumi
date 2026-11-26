@@ -303,6 +303,32 @@ describe('ClaudeStream state', () => {
     }
   })
 
+  it.each([
+    { model: '<synthetic>', usage: { input_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 0 } },
+    { model: 'claude-test', usage: { input_tokens: 0, output_tokens: 0 } },
+    { model: 'claude-test', usage: {} },
+    { model: 'claude-test', usage: { output_tokens: 2 } }
+  ])('keeps the last context when an assistant message has no input count: %j', ({ model, usage }) => {
+    const driver = replay([
+      { dir: 'out', at: 1, ref: 'ref-1', frame: { type: 'user', message: { role: 'user', content: 'hello' } } },
+      { dir: 'in', at: 2, frame: { type: 'system', subtype: 'init', model: 'claude-test' } },
+      { dir: 'in', at: 3, frame: { type: 'assistant', message: { id: 'real', model: 'claude-test', content: [{ type: 'text', text: 'hello' }], usage: { input_tokens: 10, cache_read_input_tokens: 17_990, output_tokens: 8 } } } }
+    ])
+    const context = stateOf(driver)?.context
+    expect(context?.used).toBe(18_000)
+    driver.apply({ dir: 'in', at: 4, frame: { type: 'assistant', message: { id: 'extra', model, content: [{ type: 'text', text: 'notification' }], usage } } })
+    expect(stateOf(driver)?.context).toEqual(context)
+    expect(stateOf(driver)?.turnUsage).toEqual({ input: 18_000, output: 8 + (usage.output_tokens ?? 0) })
+    driver.apply({ dir: 'in', at: 5, frame: { type: 'result', subtype: 'success', usage: { input_tokens: 18_000, output_tokens: 10 }, modelUsage: { 'claude-test': { contextWindow: 200_000 } } } })
+    expect(stateOf(driver)?.context).toEqual({ used: 18_000, window: 200_000 })
+    expect(ofKind(driver.items.list(), 'turn')[0]?.metering?.models[0]?.requestInputs).toEqual([18_000])
+  })
+
+  it('leaves context unknown until an assistant reports a positive input count', () => {
+    const driver = replay([{ dir: 'in', at: 1, frame: { type: 'assistant', message: { id: 'synthetic', model: '<synthetic>', content: [], usage: { input_tokens: 0, output_tokens: 0 } } } }])
+    expect(stateOf(driver)?.context).toBeNull()
+  })
+
   it('empties the context ring to what a compaction left', () => {
     const boundary = (metadata: object) => ({ type: 'system', subtype: 'compact_boundary', compact_metadata: { trigger: 'manual', pre_tokens: 180_000, ...metadata } })
     const compacted = (metadata: object): ChatRecord => ({ dir: 'in', at: 9e12, frame: boundary(metadata) })
@@ -311,6 +337,7 @@ describe('ClaudeStream state', () => {
     expect(driver.logged(boundary({ post_tokens: 9_881 }))).toEqual({ type: 'system', subtype: 'compact_boundary', compact_metadata: { post_tokens: 9_881 } })
     // An older CLI names only what there was.
     expect(stateOf(replay([...records, compacted({})]))?.context).toBeNull()
+    expect(stateOf(replay([...records, compacted({ post_tokens: 0 })]))?.context?.used).toBe(0)
   })
 
   it('follows the permission mode as the CLI reports it change', () => {

@@ -945,10 +945,13 @@ export class ClaudeStream implements ChatDriver {
     // What the latest request sent is what the conversation now fills of the context.
     if (usage) {
       const used = (usage.input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0)
-      this.modelRequests.set(message, { model: model ?? this.currentModel()?.resolvedModel ?? this.reportedModel, input: used })
-      this.state.setContext({ used, window: this.contextWindow ?? this.guessedWindow() })
+      // Synthetic messages and providers without input counts do not empty the context.
+      if (used > 0) {
+        this.modelRequests.set(message, { model: model ?? this.currentModel()?.resolvedModel ?? this.reportedModel, input: used })
+        this.state.setContext({ used, window: this.contextWindow ?? this.guessedWindow() })
+      }
       this.turnOutput += usage.output_tokens ?? 0
-      if (this.turn) this.state.set({ turnUsage: { input: used, output: this.turnOutput } })
+      if (this.turn) this.state.set({ turnUsage: { input: used || this.state.current.turnUsage?.input || 0, output: this.turnOutput } })
     }
     for (const block of content) {
       // Each complete frame carries one block, in the order the stream indexed them.
