@@ -213,7 +213,7 @@ export function createRpcHandlers(
   }
   conversations.setGitGuard((dirs) => git.guardAgent(dirs))
   service.setGitGuard((dirs) => git.guardAgent(dirs))
-  conversations.setGitPreparation((dirs, run) => git.withRepositories(dirs, run))
+  conversations.setGitPreparation((dirs, run, requireIdle) => requireIdle ? git.withRepositories(dirs, run) : git.withRepositoryLock(dirs, run))
   worktrees.setGitRemoval((dirs, run) => git.withRepositoryLock(dirs, run))
   profiles?.setGitLock((dirs, run) => git.withRepositoryLock(dirs, run))
   const files = new ConversationFiles((id) => conversations.get(id))

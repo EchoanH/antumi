@@ -165,8 +165,8 @@ export class ConversationService {
   // Conversations whose last start took its opening into the handoff it began from.
   private readonly openedInHandoff = new Set<string>()
   private readonly gitSending = new Map<string, number>()
-  private gitPreparation: (<T>(dirs: readonly string[], run: () => Promise<T>) => Promise<T>) | null = null
-  setGitPreparation(prepare: <T>(dirs: readonly string[], run: () => Promise<T>) => Promise<T>): void { this.gitPreparation = prepare }
+  private gitPreparation: (<T>(dirs: readonly string[], run: () => Promise<T>, requireIdle: boolean) => Promise<T>) | null = null
+  setGitPreparation(prepare: <T>(dirs: readonly string[], run: () => Promise<T>, requireIdle: boolean) => Promise<T>): void { this.gitPreparation = prepare }
   private gitGuard: ((dirs: readonly string[]) => Promise<void>) | null = null
 
   isGitPending(id: string): boolean { return this.launching.has(id) || this.gitSending.has(id) }
@@ -652,7 +652,7 @@ export class ConversationService {
       return await Promise.all(worktrees.map(({ dir }) => realpath(dir)))
     }
     const projects = this.gitPreparation && (branch || worktree)
-      ? await this.gitPreparation(resolved.projects, prepare) : await prepare()
+      ? await this.gitPreparation(resolved.projects, prepare, !worktree) : await prepare()
     let workspace: string
     if (projects.length === 0) {
       workspace = path.join(this.sessionsRoot, id, 'workspace')
@@ -909,7 +909,7 @@ export class ConversationService {
       }
     }
     const repos = cleaned.map((worktree) => worktree.repo)
-    await (this.gitPreparation ? this.gitPreparation(repos, restore) : restore())
+    await (this.gitPreparation ? this.gitPreparation(repos, restore, true) : restore())
     this.store.setCleanedWorktrees(id, failed)
     const setup = this.worktreeSetup
     if (made.length === 0 || !setup) return

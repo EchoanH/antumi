@@ -16,6 +16,8 @@ import { AttachmentStore } from './attachment-store'
 import { fakeChatDaemon } from './fake-chat-agent'
 import { pngBytes } from './image-fixtures'
 import { ProjectRegistry } from './project-registry'
+import { GitService } from './git-service'
+import { GitFavoriteStore } from './git-favorite-store'
 import { TaskStore } from './task-store'
 import { CredentialStore } from './credential-store'
 import { ModelProviderStore } from './model-providers'
@@ -626,6 +628,35 @@ describe('ConversationService', () => {
     expect(fresh.projectPaths).toEqual(laidOut)
     expect((await service.branches(fresh.id)).map((head) => head.branch)).toEqual([`antumi/${shortId}`, `antumi/${shortId}`])
     expect(readdirSync(path.join(root, 'worktrees'))).toEqual([shortId])
+  })
+
+  it('creates isolated worktrees while the source agent works, but still guards branch switches and concurrent Git operations', async () => {
+    const app = path.join(root, 'app')
+    execFileSync('git', ['init', '-q', '-b', 'main', app])
+    const git = (...args: string[]) => execFileSync('git', ['-C', app, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { encoding: 'utf8' }).trim()
+    git('commit', '-q', '--allow-empty', '-m', 'init')
+    git('branch', 'feature')
+    const favorites = new GitFavoriteStore(path.join(root, 'antumi.db'))
+    const management = new GitService({ get: () => { throw new Error('no tasks') }, list: () => [], isLaunching: () => false }, service, favorites)
+    service.setGitPreparation((dirs, run, requireIdle) => requireIdle ? management.withRepositories(dirs, run) : management.withRepositoryLock(dirs, run))
+    try {
+      const source = await service.create('claude', [app])
+      daemon.reply = () => {}
+      await service.send(source.id, 'working')
+      expect(service.get(source.id).chat?.turn).toBe('running')
+      writeFileSync(path.join(app, 'draft.md'), 'unfinished\n')
+      for (const branch of [undefined, 'refs/heads/feature']) {
+        const isolated = await service.create('claude', [app], undefined, { worktree: true, branch })
+        expect(isolated.workspacePath).not.toBe(realpathSync(app))
+        expect(existsSync(path.join(isolated.workspacePath, 'draft.md'))).toBe(false)
+      }
+      expect(git('branch', '--show-current')).toBe('main')
+      expect(readFileSync(path.join(app, 'draft.md'), 'utf8')).toBe('unfinished\n')
+      await expect(service.create('claude', [app], undefined, { branch: 'refs/heads/feature' })).rejects.toMatchObject({ reason: 'chat-busy' })
+      await management.withRepositoryLock([app], async () => {
+        await expect(service.create('claude', [app], undefined, { worktree: true })).rejects.toMatchObject({ reason: 'git-busy' })
+      })
+    } finally { favorites.close() }
   })
 
   it('lays an archived conversation\'s cleaned worktrees out again when taken out: on their branch, else at their commit', async () => {
