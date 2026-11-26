@@ -3,7 +3,8 @@ import type { AgentKind, ChatPermissionMode } from '@antumi/protocol'
 
 // A conversation's handoff while the user sets it up in its composer: the agent picked to take the
 // work over, and the mode, model and effort it starts in. Nothing happens until the composer sends it.
-export type PendingHandoff = { agent: AgentKind; permissionMode?: ChatPermissionMode; model?: string; effort?: string }
+// modelProvider: the provider picked for it, null its own account; absent, as the conversation's.
+export type PendingHandoff = { agent: AgentKind; permissionMode?: ChatPermissionMode; model?: string; effort?: string; modelProvider?: string | null }
 
 export const useHandoffs = create<Record<string, PendingHandoff>>()(() => ({}))
 
@@ -14,7 +15,15 @@ export function proposeHandoff(conversationId: string, agent: AgentKind): void {
 export function chooseHandoffModel(conversationId: string, choice: { model?: string; effort?: string }): void {
   useHandoffs.setState((state) => {
     const pending = state[conversationId]
-    return pending ? { [conversationId]: { agent: pending.agent, ...(pending.permissionMode ? { permissionMode: pending.permissionMode } : {}), ...choice } } : {}
+    return pending ? { [conversationId]: { agent: pending.agent, ...(pending.permissionMode ? { permissionMode: pending.permissionMode } : {}), ...(pending.modelProvider !== undefined ? { modelProvider: pending.modelProvider } : {}), ...choice } } : {}
+  })
+}
+
+// Another provider lists other models: the model and effort go back to its default.
+export function chooseHandoffProvider(conversationId: string, modelProvider: string | null): void {
+  useHandoffs.setState((state) => {
+    const pending = state[conversationId]
+    return pending ? { [conversationId]: { agent: pending.agent, ...(pending.permissionMode ? { permissionMode: pending.permissionMode } : {}), modelProvider } } : {}
   })
 }
 

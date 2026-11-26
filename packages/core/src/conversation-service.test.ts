@@ -2202,6 +2202,26 @@ describe('ConversationService', () => {
       expect(lastSpawn().args).toEqual(expect.arrayContaining(['--resume', first!.providerSessionId]))
     })
 
+    it('hands off onto the provider picked for the agent, over the account it last ran on here, and back to its own account', async () => {
+      const { id: providerId } = await providers.save(gateway())
+      const created = await service.create('claude', [root])
+      const [first] = service.stages(created.id)
+      await service.send(created.id, 'Build an API')
+      await settle()
+      await codexOpens(service.handoff(created.id, 'codex', '', true))
+      await expect(service.handoff(created.id, 'claude', '', true, undefined, { modelProvider: 'nobody' })).rejects.toMatchObject({ reason: 'model-provider-unavailable' })
+      const claude = await service.handoff(created.id, 'claude', '', true, undefined, { modelProvider: providerId })
+      expect(claude).toMatchObject({ modelProvider: providerId, route: { providerId, reason: 'served' } })
+      expect(lastSpawn().env).toMatchObject({ ANTHROPIC_AUTH_TOKEN: KEY })
+      // Its session on its own account would reach another account: it starts afresh from the handoff.
+      expect(lastSpawn().args).not.toContain(first!.providerSessionId)
+      await expect(service.handoff(created.id, 'codex', '', true, undefined, { modelProvider: providerId })).rejects.toMatchObject({ reason: 'model-provider-agent-unsupported' })
+      const codex = await codexOpens(service.handoff(created.id, 'codex', '', true, undefined, { modelProvider: null }))
+      expect(codex.modelProvider).toBeNull()
+      expect(service.stages(created.id).at(-1)?.route).toBeNull()
+      expect(Object.values(lastSpawn().env ?? {})).not.toContain(KEY)
+    })
+
     it('sends small jobs where the provider says: its small model with its headers, the agent\'s own account, or nowhere', async () => {
       const saved = await providers.save(gateway({ headers: { 'User-Agent': 'proxy-client/1' } }))
       const created = await service.create('claude', [root], undefined, { modelProvider: saved.id })

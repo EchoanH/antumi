@@ -2,9 +2,9 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { StateCreator } from 'zustand'
 import { beforeEach, expect, it, vi } from 'vitest'
-import { AgentProfile, Conversation, Task, RpcRequest, createRpcClient, type ChatImage, type RpcConnection } from '@antumi/protocol'
+import { AgentProfile, Conversation, ModelProvider, Task, RpcRequest, createRpcClient, type ChatImage, type RpcConnection } from '@antumi/protocol'
 import { useCore } from '../core-store'
-import { proposeHandoff, useHandoffs } from '../chat-handoff'
+import { chooseHandoffModel, chooseHandoffProvider, proposeHandoff, useHandoffs } from '../chat-handoff'
 import { useComposerHandoff, type ComposerHandoff } from './ChatHandoff'
 
 vi.mock('zustand', async (load) => {
@@ -82,4 +82,25 @@ it('blocks image handoffs on older cores while still allowing a text-only handof
   expect(await handoff.send('Look here')).toBe(false)
   expect(sent).not.toHaveBeenCalled()
   expect(readHandoff(conversation, []).blocker).toBeNull()
+})
+
+it('sends the provider picked for the agent taking over, null for its own account, and nothing unpicked', () => {
+  const gateway = ModelProvider.parse({ id: 'gateway', name: 'Gateway', preset: 'custom', anthropic: { baseUrl: 'https://gateway.example.com', auth: 'auth_token', env: {} }, openai: null, models: [{ id: 'gw', label: null, contextWindow: null, maxOutput: null, efforts: [] }], defaultModel: 'gw', smallModel: 'gw', agents: ['claude'], hasKey: true, revision: 1, createdAt: 0, updatedAt: 0 })
+  const relay = ModelProvider.parse({ id: 'relay', name: 'Relay', preset: 'custom', anthropic: null, openai: { responsesUrl: 'https://relay.example.com/v1', chatUrl: null }, models: [{ id: 'model', label: null, contextWindow: null, maxOutput: null, efforts: [] }], defaultModel: 'model', smallModel: 'model', agents: ['codex'], hasKey: true, revision: 1, createdAt: 0, updatedAt: 0 })
+  const conversation = Conversation.parse({ id: '22222222-2222-4222-8222-222222222222', title: 'Review', titleLocked: false, agent: 'codex', modelProvider: 'relay', workspacePath: '/project', projectPaths: ['/project'], managedWorkspace: false, sessionId: null, createdAt: 1, updatedAt: 1 })
+  const rpc: RpcConnection = { ...createRpcClient(() => {}), features: ['handoff-provider'], close() {}, closed: new Promise(() => {}) }
+  useCore.setState({ rpc, modelProviders: [gateway, relay] })
+  proposeHandoff(conversation.id, 'claude')
+  expect(readHandoff(conversation, []).target?.options).not.toHaveProperty('modelProvider')
+  chooseHandoffProvider(conversation.id, 'gateway')
+  expect(readHandoff(conversation, []).target?.options).toMatchObject({ modelProvider: 'gateway' })
+  // A model picked afterwards keeps the provider.
+  chooseHandoffModel(conversation.id, { model: 'gw' })
+  expect(useHandoffs.getState()[conversation.id]).toMatchObject({ modelProvider: 'gateway', model: 'gw' })
+  chooseHandoffProvider(conversation.id, null)
+  expect(useHandoffs.getState()[conversation.id]).toEqual({ agent: 'claude', modelProvider: null })
+  expect(readHandoff(conversation, []).target?.options).toMatchObject({ modelProvider: null })
+  // An older core is sent no provider at all.
+  useCore.setState({ rpc: { ...rpc, features: [] } })
+  expect(readHandoff(conversation, []).target?.options).not.toHaveProperty('modelProvider')
 })

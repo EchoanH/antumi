@@ -1081,6 +1081,19 @@ describe('TaskService', () => {
     expect(service.update({ id: task.id, launch: { permissionMode: 'ask', modelProvider: null } }).launch.modelProvider).toBe(providerId)
     const again = { cwd: started.repos[0]?.worktreePath ?? '', extraDirs: [], planOnly: false, session: 'resume' as const }
     await expect(conversations.startForTask({ id: task.id, title: task.title, agent: 'claude' }, { ...again, modelProvider: null })).rejects.toMatchObject({ reason: 'model-provider-fixed' })
+    // Handed to another agent, it runs where the handoff puts it.
+    await settle()
+    await expect(service.handoff(task.id, 'codex', '', undefined, { modelProvider: providerId })).rejects.toMatchObject({ reason: 'model-provider-agent-unsupported' })
+    const handing = service.handoff(task.id, 'codex', '', undefined, { modelProvider: null })
+    const codexSession = `pipe-${daemon.spawns.length + 1}`
+    const asked = (method: string) => daemon.written(codexSession).some((frame) => JSON.stringify(frame).includes(`"method":"${method}"`))
+    while (!asked('initialize')) await settle()
+    daemon.emit(codexSession, { id: 'antumi-init', result: {} })
+    while (!asked('thread/start')) await settle()
+    daemon.emit(codexSession, { id: 'antumi-thread', result: { thread: { id: 'thread-1' } } })
+    const handed = await handing
+    expect(conversations.get(handed.conversationId ?? '')).toMatchObject({ agent: 'codex', modelProvider: null, route: null })
+    expect(Object.values(daemon.spawns.at(-1)?.env ?? {})).not.toContain('sk-task-key')
   })
 
   it('takes a task by the id prefix the CLI names it by', async () => {

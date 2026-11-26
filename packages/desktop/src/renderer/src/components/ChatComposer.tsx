@@ -24,7 +24,7 @@ import { useChatMentionMenu } from './ChatMentionMenu'
 import { MentionField, useMentionedText } from './ChatMentionField'
 import { ChatOptionsBar } from './ChatOptionsBar'
 import { RouteBadge } from './RouteBadge'
-import { HandoffAgentPicker, HandoffModePicker, HandoffModelPicker, useComposerHandoff } from './ChatHandoff'
+import { HandoffAgentPicker, HandoffModePicker, HandoffModelPicker, HandoffProviderPicker, useComposerHandoff } from './ChatHandoff'
 import { ChevronDownIcon, ClockIcon, CloseIcon, EnterIcon, PencilIcon, StopIcon } from './icons'
 import { SchedulePicker } from './SchedulePicker'
 import { createSchedule } from '../schedules'
@@ -576,6 +576,7 @@ export function ChatComposer({ conversation, state, compact = false }: { convers
         {handingOff ? (
           <>
             <HandoffModePicker conversationId={id} handoff={handoff} />
+            <HandoffProviderPicker conversationId={id} agent={handingOff} />
             <span className="chat-dock-spacer" />
             <HandoffModelPicker conversationId={id} agent={handingOff} />
           </>

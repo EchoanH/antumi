@@ -1,14 +1,15 @@
 import { t } from '../i18n'
-import { checkTaskHandoff, ChatPermissionMode, type ChatImage, type ChatReference, type AgentKind, type ChatModel, type Conversation, type TaskLaunchOptions } from '@antumi/protocol'
+import { checkTaskHandoff, ChatPermissionMode, type ChatImage, type ChatReference, type AgentKind, type ChatModel, type Conversation, type ModelProvider, type TaskLaunchOptions } from '@antumi/protocol'
 import { resolveModel, useAgentCatalog } from '../agent-models'
 import { providerFor } from '../model-provider-choice'
-import { cancelHandoff, chooseHandoffMode, chooseHandoffModel, proposeHandoff, useHandoffs } from '../chat-handoff'
+import { cancelHandoff, chooseHandoffMode, chooseHandoffModel, chooseHandoffProvider, proposeHandoff, useHandoffs, type PendingHandoff } from '../chat-handoff'
 import { perform, useCore, useTaskHandoffSupported } from '../core-store'
 import { useInstalledAgents } from '../installed-agents'
 import { agentLabel, reasonText } from '../labels'
 import { confirmQuota, modelText } from './AgentQuota'
 import { ChatModelPicker, ChatPicker, modelMeta } from './ChatPicker'
 import { AgentIcon } from './icons'
+import { ProviderPicker } from './ProviderPicker'
 import { defaultStartMode, effortLabel, modeOptions, modeTone, startModes, useAgentBackend } from './ChatOptionsBar'
 import { startOptions } from './ConversationActions'
 import { askConfirm } from '../confirm-dialog'
@@ -25,7 +26,7 @@ export type ComposerHandoff = {
     model: ChatModel | undefined
     modes: readonly ChatPermissionMode[]
     mode: ChatPermissionMode | null
-    options: Pick<TaskLaunchOptions, 'permissionMode' | 'model' | 'effort'>
+    options: Pick<TaskLaunchOptions, 'permissionMode' | 'model' | 'effort'> & { modelProvider?: string | null }
   } | null
   // Why it cannot go now (a task's chat waits for its turn to end), or null.
   blocker: string | null
@@ -41,6 +42,13 @@ export function handoffMode(agent: AgentKind, offered: readonly ChatPermissionMo
   return offered.find((mode) => mode === picked) ?? offered.find((mode) => mode === current) ?? defaultStartMode(agent, offered)
 }
 
+// The provider the agent taking over runs on: the one picked for it, else the conversation's where
+// that serves it. null: its own account.
+export function handoffProvider(providers: readonly ModelProvider[], conversationProvider: string | null | undefined, pending: PendingHandoff | null | undefined): ModelProvider | null {
+  if (!pending) return null
+  return providerFor(providers, pending.modelProvider !== undefined ? pending.modelProvider : conversationProvider, pending.agent)
+}
+
 // The composer's switch of agent: picking another agent readies a handoff, which the next send
 // carries out; picking the agent at work again calls it off.
 export function useComposerHandoff(conversation: Conversation, images: readonly ChatImage[] = []): ComposerHandoff {
@@ -51,15 +59,17 @@ export function useComposerHandoff(conversation: Conversation, images: readonly 
   const modelsSupported = useCore((s) => s.rpc?.features.includes('handoff-model') ?? false)
   const modesSupported = useCore((s) => s.rpc?.features.includes('handoff-mode') ?? false)
   const imagesSupported = useCore((s) => s.rpc?.features.includes('handoff-images') ?? false)
+  const providerSupported = useCore((s) => s.rpc?.features.includes('handoff-provider') ?? false)
   const installed = useInstalledAgents()
   const pending = useHandoffs((s) => s[id])
   const from = task?.agent ?? conversation.agent
   // Saved agents and group chat members keep the agent they were configured with.
   const targets = (!task || taskSupported) && !conversation.profile && !conversation.discussionId && !conversation.helperOf ? installed.filter((agent) => agent !== from) : []
   const picked = pending && targets.includes(pending.agent) ? pending : null
-  // An agent the conversation's provider serves goes on on it; another, on its own account.
+  // An agent the conversation's provider serves goes on on it, unless the user picks another;
+  // another, on its own account.
   const providers = useCore((s) => s.modelProviders)
-  const targetProvider = providerFor(providers, conversation.modelProvider, picked?.agent ?? null)
+  const targetProvider = handoffProvider(providers, conversation.modelProvider, picked)
   const catalog = useAgentCatalog(picked?.agent ?? null, modelsSupported, targetProvider)
   const { model, modelId, effort } = resolveModel(catalog, picked ?? {})
   const turn = conversation.sessionId ? (conversation.chat?.turn ?? null) : null
@@ -76,7 +86,11 @@ export function useComposerHandoff(conversation: Conversation, images: readonly 
     model,
     modes,
     mode,
-    options: { ...(mode ? { permissionMode: mode } : {}), ...(modelsSupported ? { model: modelId ?? null, effort: effort ?? null } : {}) }
+    options: {
+      ...(mode ? { permissionMode: mode } : {}),
+      ...(modelsSupported ? { model: modelId ?? null, effort: effort ?? null } : {}),
+      ...(providerSupported && picked.modelProvider !== undefined ? { modelProvider: targetProvider?.id ?? null } : {})
+    }
   }
   const send = async (note: string, references?: ChatReference[]) => {
     if (!target || blocker) return false
@@ -139,13 +153,23 @@ export function HandoffModePicker({ conversationId, handoff }: { conversationId:
   )
 }
 
+// The provider the agent taking over runs on, where core takes it.
+export function HandoffProviderPicker({ conversationId, agent }: { conversationId: string; agent: AgentKind }) {
+  const supported = useCore((s) => s.rpc?.features.includes('handoff-provider') ?? false)
+  const providers = useCore((s) => s.modelProviders)
+  const chosen = useCore((s) => s.conversations[conversationId]?.modelProvider)
+  const pending = useHandoffs((s) => s[conversationId])
+  if (!supported) return null
+  return <ProviderPicker agent={agent} value={handoffProvider(providers, chosen, pending)?.id ?? null} onChange={(value) => chooseHandoffProvider(conversationId, value)} />
+}
+
 // The model and effort the agent taking over starts in, where core takes them.
 export function HandoffModelPicker({ conversationId, agent }: { conversationId: string; agent: AgentKind }) {
   const modelsSupported = useCore((s) => s.rpc?.features.includes('handoff-model') ?? false)
   const providers = useCore((s) => s.modelProviders)
   const chosen = useCore((s) => s.conversations[conversationId]?.modelProvider)
-  const catalog = useAgentCatalog(agent, modelsSupported, providerFor(providers, chosen, agent))
   const pending = useHandoffs((s) => s[conversationId])
+  const catalog = useAgentCatalog(agent, modelsSupported, handoffProvider(providers, chosen, pending))
   const { modelId, defaultModel, effort } = resolveModel(catalog, pending ?? {})
   if (!catalog?.models.length) return null
   return (

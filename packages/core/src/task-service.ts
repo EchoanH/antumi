@@ -69,7 +69,7 @@ export type BranchNamer = (agent: AgentKind, title: string, modelProvider: strin
 const SLUG_WAIT_MS = 10_000
 
 // What a task needs of its chat.
-export type TaskConversations = Pick<ConversationService, 'startForTask' | 'send' | 'markUnattended' | 'savePlan' | 'stopForTask' | 'deleteForTask' | 'get' | 'runUsage' | 'capacityAvailable' | 'validateStartOptions' | 'unattendedStartMode'>
+export type TaskConversations = Pick<ConversationService, 'startForTask' | 'send' | 'markUnattended' | 'savePlan' | 'stopForTask' | 'deleteForTask' | 'get' | 'runUsage' | 'capacityAvailable' | 'validateStartOptions' | 'pickedProvider' | 'unattendedStartMode'>
 
 export type TaskSquads = {
   preparing(id: string): boolean
@@ -625,7 +625,8 @@ export class TaskService {
     if (blocker) throw new Rejection(blocker)
     // A task still being planned only plans, whoever takes it over.
     if (task.status === 'pending' && choice.permissionMode && choice.permissionMode !== 'plan') throw new Rejection('chat-option-invalid', 'a task being planned may only plan')
-    await chats.validateStartOptions(agent, choice, this.providerOf(task, {}))
+    const provider = choice.modelProvider === undefined ? this.providerOf(task, {}) : chats.pickedProvider(agent, choice.modelProvider)
+    await chats.validateStartOptions(agent, choice, provider)
     return this.goOnChatting(task, dependencies, agent, allowBypass, note, choice)
   }
 
@@ -636,7 +637,7 @@ export class TaskService {
   }
 
   // The agent is the task's from here on once it has started.
-  private async goOnChatting(task: Task, dependencies: readonly Task[], agent: AgentKind, allowBypass?: boolean, handoffNote?: string, choice: HandoffChoice = {}): Promise<Task> {
+  private async goOnChatting(task: Task, dependencies: readonly Task[], agent: AgentKind, allowBypass?: boolean, handoffNote?: string, { modelProvider: handoffProvider, ...choice }: HandoffChoice = {}): Promise<Task> {
     const chats = this.requireChats()
     if (!chats.capacityAvailable(agent, task.conversationId)) throw new Rejection('agent-capacity')
     return this.launchChat(task, async () => {
@@ -646,7 +647,7 @@ export class TaskService {
         const workspace = await prepareRefineWorkspace(task, dependencies, this.worktreesRoot, { refresh: false })
         await chats.startForTask({ id: task.id, title: task.title, agent }, {
           cwd: workspace.cwd, extraDirs: workspace.dirs.filter((dir) => dir !== workspace.cwd && !workspace.references.has(dir)), referenceDirs: [...workspace.references], planOnly: true, session: 'resume',
-          readable: images.readable, allowBypass, handoffNote, ...choice
+          readable: images.readable, allowBypass, handoffNote, handoffProvider, ...choice
         })
         return kept()
       }
@@ -654,7 +655,7 @@ export class TaskService {
       const workspace = await prepareWorkspace(await this.withSlug(task), dependencies, this.worktreesRoot, Date.now(), this.workspaceStarts(task.id))
       this.store.update(task.id, { repos: workspace.repos })
       const conversation = await chats.startForTask({ id: task.id, title: task.title, agent }, {
-        cwd: workspace.cwd, extraDirs: workspace.extraDirs, referenceDirs: workspace.referenceDirs, planOnly: false, session: 'resume', readable: images.readable, allowBypass, handoffNote, ...choice
+        cwd: workspace.cwd, extraDirs: workspace.extraDirs, referenceDirs: workspace.referenceDirs, planOnly: false, session: 'resume', readable: images.readable, allowBypass, handoffNote, handoffProvider, ...choice
       })
       // A worktree the user removed comes back without what setup put there; a failure shows in its tab.
       await this.setUp(conversation.id, workspace, setups)

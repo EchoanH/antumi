@@ -69,7 +69,8 @@ export type ChatStageRef = { conversationId: string; taskId: string | null; stag
 // What a model choice holds: see TaskLaunchOptions.
 export type ModelChoice = Pick<TaskLaunchOptions, 'model' | 'effort'>
 // What an agent takes over with on a handoff; each left out stays as the chat last had it.
-export type HandoffChoice = Pick<TaskLaunchOptions, 'permissionMode' | 'model' | 'effort'> & { references?: ChatReference[]; images?: readonly string[] }
+// modelProvider: the provider it runs on from here, null its own account.
+export type HandoffChoice = Pick<TaskLaunchOptions, 'permissionMode' | 'model' | 'effort'> & { references?: ChatReference[]; images?: readonly string[]; modelProvider?: string | null }
 
 export type TaskChatLaunch = TaskLaunchOptions & {
   profile?: AgentProfile
@@ -85,6 +86,8 @@ export type TaskChatLaunch = TaskLaunchOptions & {
   allowBypass?: boolean
   // What the user adds for the next agent when the task's agent changes on the way.
   handoffNote?: string
+  // The provider the agent taking over runs on, null its own account (HandoffChoice.modelProvider).
+  handoffProvider?: string | null
   references?: ChatReference[]
   images?: readonly string[]
   // The stage's first message. An agent going on from a handoff reads it there, in the turn the
@@ -95,7 +98,7 @@ export type TaskChatLaunch = TaskLaunchOptions & {
 // What a stage's start takes beyond the agent: see TaskChatLaunch; moved says the agent works
 // somewhere else than its last stage did.
 // brief: a file written for the first stage to read before anything else, sent as a handoff is.
-type StageLaunch = { ref?: string; fresh?: boolean; moved?: boolean; planOnly?: boolean; backend?: string | null; account?: string | null; readable?: readonly string[]; fork?: ForkPoint; opening?: string; brief?: string; references?: ChatReference[]; images?: readonly ChatImage[] }
+type StageLaunch = { ref?: string; fresh?: boolean; moved?: boolean; rerouted?: boolean; planOnly?: boolean; backend?: string | null; account?: string | null; readable?: readonly string[]; fork?: ForkPoint; opening?: string; brief?: string; references?: ChatReference[]; images?: readonly ChatImage[] }
 // The provider session another conversation's stage ran, taken over through the turn `at` names;
 // neither null means a session the agent can fork, else the fork starts afresh.
 // latest: the point is the last the agent's session holds, so the session forked whole is the same.
@@ -342,11 +345,12 @@ export class ConversationService {
   setModelProviders(providers: ModelProviderStore): void { this.providers = providers }
   setAccounts(accounts: Pick<AgentAccountStore, 'launch' | 'activeOf' | 'exists'> & Partial<Pick<AgentAccountStore, 'home'>>): void { this.accounts = accounts }
 
-  // What the agent's next stage here runs on (see decideRoute).
-  private routeFor(conversation: Pick<Conversation, 'id' | 'modelProvider'>, agent: AgentKind): RouteDecision {
+  // What the agent's next stage here runs on (see decideRoute). rerouted: the user has just picked
+  // the provider for it, which wins over the route it last ran on here.
+  private routeFor(conversation: Pick<Conversation, 'id' | 'modelProvider'>, agent: AgentKind, rerouted = false): RouteDecision {
     const chosen = conversation.modelProvider ?? null
     const resolved = chosen === null ? null : this.providers?.resolve(chosen) ?? null
-    return decideRoute(chosen, agent, this.store.latestStage(conversation.id, agent), resolved)
+    return decideRoute(chosen, agent, rerouted ? null : this.store.latestStage(conversation.id, agent), resolved)
   }
 
   // The provider whose models an agent picks from here, where it runs on one.
@@ -772,13 +776,16 @@ export class ConversationService {
     const referencePaths = await Promise.all((launch.referenceDirs ?? []).map((dir) => realpath(dir)))
     const images = await this.chatImages(launch.images ?? [])
     const existing = this.store.byTask(task.id)
-    // The provider is settled with the conversation: a later start may only name the same one.
+    // The provider is settled with the conversation: a later start may only name the same one,
+    // unless it hands the task to another agent, who may run on another.
     if (existing && launch.modelProvider !== undefined && launch.modelProvider !== (existing.modelProvider ?? null)) {
       throw new Rejection('model-provider-fixed', '任务的服务商在第一次启动时已定下')
     }
-    if (!existing && launch.modelProvider) this.requireProvider(launch.modelProvider, task.agent)
+    const rerouted = launch.handoffProvider !== undefined
+    const provider = rerouted ? launch.handoffProvider ?? null : existing ? undefined : launch.modelProvider ?? null
+    if (provider) this.requireProvider(provider, task.agent)
     const conversation = existing ?? this.store.create(task.agent, cwd, projectPaths, randomUUID(), {}, { id: task.id, title: task.title })
-    if (!existing && launch.modelProvider) this.store.setModelProvider(conversation.id, launch.modelProvider)
+    if (!existing && provider) this.store.setModelProvider(conversation.id, provider)
     const { id } = conversation
     if (launch.profile) this.store.setProfile(id, launch.profile)
     if (this.launching.has(id)) throw new Rejection('conversation-running')
@@ -793,6 +800,7 @@ export class ConversationService {
     if (live && launch.session === 'resume' && same) return this.withChat(conversation)
     if (conversation.sessionId && !this.chats.idle(id)) throw new Rejection('chat-busy', 'the agent is still working')
     if (conversation.sessionId) await this.stop(id)
+    if (rerouted) this.store.setModelProvider(id, provider ?? null)
     this.store.setWorkspaceReadOnly(id, launch.workspaceReadOnly ?? false)
     if (regrouped) this.store.moveWorkspace(id, cwd, projectPaths, referencePaths)
     if (conversation.title !== task.title) this.store.update(id, { title: task.title })
@@ -804,6 +812,7 @@ export class ConversationService {
     const started = await this.start(id, task.agent, launch.handoffNote ?? '', switched, {
       fresh: launch.session === 'new',
       moved,
+      rerouted,
       planOnly: launch.planOnly,
       readable: launch.readable,
       opening: launch.opening?.text,
@@ -976,9 +985,7 @@ export class ConversationService {
     if (current.squadRunId || current.parentConversationId) throw new Rejection('squad-managed')
     if (current.discussionId) throw new Rejection('discussion-member', 'a group chat member keeps its agent')
     if (agent === current.agent) throw new Rejection('conversation-same-agent')
-    const decision = this.routeFor(current, agent)
-    if (decision.kind === 'unavailable') throw new Rejection('model-provider-unavailable', decision.message)
-    await this.validateStartOptions(agent, choice, decision.kind === 'provider' ? decision.route.providerId : undefined)
+    await this.validateStartOptions(agent, choice, this.handoffProvider(current, agent, choice.modelProvider))
     if (allowBypass !== undefined) this.store.setChatOptions(id, { allowBypass })
     if (this.launching.has(id)) throw new Rejection('conversation-running')
     if (current.sessionId && !stopRunning && !this.chats.idle(id)) throw new Rejection('conversation-running')
@@ -988,7 +995,25 @@ export class ConversationService {
     this.pickModel(id, agent, choice)
     // After the stop, which may leave the old agent's last mode in the options.
     if (choice.permissionMode) this.store.setChatOptions(id, { permissionMode: choice.permissionMode })
-    return this.start(id, agent, note, true, { references: choice.references, images })
+    const rerouted = choice.modelProvider !== undefined
+    if (rerouted) this.store.setModelProvider(id, choice.modelProvider ?? null)
+    return this.start(id, agent, note, true, { references: choice.references, images, rerouted })
+  }
+
+  // The provider an agent taking the conversation over runs on: the one picked for it, which must
+  // serve it, else the conversation's, where that serves it. undefined: its own account.
+  private handoffProvider(conversation: Pick<Conversation, 'id' | 'modelProvider'>, agent: AgentKind, picked: string | null | undefined): string | undefined {
+    if (picked !== undefined) return this.pickedProvider(agent, picked)
+    const decision = this.routeFor(conversation, agent)
+    if (decision.kind === 'unavailable') throw new Rejection('model-provider-unavailable', decision.message)
+    return decision.kind === 'provider' ? decision.route.providerId : undefined
+  }
+
+  // A provider picked for an agent to take over on, which must serve it; null its own account.
+  pickedProvider(agent: AgentKind, picked: string | null): string | undefined {
+    if (picked === null) return undefined
+    this.requireProvider(picked, agent)
+    return picked
   }
 
   // The model and effort an agent starts in: each as picked, null back to the default, absent as it
@@ -1248,7 +1273,7 @@ export class ConversationService {
   // lost: the provider session that turned out not to be there to resume.
   private async startStage(current: Conversation, agent: AgentKind, note: string, handoff: boolean, launch: StageLaunch, lost: string | null): Promise<Conversation> {
     const { id } = current
-    const decision = this.routeFor(current, agent)
+    const decision = this.routeFor(current, agent, launch.rerouted)
     if (decision.kind === 'unavailable') throw new Rejection('model-provider-unavailable', decision.message)
     const route = decision.kind === 'provider' ? decision.route : null
     const previous = launch.fresh ? null : this.store.latestStage(id, agent)
