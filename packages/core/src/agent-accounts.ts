@@ -234,7 +234,10 @@ export class AgentAccountStore {
       const home = this.home(agent, id)!
       // A key account has nothing signed in to sign out of: its key goes instead.
       if (this.find(agent, id)?.edition) await this.deps.credentials?.delete(KEY_CREDENTIAL, keyInstance(agent, id))
-      else await agentCliAccess.use(agent, () => (this.deps.signOut ?? runQuietly)(agentDescriptor(agent).cli, accounts.logout, accounts.env(home)))
+      else await agentCliAccess.use(agent, async () => {
+        const command = await accounts.authCommand?.('logout') ?? { command: agentDescriptor(agent).cli, args: [...accounts.logout] }
+        await (this.deps.signOut ?? runQuietly)(command.command, command.args, { ...accounts.env(home), ...command.env })
+      })
       const active = { ...this.active }
       if (active[agent] === id) delete active[agent]
       this.active = active
@@ -307,7 +310,10 @@ export class AgentAccountStore {
     const title = `登录 ${agentDescriptor(agent).label}${name.label ? `（${name.label}）` : ''}`
     const folder = accounts.signInFolder ? path.join(this.root, agent, '.sign-in') : undefined
     if (folder) await mkdir(folder, { recursive: true, mode: 0o700 })
-    const terminal = await agentCliAccess.use(agent, () => this.deps.signIn({ command: agentDescriptor(agent).cli, args: accounts.login }, home ? accounts.env(home) : {}, title, agent, folder))
+    const terminal = await agentCliAccess.use(agent, async () => {
+      const command = await accounts.authCommand?.('login') ?? { command: agentDescriptor(agent).cli, args: [...accounts.login] }
+      return this.deps.signIn(command, { ...(home ? accounts.env(home) : {}), ...command.env }, title, agent, folder)
+    })
     void this.deps.waitForExit(terminal.id).then(() => this.check(agent, id)).then(() => this.deps.accountChanged(agent, id, false))
     return terminal
   }

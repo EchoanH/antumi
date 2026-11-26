@@ -36,11 +36,13 @@ Using Claude, Gemini or other subscription accounts through a proxy may break th
 
 ## Multiple accounts
 
-**Optional,** for Claude Code and Codex only.
+**Optional,** for Claude Code, Codex, Antigravity and CodeBuddy.
 
 ![Settings → Accounts: switching when an account runs out, and adding one](assets/guide/accounts.en.png)
 
-In [**Settings → Accounts**](antumi:settings/accounts), click **Add Claude Code account** (or Codex), then **Add and sign in**, finish in the terminal below and click **Make active**. When an account runs out, the conversation moves on to the next one by default.
+In [**Settings → Accounts**](antumi:settings/accounts), click **Add Claude Code account** (or Codex or Antigravity), then **Add and sign in**, finish in the terminal below and click **Make active**. When an account runs out, the conversation moves on to the next one by default.
+
+Antigravity authorizes your Google account in the browser, with progress in the terminal. Quota is shown separately for each account; a turn is not automatically retried when the server reports a limit as ordinary reply text.
 
 ## Task sources
 

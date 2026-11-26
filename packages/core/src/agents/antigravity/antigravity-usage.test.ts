@@ -82,6 +82,26 @@ describe('Antigravity usage', () => {
     expect(await readFile(token, 'utf8')).toBe(before)
   })
 
+  it('reads each account’s project and refreshes its own access token', async () => {
+    await signIn({ ...credential, refresh_token: 'default-multi' })
+    const other = path.join(home, 'other')
+    await mkdir(path.dirname(antigravityTokenFile(other)), { recursive: true })
+    await writeFile(antigravityTokenFile(other), JSON.stringify({ ...credential, refresh_token: 'other-multi', project_id: 'project-2' }))
+    const fetch = vi.fn(async (url: string, init: RequestInit) => {
+      if (url === credential.token_uri) {
+        const refresh = new URLSearchParams(String(init.body)).get('refresh_token')
+        return Response.json({ access_token: refresh, expires_in: 3600 })
+      }
+      const project = JSON.parse(String(init.body)).project
+      expect(new Headers(init.headers).get('authorization')).toBe(`Bearer ${project === 'project-2' ? 'other-multi' : 'default-multi'}`)
+      return Response.json(summary)
+    })
+    vi.stubGlobal('fetch', fetch)
+    await readAntigravityUsage()
+    await readAntigravityUsage(other)
+    expect(fetch).toHaveBeenCalledTimes(4)
+  })
+
   it('reports a sign-in Google no longer refreshes as expired', async () => {
     await signIn({ ...credential, refresh_token: 'revoked' })
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'invalid_grant' }, { status: 400 })))

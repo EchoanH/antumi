@@ -4,7 +4,8 @@ import path from 'node:path'
 import { antigravitySessionsRoot, antigravityTranscripts } from './antigravity-transcripts'
 import type { ChatCatalog } from '@antumi/protocol'
 import { probeChatCatalog } from '../../chat-catalog'
-import type { AgentAdapter } from '../agent-adapter'
+import type { AgentAdapter, AgentLaunch } from '../agent-adapter'
+import { antigravityAccounts, antigravityAccountSignedIn } from './antigravity-account'
 import { AcpDriver } from '../acp/acp-driver'
 import { antigravityDialect } from './antigravity-dialect'
 import { readAntigravityUsage } from './antigravity-usage'
@@ -16,7 +17,7 @@ const CATALOG_TIMEOUT_MS = 60_000
 // The registry's Linux launch: started as root without it, the server drops to nobody.
 const args = (): string[] => process.platform === 'linux' ? ['--uid='] : []
 // Its sign-in goes to a file Antumi can read for usage (antigravity-usage.ts), not the keychain.
-const command = () => ({ command: antigravityServer() ?? 'agy_acp_server', args: args(), env: { PYTHONUNBUFFERED: '1', AGY_ACP_FORCE_FILE_STORAGE: '1' } })
+const command = (launch?: AgentLaunch) => ({ command: antigravityServer() ?? 'agy_acp_server', args: args(), env: { ...launch?.account?.env, PYTHONUNBUFFERED: '1', AGY_ACP_FORCE_FILE_STORAGE: '1' } })
 
 // Its models come only with a session, which needs its Google sign-in: signed out, a probe would
 // open the sign-in page in the browser with nobody having asked.
@@ -52,6 +53,8 @@ export const antigravity: AgentAdapter = {
   partialStageCatalog: true,
   detect: detectAntigravity,
   usage: readAntigravityUsage,
+  accounts: antigravityAccounts,
+  signedIn: antigravityAccountSignedIn,
   installation: antigravityInstallation,
   maintenance: { managedRuntime: true },
   installWithoutApplication: true,
