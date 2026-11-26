@@ -1553,7 +1553,7 @@ export class ConversationService {
       return
     }
     if (this.chats.activity(id) === null) {
-      this.chooseForNextStart(conversation, option, value)
+      await this.chooseForNextStart(conversation, option, value)
       return
     }
     await this.chats.setOption(id, option, value)
@@ -1568,19 +1568,23 @@ export class ConversationService {
     this.store.setChatOptions(id, { [agent]: { ...chosen[agent], [option]: value } })
   }
 
-  private chooseForNextStart(conversation: Conversation, option: ChatOption, value: string): void {
+  private async chooseForNextStart(conversation: Conversation, option: ChatOption, value: string): Promise<void> {
     const { id, agent } = conversation
     const stage = this.store.stages(id).at(-1)
     const state = stage?.agent === agent
       ? this.chats.items(this.chatStage(conversation, stage)).findLast((item) => item.kind === 'state')
       : undefined
-    if (state?.kind !== 'state') throw new Rejection('chat-option-invalid', `no chat stage of ${agent} to take options from`)
+    // Imported transcripts have messages but no model catalog until their first resume.
+    const models = state?.models.length ? state.models : (await this.chatCatalog(agent, this.catalogProvider(conversation, agent)))?.models ?? []
+    const latest = this.get(id)
+    if (latest.agent !== agent || latest.sessionId !== conversation.sessionId || this.store.stages(id).at(-1)?.id !== stage?.id) return this.setOption(id, option, value)
+    const permissionModes = state?.permissionModes.length ? state.permissionModes : conversation.planOnly ? ['plan'] : startModes(agent, models.find((each) => each.isDefault))
     const chosen = this.store.chatOptions(id)
     const current = chosen[agent] ?? {}
-    const model = (name: string | null | undefined) => state.models.find((each) => each.id === name)
+    const model = (name: string | null | undefined) => models.find((each) => each.id === name)
     if (option === 'permissionMode') {
       // Bypass is for the start to allow, which asks the user's setting again.
-      if ((value !== 'bypass' || !agentDescriptor(agent).capabilities.bypass) && !state.permissionModes.includes(value)) throw new Rejection('chat-option-invalid', `${agent} offers no permission mode ${value}`)
+      if ((value !== 'bypass' || !agentDescriptor(agent).capabilities.bypass) && !permissionModes.includes(value)) throw new Rejection('chat-option-invalid', `${agent} offers no permission mode ${value}`)
       this.store.setChatOptions(id, { permissionMode: value })
     } else if (option === 'model') {
       const picked = model(value)
@@ -1589,7 +1593,7 @@ export class ConversationService {
       const effort = current.effort && picked.efforts.includes(current.effort) ? current.effort : undefined
       this.store.setChatOptions(id, { [agent]: { model: value, effort } })
     } else {
-      if (!model(current.model ?? state.model)?.efforts.includes(value)) throw new Rejection('chat-option-invalid', `the model takes no effort ${value}`)
+      if (!model(current.model ?? state?.model ?? models.find((each) => each.isDefault)?.id)?.efforts.includes(value)) throw new Rejection('chat-option-invalid', `the model takes no effort ${value}`)
       this.store.setChatOptions(id, { [agent]: { ...current, effort: value } })
     }
     this.changed(conversation)
