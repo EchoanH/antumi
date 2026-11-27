@@ -303,4 +303,14 @@ describe('ACP agents that run a little off the standard', () => {
     expect(() => driver.send('x'.repeat(2048))).toThrow(expect.objectContaining({ reason: 'chat-prompt-too-large' }))
     expect(driver.send('short').wire).toMatchObject({ method: 'session/prompt' })
   })
+
+  it('refuses read-only stages when a dialect declares neither a native readOnly mode nor a readOnlyMode fallback', () => {
+    const driver = new AcpDriver(plain, 'stage', { ...OPTIONS, readOnly: true })
+    due(driver)
+    receive(driver, { id: 'plain-init', result: { protocolVersion: 1 } })
+    due(driver)
+    receive(driver, { id: 'plain-session', result: { sessionId: 'session', modes } })
+    expect(driver.ready()).toBe(false)
+    expect(driver.failure()).toContain('readOnly')
+  })
 })
