@@ -51,6 +51,13 @@ describe('agent role templates', () => {
     expect(agentProfileTemplateModel(explorer, 'claude', providerCatalog, 'small', true).model).toBe('small[1m]')
   })
 
+  it('matches a legacy 1M provider small model to the catalog spelling', () => {
+    const explorer = AGENT_PROFILE_TEMPLATES[0]!
+    const model = { id: 'claude-haiku-5-5[1m]', label: 'Haiku (1M)', description: null, isDefault: false, efforts: ['low'] }
+    const providerCatalog = { models: [...catalog.models, model] }
+    expect(agentProfileTemplateModel(explorer, 'claude', providerCatalog, 'claude-haiku-5-5[1M]', true)).toEqual({ model: model.id, effort: 'low' })
+  })
+
   it('keeps unsupported effort and missing catalogs unset instead of inventing model options', () => {
     const reviewer = AGENT_PROFILE_TEMPLATES.find((item) => item.id === 'reviewer')!
     const noEffort: ChatCatalog = { models: [{ ...catalog.models[0]!, efforts: [] }] }
