@@ -401,9 +401,12 @@ describe('ClaudeStream state', () => {
       { dir: 'out', at: 1, frame: { type: 'control_request', request_id: 'antumi-init', request: { subtype: 'initialize' } } }
     ], { ...OPTIONS, providerModels })
     expect(stateOf(driver)).toMatchObject({ model: 'm[1m]', models: providerModels })
-    driver.apply({ dir: 'in', at: 2, frame: { type: 'system', subtype: 'init', model: 'm[1M]' } })
-    expect(stateOf(driver)).toMatchObject({ model: 'm[1m]' })
-    expect(stateOf(driver)?.models).toEqual(providerModels)
+    driver.apply({ dir: 'in', at: 2, frame: { type: 'system', subtype: 'init', model: 'm' } })
+    expect(stateOf(driver)).toMatchObject({ model: 'm[1m]', billingModel: 'm', models: providerModels })
+    driver.apply({ dir: 'out', at: 3, frame: { type: 'control_request', request_id: 'antumi-option-1', request: { subtype: 'set_model', model: 'm' } } })
+    driver.apply({ dir: 'in', at: 4, frame: { type: 'control_response', response: { subtype: 'success', request_id: 'antumi-option-1' } } })
+    driver.apply({ dir: 'in', at: 5, frame: { type: 'system', subtype: 'init', model: 'm' } })
+    expect(stateOf(driver)).toMatchObject({ model: 'm', billingModel: 'm', models: providerModels })
   })
 
   it.each(['[1m]', '[1M]'])('names a listed model run with %s by the alias that keeps its 1M context', (suffix) => {

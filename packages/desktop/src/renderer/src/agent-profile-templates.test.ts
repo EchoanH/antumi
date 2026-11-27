@@ -56,6 +56,8 @@ describe('agent role templates', () => {
     const model = { id: 'claude-haiku-5-5[1m]', label: 'Haiku (1M)', description: null, isDefault: false, efforts: ['low'] }
     const providerCatalog = { models: [...catalog.models, model] }
     expect(agentProfileTemplateModel(explorer, 'claude', providerCatalog, 'claude-haiku-5-5[1M]', true)).toEqual({ model: model.id, effort: 'low' })
+    const bare = { ...model, id: 'claude-haiku-5-5' }
+    expect(agentProfileTemplateModel(explorer, 'claude', { models: [...providerCatalog.models, bare] }, bare.id, true).model).toBe(bare.id)
   })
 
   it('keeps unsupported effort and missing catalogs unset instead of inventing model options', () => {

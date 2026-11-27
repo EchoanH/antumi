@@ -898,7 +898,12 @@ export class ClaudeStream implements ChatDriver {
     const { subtype, session_id, model, permissionMode, detail, compact_metadata, mcp_servers } = system.data
     if (subtype === 'init' && session_id) this.sessionId = session_id
     if (subtype === 'init') unreachableMcp(mcp_servers).forEach((server) => this.items.mcpUnreachable(server.name, at))
-    if (subtype === 'init' && model) this.reportedModel = model
+    if (subtype === 'init' && model) {
+      // A provider can report the same API id for both context windows.
+      const selected = this.reportedModel ?? this.options.preferred?.model ?? this.catalog.find((row) => row.value === 'default')?.defaultValue
+      const selectedId = selected && this.options.providerModels ? parseClaudeModelId(selected) : null
+      this.reportedModel = selectedId?.oneMillion && selectedId.id === model ? model + '[1m]' : model
+    }
     // After the first turn, an init with no message before it is the CLI starting a turn of its
     // own: a subagent left working in the background has reported back.
     if (subtype === 'init' && !this.turn && this.turnsSeen > 0) {
@@ -1201,7 +1206,7 @@ export class ClaudeStream implements ChatDriver {
   // Before the first turn reports it: a 1M model says so in its name.
   private guessedWindow(): number | null {
     const names = [this.reportedModel, this.currentModel()?.value].filter((name): name is string => Boolean(name))
-    return names.some((name) => /\[1m\]/i.test(name)) ? CLAUDE_1M_CONTEXT : null
+    return names.some((name) => parseClaudeModelId(name).oneMillion) ? CLAUDE_1M_CONTEXT : null
   }
 
   // Background subagents the CLI counts as finished beyond those already settled by their own
