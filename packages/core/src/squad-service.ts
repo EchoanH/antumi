@@ -247,9 +247,8 @@ export class SquadService {
       const run = this.store.run(id)
       if (run.state !== 'running' && run.state !== 'paused') throw new Rejection('not-running')
       const target = run.works.find((each) => each.id === workId)
-      if (!target || run.works.some((each) => each.retryOf === workId) || (target.state !== 'failed' && target.state !== 'cancelled')) throw new Rejection('squad-work-not-retryable')
-      const member = run.squad.members.find((each) => each.id === target.memberId)
-      if (target.capability === 'readOnly' && member && !agentSupportsReadOnly(member.agent)) {
+      const member = run.squad.members.find((each) => each.id === target?.memberId)
+      if (target?.capability === 'readOnly' && member && !agentSupportsReadOnly(member.agent)) {
         throw new Rejection('squad-read-only-unsupported', `成员「${member.name}」使用的 ${agentDescriptor(member.agent).label} 不支持只读模式，无法重试这项只读工作`)
       }
       const work = this.retireRetry(run, workId)

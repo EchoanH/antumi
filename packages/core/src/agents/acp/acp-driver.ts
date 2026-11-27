@@ -60,6 +60,8 @@ function writtenPaths(tool: z.infer<typeof Permission>['toolCall']): string[] {
   const input = z.looseObject({ path: z.string().optional(), filePath: z.string().optional(), file_path: z.string().optional(), TargetFile: z.string().optional(), targetFile: z.string().optional(), target_file: z.string().optional() }).safeParse(tool.rawInput).data
   return [...diffs, ...(tool.locations ?? []).map((location) => location.path), ...[input?.path, input?.filePath, input?.file_path, input?.TargetFile, input?.targetFile, input?.target_file].filter((each) => each !== undefined)]
 }
+// A notification has no id to clear it by once sent, so it goes under this key.
+const READ_ONLY_CANCEL = 'read-only-cancel'
 // The requests that open the session a stage works in.
 const RESTORING: ReadonlySet<string> = new Set(['session/load', 'session/resume'])
 const OPENING: ReadonlySet<string> = new Set(['session/new', ...RESTORING, 'session/fork'])
@@ -428,7 +430,7 @@ export class AcpDriver implements ChatDriver {
       else if (frame.method === 'authenticate') this.authSent = true
       else if (frame.method === this.dialect.models?.method) this.modelsSent = true
       else if (OPENING.has(frame.method)) this.sessionSent = true
-      else if (frame.method === 'session/cancel') { this.stopping = true; this.execution = null }
+      else if (frame.method === 'session/cancel') { this.stopping = true; this.execution = null; this.owed.delete(READ_ONLY_CANCEL) }
       else if (frame.method === 'session/prompt' && frame.id !== undefined) {
         const prompt = Prompt.safeParse(frame.params)
         if (!prompt.success) return
@@ -730,7 +732,7 @@ export class AcpDriver implements ChatDriver {
     } else if (!this.options.planOnly && this.options.readOnly && mode && mode.currentValue !== this.nativeMode(this.readOnlyPermissionMode())) {
       this.startError = `${this.name} 离开了只读模式`
       if (this.turn && this.session && !this.stopping) {
-        this.owed.set(`read-only-cancel:${this.turn.id}`, { jsonrpc: '2.0', method: 'session/cancel', params: { sessionId: this.session } })
+        this.owed.set(READ_ONLY_CANCEL, { jsonrpc: '2.0', method: 'session/cancel', params: { sessionId: this.session } })
       }
     }
   }
@@ -932,9 +934,11 @@ export class AcpDriver implements ChatDriver {
         const writePaths = [...writtenPaths(tool), ...announcedWrites]
         const hasDiff = z.array(z.looseObject({ type: z.string() })).safeParse(tool.content).data?.some((entry) => entry.type === 'diff') ?? false
         const isFileWrite = ['edit', 'delete', 'move'].includes(String(tool.kind)) || ['fileChange', 'delete', 'move'].includes(name) || hasDiff || writePaths.length > 0
-        const reject = request.data.options.find((option) => option.kind === 'reject_once') ?? request.data.options.find((option) => option.kind === 'reject_always')
+        const reject = request.data.options.find((option) => option.kind === 'reject_once')
         if (!this.options.planOnly && this.options.readOnly && isFileWrite) {
-          this.owed.set(id, result(frame.id, { outcome: reject ? { outcome: 'selected', optionId: reject.optionId } : { outcome: 'cancelled' } }))
+          // Rejecting for good is safe only where the whole stage reads.
+          const refusal = reject ?? request.data.options.find((option) => option.kind === 'reject_always')
+          this.owed.set(id, result(frame.id, { outcome: refusal ? { outcome: 'selected', optionId: refusal.optionId } : { outcome: 'cancelled' } }))
           const target = writePaths[0]
           this.items.put({ id: itemId, kind: 'approval', requestId: id, tool: name, title: tool.title ?? target ?? `${this.name} 文件修改`, detail: target ? `只读模式，Antumi 已拒绝修改 ${target}` : '只读模式，Antumi 已拒绝修改文件', toolItemId: tool.toolCallId ? `tool:${tool.toolCallId}` : null, decisions: ['allow', 'deny'], resolution: 'denied' }, at)
           return

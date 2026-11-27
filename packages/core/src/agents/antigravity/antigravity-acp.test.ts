@@ -248,6 +248,8 @@ describe('Antigravity ACP', () => {
     receive({ method: 'session/update', params: { sessionId: opened.sessionId, update: { sessionUpdate: 'current_mode_update', currentModeId: 'auto_edit' } } })
     expect(driver.failure()).toContain('离开了只读模式')
     expect(due()).toEqual([{ jsonrpc: '2.0', method: 'session/cancel', params: { sessionId: opened.sessionId } }])
+    // Sent once, not again on every later pump.
+    expect(due()).toEqual([])
 
     // Shell commands follow normal permission approval instead of being auto-denied.
     const cmdDriver = start({ readOnly: true })
