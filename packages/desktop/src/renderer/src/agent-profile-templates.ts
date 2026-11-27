@@ -33,8 +33,11 @@ export function agentProfileTemplateSeed(template: AgentProfileTemplate, install
 
 // Only choose real catalog entries. Effort is independent of the model's size or price.
 export function agentProfileTemplateModel(template: AgentProfileTemplate, agent: AgentKind, catalog: ChatCatalog | null, smallModel?: string | null, onProvider = false): { model: string | null; effort: string | null } {
-  const small = smallModel ? catalog?.models.find((item) => item.id === smallModel || item.id === `${smallModel}[1m]` || item.id.endsWith(`/${smallModel}`)) : undefined
-  const quick = small?.id ?? (onProvider ? null : quickModel(agentDescriptor(agent).quickModels, catalog))
+  const small = smallModel ?? ''
+  const base = small.replace(/(?:\s*\[1m\])+$/i, '').trim()
+  const claude1m = `${base || small}[1m]`
+  const providerSmall = small ? catalog?.models.find((item) => item.id === small || item.id === claude1m || item.id.endsWith(`/${small}`)) : undefined
+  const quick = providerSmall?.id ?? (onProvider ? null : quickModel(agentDescriptor(agent).quickModels, catalog))
   const chosen = catalog?.models.find((item) => item.id === (template.model === 'quick' ? quick : null)) ?? catalog?.models.find((item) => item.isDefault) ?? catalog?.models[0]
   const effort = template.model === 'quick' ? 'low' : template.model === 'strong' ? 'high' : 'medium'
   return { model: chosen?.id ?? null, effort: chosen?.efforts.includes(effort) ? effort : null }

@@ -15,7 +15,9 @@ export function helperModel(parent: Conversation, catalog: ChatCatalog | null): 
   const provider = providerId ? useCore.getState().modelProviders.find((each) => each.id === providerId) : undefined
   if (provider) {
     const small = provider.smallModel
-    return catalog?.models.find((each) => each.id === small || each.id === `${small}[1m]` || each.id.endsWith(`/${small}`))?.id ?? null
+    const base = small.replace(/(?:\s*\[1m\])+$/i, '').trim()
+    const claude1m = `${base || small}[1m]`
+    return catalog?.models.find((item) => item.id === small || item.id === claude1m || item.id.endsWith(`/${small}`))?.id ?? null
   }
   return usePreferences.getState().quickModels[parent.agent] || quickModel(agentDescriptor(parent.agent).quickModels, catalog)
 }

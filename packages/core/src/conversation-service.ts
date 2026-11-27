@@ -22,7 +22,7 @@ import type { SessionHost } from './daemon-client'
 import { ConversationStore } from './conversation-store'
 import { folderChanges, folderDiff, folderHead } from './conversation-changes'
 import { adapterOf, checkUnattended } from './agents'
-import type { AgentLaunch, AgentStage, CancelGrace } from './agents/agent-adapter'
+import type { AgentAdapter, AgentLaunch, AgentStage, CancelGrace } from './agents/agent-adapter'
 import type { AgentMcpServer, McpServer } from './agent-command'
 import { chatCommand } from './conversation-command'
 import { foldersInUse, launchDir, launchLeftovers, launchRoot, removeLaunch, type StageRef } from './stage-launch'
@@ -761,8 +761,11 @@ export class ConversationService {
     if (model || effort) {
       // An agent the provider does not serve runs on its own account (decideRoute).
       const provider = providerId === undefined ? null : this.providers?.get(providerId)
-      const models = (await this.chatCatalog(agent, provider && providerEndpoint(provider, agent) ? providerId : undefined))?.models ?? []
-      const picked = models.find((each) => each.id === (model ?? models.find((one) => one.isDefault)?.id))
+      const onProvider = Boolean(provider && providerEndpoint(provider, agent))
+      const models = (await this.chatCatalog(agent, onProvider ? providerId : undefined))?.models ?? []
+      const picked = model == null
+        ? models.find((each) => each.isDefault)
+        : models.find((each) => each.id === model) ?? (onProvider ? adapter.matchProviderModel?.(model, models) : undefined)
       if (model && !picked) throw new Rejection('chat-option-invalid', `${agent} lists no model ${model}`)
       if (effort && !picked?.efforts.includes(effort)) throw new Rejection('chat-option-invalid', `the model takes no effort ${effort}`)
     }
@@ -1493,7 +1496,7 @@ export class ConversationService {
         }
         if (pending) pending.opening = null
       }
-      const retired = this.rememberedOnProvider(this.store.chatOptions(id)[agent], opened.options.providerModels)
+      const retired = this.rememberedOnProvider(this.store.chatOptions(id)[agent], opened.options.providerModels, adapterOf(agent))
       if (retired.dropped) this.chats.updateNotice(opened, { dir: 'note', at: Date.now(), level: 'info', id: `provider-model:${stage.id}`, text: `服务商不再提供上次用的模型 ${retired.dropped}，这次改用它的默认模型 ${retired.instead ?? ''}`.trim() })
       await launch?.ready(agentStage)
       if (handoff) {
@@ -1555,7 +1558,7 @@ export class ConversationService {
     if (!allowBypass && permissionMode === 'bypass' && restartModes.includes('bypass')) permissionMode = fallbackMode ?? 'ask'
     if (fallbackMode && (!permissionMode || !permissionModes.includes(permissionMode))) permissionMode = fallbackMode
     const onProvider = stage.route ? providerModels?.(stage.route) ?? [] : undefined
-    const remembered = this.rememberedOnProvider(chosen[stage.agent], onProvider)
+    const remembered = this.rememberedOnProvider(chosen[stage.agent], onProvider, adapter)
     // Auto only where the model on this route takes it (a run nobody watches chose it by the
     // agent's own catalog, not knowing the route): the next mode such a run would take instead.
     if (permissionMode === 'auto' && onProvider) {
@@ -1596,9 +1599,11 @@ export class ConversationService {
   // the provider no longer serves is dropped, so the stage starts on its default model rather than
   // fail, and its effort goes too unless that model takes it. Never another provider's or the
   // agent's own account: the stage stays on its provider's models.
-  private rememberedOnProvider(remembered: { model?: string; effort?: string } | undefined, offered: readonly ChatModel[] | undefined): { preferred: { model?: string; effort?: string }; dropped: string | null; instead: string | null } {
+  private rememberedOnProvider(remembered: { model?: string; effort?: string } | undefined, offered: readonly ChatModel[] | undefined, adapter?: AgentAdapter): { preferred: { model?: string; effort?: string }; dropped: string | null; instead: string | null } {
     const preferred = remembered ?? {}
-    if (!offered || !preferred.model || offered.some((model) => model.id === preferred.model)) return { preferred, dropped: null, instead: null }
+    if (!offered || !preferred.model) return { preferred, dropped: null, instead: null }
+    const matched = offered.find((model) => model.id === preferred.model) ?? adapter?.matchProviderModel?.(preferred.model, offered)
+    if (matched) return { preferred: matched.id === preferred.model ? preferred : { ...preferred, model: matched.id }, dropped: null, instead: null }
     const fallback = offered.find((model) => model.isDefault) ?? offered[0]
     const effort = preferred.effort && fallback?.efforts.includes(preferred.effort) ? { effort: preferred.effort } : {}
     return { preferred: effort, dropped: preferred.model, instead: fallback ? fallback.label : null }
