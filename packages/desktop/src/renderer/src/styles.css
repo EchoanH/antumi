@@ -2455,13 +2455,15 @@ button.task-tag:hover {
   background: transparent;
 }
 
-/* Placed by ContextMenu and MenuSubmenu, so they opt out of .menu's anchoring.
-   Above the plan comment box (z-index 50): a right-click on a selection opens both. */
+/* Top-layer menus use viewport coordinates. Clear the browser's popover centering and colour. */
 .context-menu,
 .submenu {
   position: fixed;
+  inset: auto;
+  margin: 0;
   z-index: 60;
   min-width: 180px;
+  color: var(--text);
 }
 
 .submenu {
